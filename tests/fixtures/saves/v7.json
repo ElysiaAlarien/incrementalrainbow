@@ -1,0 +1,61 @@
+{
+	"format": "incremental-rainbow-save",
+	"state": {
+		"demand_events": [
+			{
+				"ends_at_ms": 26320,
+				"event_id": "red_blue_spike",
+				"started_at_ms": 6320
+			}
+		],
+		"drift_key": 3809008728,
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			}
+		],
+		"links": [
+			{
+				"automatic_status": "manual",
+				"color": "red",
+				"destination_kind": "market",
+				"destination_market_id": "millbrook",
+				"id": 1,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 5,
+						"started_at_ms": 4000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 1,
+				"vehicle": "cart"
+			}
+		],
+		"money": [
+			1.255,
+			2
+		],
+		"next_demand_event_ms": 14686,
+		"next_factory_id": 2,
+		"next_link_id": 2,
+		"next_shipment_id": 2,
+		"prisms": 0,
+		"prisms_bought": 0,
+		"rng": [
+			2190444731,
+			2110970850,
+			1895269158,
+			2402239551
+		],
+		"saturation": [],
+		"time_ms": 12000
+	},
+	"version": 7
+}

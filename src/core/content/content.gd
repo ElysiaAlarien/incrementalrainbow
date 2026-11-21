@@ -1,7 +1,7 @@
 class_name Content
 extends RefCounted
-## The game content: colors, symbols, recipes, markets, transport tiers, and
-## balance values. Read-only.
+## The game content: colors, symbols, recipes, markets, transport tiers,
+## demand events, and balance values. Read-only.
 ##
 ## Content is data, not code. It loads from JSON files in [constant DEFAULT_DIR]
 ## (see ADR-0007), and the simulation gets it at construction, so tests can use
@@ -17,6 +17,7 @@ const FILES: Dictionary[String, String] = {
 	"balance": "balance.json",
 	"markets": "markets.json",
 	"transport": "transport.json",
+	"demand_events": "demand_events.json",
 }
 
 ## Problems found in the data. Empty when the content is valid.
@@ -44,7 +45,7 @@ var prism_balance: PrismBalance:
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
-var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0)
+var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0, 1, 1)
 var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
 var _prism_balance := PrismBalance.new(BigNumber.from_int(1), 2.0)
@@ -54,6 +55,8 @@ var _markets: Array[MarketDef] = []
 var _markets_by_id: Dictionary[StringName, MarketDef] = {}
 var _tiers: Array[TransportTier] = []
 var _tiers_by_id: Dictionary[StringName, TransportTier] = {}
+var _demand_events: Array[DemandEventDef] = []
+var _demand_events_by_id: Dictionary[StringName, DemandEventDef] = {}
 
 
 static func load_dir(dir_path: String) -> Content:
@@ -76,6 +79,8 @@ static func from_data(data: Dictionary) -> Content:
 	# Markets name colors, so parse them after the colors.
 	content._parse_markets(data.get("markets", {}))
 	content._parse_transport(data.get("transport", {}))
+	# Demand events name colors, so parse them after the colors.
+	content._parse_demand_events(data.get("demand_events", {}))
 	return content
 
 
@@ -107,6 +112,16 @@ func transport_tiers() -> Array[TransportTier]:
 ## The transport tier with [param id], or null.
 func transport_tier(id: StringName) -> TransportTier:
 	return _tiers_by_id.get(id)
+
+
+## All demand events, in data order. With none, no demand events occur.
+func demand_events() -> Array[DemandEventDef]:
+	return _demand_events.duplicate()
+
+
+## The demand event with [param id], or null.
+func demand_event(id: StringName) -> DemandEventDef:
+	return _demand_events_by_id.get(id)
 
 
 func _parse_colors(data: Dictionary) -> void:
@@ -222,8 +237,18 @@ func _parse_demand_balance(demand: Variant) -> void:
 	if not (_is_number(half) and half > 0):
 		_errors.append("demand.saturation_half_widgets must be a number of more than 0")
 		half = 1.0
+	var interval_min := maxi(1, _read_positive_int(demand, "event_interval_min_ms", "demand"))
+	var interval_max := maxi(1, _read_positive_int(demand, "event_interval_max_ms", "demand"))
+	if interval_max < interval_min:
+		_errors.append("demand.event_interval_max_ms must be at least demand.event_interval_min_ms")
+		interval_max = interval_min
+	elif interval_max - interval_min >= SimRng.MAX_RANGE:
+		_errors.append("demand.event_interval_max_ms can be at most %d more than demand.event_interval_min_ms" % (
+			SimRng.MAX_RANGE - 1))
+		interval_max = interval_min
 	_demand_balance = DemandBalance.new(maxi(1, _read_positive_int(demand, "drift_period_ms", "demand")),
-		amplitude, _read_whole_number(demand, "saturation_ms_per_widget", "demand"), float(half))
+		amplitude, _read_whole_number(demand, "saturation_ms_per_widget", "demand"), float(half),
+		interval_min, interval_max)
 
 
 func _parse_prism_balance(prism: Variant) -> void:
@@ -278,17 +303,57 @@ func _parse_transport(data: Dictionary) -> void:
 		_tiers_by_id[id] = tier
 
 
+func _parse_demand_events(data: Dictionary) -> void:
+	for entry in _read_entries(data, "demand_events.json", "events", "demand event", true):
+		var id := StringName(entry.id)
+		var direction_name := str(entry.get("direction", ""))
+		var direction: DemandEventDef.Direction = DemandEventDef.DIRECTION_NAMES.get(direction_name,
+			DemandEventDef.Direction.SPIKE)
+		if not DemandEventDef.DIRECTION_NAMES.has(direction_name):
+			_errors.append("%s: direction must be one of %s, but it is %s" % [
+				id, ", ".join(DemandEventDef.DIRECTION_NAMES.keys()), direction_name])
+		var event_size: Variant = entry.get("size")
+		if not (_is_number(event_size) and event_size > 0):
+			_errors.append("%s: size must be a number of more than 0" % id)
+			event_size = 0.0
+		elif direction == DemandEventDef.Direction.CRASH and event_size >= 1:
+			_errors.append("%s: the size of a crash must be less than 1, so that demand stays above 0" % id)
+			event_size = 0.0
+		var def := DemandEventDef.new(id, entry.name, _parse_event_colors(id, entry.get("colors")),
+			direction, float(event_size), _read_positive_int(entry, "duration_ms", id))
+		_demand_events.append(def)
+		_demand_events_by_id[id] = def
+
+
+func _parse_event_colors(event_id: StringName, data: Variant) -> Array[StringName]:
+	var colors: Array[StringName] = []
+	if not data is Array or data.is_empty():
+		_errors.append("%s: colors must be a list of at least one color id" % event_id)
+		return colors
+	for item: Variant in data:
+		var color_id := StringName(str(item))
+		if not _colors_by_id.has(color_id):
+			_errors.append("%s: %s is not a color" % [event_id, color_id])
+		elif colors.has(color_id):
+			_errors.append("%s: color %s is in the list more than once" % [event_id, color_id])
+		else:
+			colors.append(color_id)
+	return colors
+
+
 ## The entries of the list [param list_key] in [param file]: objects, each with
-## a unique id and a name. Reports a missing or empty list, an entry that is not
+## a unique id and a name. Reports a missing list, an empty list unless
+## [param allow_empty], an entry that is not
 ## an object, a missing or duplicate id (and skips that entry), and a missing
 ## name. In each returned entry, "id" and "name" are Strings.
-func _read_entries(data: Dictionary, file: String, list_key: String, noun: String) -> Array[Dictionary]:
+func _read_entries(data: Dictionary, file: String, list_key: String, noun: String,
+		allow_empty: bool = false) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	var list: Variant = data.get(list_key)
 	if not list is Array:
 		_errors.append("%s: \"%s\" must be a list" % [file, list_key])
 		return entries
-	if list.is_empty():
+	if list.is_empty() and not allow_empty:
 		_errors.append("%s: there must be at least one %s" % [file, noun])
 	var seen := {}
 	for entry: Variant in list:

@@ -9,6 +9,10 @@ const SHIPMENT_COST := 2
 const AUTOMATIC_COST := 20
 const FIRST_PRISM_PRICE := 20
 const INPUT_BAY_CAPACITY := 10
+## The shortest and longest time between demand event starts in
+## [method balance_data].
+const EVENT_INTERVAL_MIN_MS := 5000
+const EVENT_INTERVAL_MAX_MS := 10_000
 
 
 static func colors_data() -> Dictionary:
@@ -42,7 +46,8 @@ static func mixed_colors_data() -> Dictionary:
 ## of 10, a flat
 ## production line cost of 10, prisms that cost 20, then 40, 80, and so on, and
 ## demand that stays at 1 (no drift and no saturation), so that prices stay at
-## the base price.
+## the base price. A demand event starts each 5 to 10 s, but [method data]
+## has no demand events unless a test gives some.
 ## [param overrides] replaces values by key, such as
 ## [code]{"starting_money": 15, "production_line_cost_growth": 2.0}[/code].
 ## Keys are unique across the sections.
@@ -63,6 +68,8 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 		"drift_amplitude": 0.0,
 		"saturation_ms_per_widget": 0,
 		"saturation_half_widgets": 10,
+		"event_interval_min_ms": EVENT_INTERVAL_MIN_MS,
+		"event_interval_max_ms": EVENT_INTERVAL_MAX_MS,
 	}
 	var prism := {"first_price": FIRST_PRISM_PRICE, "price_growth": 2.0}
 	for key: String in overrides:
@@ -103,13 +110,32 @@ static func transport_data(transit_time_ms: int = TRANSIT_TIME_MS,
 	]}
 
 
+## Demand events: a spike of red and blue by 0.5 for 20 s ("red_blue_spike"),
+## and a crash of yellow by 0.4 for 30 s ("yellow_crash"). [param ids] picks
+## which ones, in order.
+static func demand_events_data(ids: PackedStringArray = ["red_blue_spike", "yellow_crash"]) -> Dictionary:
+	var all := {
+		"red_blue_spike": {"id": "red_blue_spike", "name": "Red and blue spike", "colors": ["red", "blue"],
+			"direction": "spike", "size": 0.5, "duration_ms": 20_000},
+		"yellow_crash": {"id": "yellow_crash", "name": "Yellow crash", "colors": ["yellow"],
+			"direction": "crash", "size": 0.4, "duration_ms": 30_000},
+	}
+	var events := []
+	for id in ids:
+		events.append(all[id])
+	return {"events": events}
+
+
 ## Data for [method Content.from_data], with each section replaceable. When
 ## [param markets] is null, one market prices every color in [param colors].
+## By default there are no demand events.
 static func data(colors: Dictionary = colors_data(), balance: Dictionary = balance_data(),
-		markets: Variant = null, transport: Dictionary = transport_data()) -> Dictionary:
+		markets: Variant = null, transport: Dictionary = transport_data(),
+		demand_events: Dictionary = {"events": []}) -> Dictionary:
 	if markets == null:
 		markets = markets_data(PRICE, colors)
-	return {"colors": colors, "balance": balance, "markets": markets, "transport": transport}
+	return {"colors": colors, "balance": balance, "markets": markets, "transport": transport,
+		"demand_events": demand_events}
 
 
 ## Content with one widget per [param widget_time_ms] for each production line,
@@ -119,10 +145,17 @@ static func make(widget_time_ms: int = 1000, output_bay_capacity: int = 10) -> C
 	return make_with_balance(balance_data(widget_time_ms, output_bay_capacity))
 
 
-## Like [method make], with the colors of [method mixed_colors_data]. The save
-## fixtures in tests/fixtures/saves/ load with this content.
+## Like [method make], with the colors of [method mixed_colors_data].
 static func make_mixed(widget_time_ms: int = 1000, output_bay_capacity: int = 10) -> Content:
 	return from_data(data(mixed_colors_data(), balance_data(widget_time_ms, output_bay_capacity)))
+
+
+## The content that the save fixtures in tests/fixtures/saves/ load with: like
+## [code]make_mixed(700, 6)[/code], with the demand events of
+## [method demand_events_data].
+static func make_for_saves() -> Content:
+	return from_data(data(mixed_colors_data(), balance_data(700, 6), null, transport_data(),
+		demand_events_data()))
 
 
 ## Content with the test colors and [param balance] from [method balance_data].

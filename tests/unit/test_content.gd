@@ -284,3 +284,90 @@ func test_content_cannot_be_changed_through_what_it_returns() -> void:
 	assert_eq(content.errors, PackedStringArray())
 	assert_eq(content.markets().size(), 1)
 	assert_not_null(content.market(&"millbrook").price(&"red"))
+
+
+# --- Demand events --------------------------------------------------------------
+
+func _events_content(events: Array, overrides: Dictionary = {}) -> Content:
+	var colors := ContentFixture.colors_data()
+	return Content.from_data(ContentFixture.data(colors, ContentFixture.balance_data(1000, 10, overrides),
+		null, ContentFixture.transport_data(), {"events": events}))
+
+
+func test_reads_demand_events_in_order() -> void:
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(1000, 10, {"event_interval_min_ms": 2000, "event_interval_max_ms": 9000}),
+		null, ContentFixture.transport_data(), ContentFixture.demand_events_data()))
+
+	assert_eq(content.errors, PackedStringArray())
+	var events := content.demand_events()
+	assert_eq(events.map(func(d: DemandEventDef) -> StringName: return d.id), [&"red_blue_spike", &"yellow_crash"])
+	var spike := content.demand_event(&"red_blue_spike")
+	assert_eq(spike.name, "Red and blue spike")
+	assert_eq(spike.colors, [&"red", &"blue"] as Array[StringName])
+	assert_eq(spike.direction, DemandEventDef.Direction.SPIKE)
+	assert_eq(spike.size, 0.5)
+	assert_eq(spike.duration_ms, 20_000)
+	assert_eq(spike.factor(), 1.5)
+	var crash := content.demand_event(&"yellow_crash")
+	assert_eq(crash.direction, DemandEventDef.Direction.CRASH)
+	assert_almost_eq(crash.factor(), 0.6, 1e-12)
+	assert_null(content.demand_event(&"no_such_event"))
+	assert_eq(content.demand_balance.event_interval_min_ms, 2000)
+	assert_eq(content.demand_balance.event_interval_max_ms, 9000)
+
+
+func test_an_empty_list_of_demand_events_is_valid() -> void:
+	var content := _events_content([])
+
+	assert_eq(content.errors, PackedStringArray())
+	assert_eq(content.demand_events().size(), 0)
+
+
+func test_the_game_data_has_demand_events_of_both_directions() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	var directions := {}
+	for def in content.demand_events():
+		directions[def.direction] = true
+	assert_eq(directions.size(), 2)
+
+
+func test_reports_bad_demand_events() -> void:
+	var content := _events_content([
+		{"id": "a", "name": "A", "colors": [], "direction": "spike", "size": 0.5, "duration_ms": 1000},
+		{"id": "b", "name": "B", "colors": ["red", "magenta", "red"], "direction": "boom", "size": 0.5, "duration_ms": 1000},
+		{"id": "c", "name": "C", "colors": ["red"], "direction": "crash", "size": 1, "duration_ms": 1000},
+		{"id": "d", "name": "D", "colors": ["red"], "direction": "spike", "size": 0, "duration_ms": 0},
+		{"id": "d", "name": "D again", "colors": ["red"], "direction": "spike", "size": 1, "duration_ms": 1},
+		{"name": "No id", "colors": ["red"], "direction": "spike", "size": 1, "duration_ms": 1},
+	])
+
+	var text := "\n".join(content.errors)
+	for expected in ["a: colors must be a list of at least one color id",
+			"b: magenta is not a color",
+			"b: color red is in the list more than once",
+			"b: direction must be one of spike, crash, but it is boom",
+			"c: the size of a crash must be less than 1, so that demand stays above 0",
+			"d: size must be a number of more than 0",
+			"d.duration_ms must be a positive integer",
+			"duplicate demand event id d",
+			"demand_events.json: a demand event has no id"]:
+		assert_string_contains(text, expected)
+	content = Content.from_data(ContentFixture.data(ContentFixture.colors_data(), ContentFixture.balance_data(),
+		null, ContentFixture.transport_data(), {}))
+	assert_string_contains("\n".join(content.errors), "demand_events.json: \"events\" must be a list")
+
+
+func test_reports_bad_demand_event_intervals() -> void:
+	var content := _events_content([], {"event_interval_min_ms": 0, "event_interval_max_ms": 1.5})
+	var text := "\n".join(content.errors)
+	assert_string_contains(text, "demand.event_interval_min_ms must be a positive integer")
+	assert_string_contains(text, "demand.event_interval_max_ms must be a positive integer")
+
+	content = _events_content([], {"event_interval_min_ms": 5000, "event_interval_max_ms": 4000})
+	assert_string_contains("\n".join(content.errors),
+		"demand.event_interval_max_ms must be at least demand.event_interval_min_ms")
+
+	content = _events_content([], {"event_interval_min_ms": 1, "event_interval_max_ms": 1 + (1 << 31)})
+	assert_string_contains("\n".join(content.errors),
+		"demand.event_interval_max_ms can be at most 2147483647 more than demand.event_interval_min_ms")

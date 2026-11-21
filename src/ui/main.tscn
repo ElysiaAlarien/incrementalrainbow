@@ -171,6 +171,22 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
 text = "No links yet. Link a factory to a market to sell its widgets, or to a mixed factory to feed it."
 
+[node name="DemandEventsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Demand events"
+
+[node name="DemandEventList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DemandEventsEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/DemandEventList"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+text = "No demand events now. A demand event raises or lowers the demand for some colors in every market for a short time."
+
 [node name="MarketsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
