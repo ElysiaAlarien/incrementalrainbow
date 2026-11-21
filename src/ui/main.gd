@@ -3,7 +3,8 @@ extends Control
 ## build it, factories with their production lines, output bays, and input
 ## bays, links from factories to markets and to mixed factories, with manual
 ## shipments, automatic transport, and throughput, the active demand events,
-## and markets with the price and demand of each color.
+## and markets with their population, income, capacity, community investment,
+## and the price and demand of each color.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -226,6 +227,10 @@ func _on_automate_pressed(link_id: int) -> void:
 	_show_result(_sim.buy_automatic_transport(link_id))
 
 
+func _on_invest_pressed(market_id: StringName, goal: MarketView.Investment) -> void:
+	_show_result(_sim.make_community_investment(market_id, goal))
+
+
 func _show_result(result: CommandResult) -> void:
 	_show_message("" if result.ok else result.message)
 	_refresh()
@@ -266,6 +271,7 @@ func _refresh() -> void:
 		var market_row: MarketRow = _market_rows.get(view.id)
 		if market_row == null:
 			market_row = MarketRow.new(view, _content.colors())
+			market_row.invest_pressed.connect(_on_invest_pressed)
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
 		market_row.show_state(view)

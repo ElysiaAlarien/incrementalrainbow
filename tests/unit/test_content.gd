@@ -98,7 +98,7 @@ func test_reads_the_economy_values() -> void:
 
 
 func test_reads_markets_with_a_price_for_each_color() -> void:
-	var markets := {"markets": [{"id": "millbrook", "name": "Millbrook",
+	var markets := {"markets": [{"id": "millbrook", "name": "Millbrook", "population": 500, "income": 80,
 		"prices": {"red": 4, "yellow": 2.5, "blue": 6}}]}
 	var content := Content.from_data(ContentFixture.data(
 		ContentFixture.colors_data(), ContentFixture.balance_data(), markets))
@@ -108,7 +108,60 @@ func test_reads_markets_with_a_price_for_each_color() -> void:
 	assert_eq(market.name, "Millbrook")
 	assert_true(market.price(&"red").equals(BigNumber.from_int(4)))
 	assert_true(market.price(&"yellow").equals(BigNumber.from_float(2.5)))
+	assert_eq([market.start_population, market.start_income], [500, 80])
 	assert_null(content.market(&"nowhere"))
+
+
+func test_reads_the_market_balance() -> void:
+	var balance := ContentFixture.balance_data(1000, 10, {"period_ms": 30_000,
+		"capacity_per_population": 0.25, "reference_income": 40, "investment_cost": 15,
+		"investment_cost_growth": 1.5, "population_step": 20, "income_step": 4})
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	var market := content.market_balance
+	assert_eq(market.period_ms, 30_000)
+	assert_eq(market.capacity(1000), 250)
+	assert_eq(market.capacity(1003), 250, "capacity rounds down")
+	assert_eq(market.income_factor(40), 1.0)
+	assert_eq(market.income_factor(60), 1.5)
+	assert_eq([market.population_step, market.income_step], [20, 4])
+	assert_eq(market.investment_cost_after(0).format(), "15")
+	assert_eq(market.investment_cost_after(1).format(), "23", "22.5 rounds up to a whole number")
+	assert_eq([market.period(29_999), market.period(30_000), market.period_end_ms(45_000)], [0, 1, 60_000])
+
+
+func test_bad_market_balance_and_starts_are_errors() -> void:
+	var colors := ContentFixture.colors_data()
+	var balance := ContentFixture.balance_data(1000, 10, {"period_ms": 0,
+		"capacity_per_population": 0.001, "reference_income": 0, "investment_cost": -1,
+		"investment_cost_growth": 0.5, "population_step": 0, "income_step": 1.5})
+	var markets := ContentFixture.markets_data(ContentFixture.PRICE, colors, ["millbrook"], 10, 0)
+	markets.markets.append({"id": "ashford", "name": "Ashford", "prices": markets.markets[0].prices})
+	var content := Content.from_data(ContentFixture.data(colors, balance, markets))
+	var text := "\n".join(content.errors)
+	for expected in ["market.period_ms must be a positive integer",
+			"market.reference_income must be more than 0",
+			"market.investment_cost must be a number of at least 0",
+			"market.investment_cost_growth must be a number of at least 1",
+			"market.population_step must be a positive integer",
+			"market.income_step must be a positive integer",
+			"millbrook: a population of 10 gives a capacity of 0",
+			"millbrook.income must be a positive integer",
+			"ashford.population must be a positive integer",
+			"ashford.income must be a positive integer"]:
+		assert_string_contains(text, expected)
+
+
+func test_a_population_step_that_adds_no_capacity_is_an_error() -> void:
+	var balance := ContentFixture.balance_data(1000, 10, {"capacity_per_population": 0.1, "population_step": 9})
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors),
+		"market.population_step times market.capacity_per_population must be at least 1")
+
+
+func test_a_market_balance_with_no_capacity_per_person_is_an_error() -> void:
+	var balance := ContentFixture.balance_data(1000, 10, {"capacity_per_population": 0})
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "market.capacity_per_population must be more than 0")
 
 
 func test_reads_transport_tiers_in_order() -> void:
@@ -185,8 +238,8 @@ func test_reports_bad_data() -> void:
 			"recipe": {"rust": 1, "red": 3}, "unlock": "magic"},
 	]}
 	var markets := {"markets": [
-		{"id": "millbrook", "name": "", "prices": {"red": 0, "pink": 3, "white": 1}},
-		{"id": "millbrook", "name": "Again", "prices": {}},
+		{"id": "millbrook", "name": "", "population": 10, "income": 10, "prices": {"red": 0, "pink": 3, "white": 1}},
+		{"id": "millbrook", "name": "Again", "population": 10, "income": 10, "prices": {}},
 	]}
 	var transport := {"automatic_transport_cost": -3,
 		"tiers": [{"id": "cart", "name": "", "transit_time_ms": 0, "shipment_cost": -1}]}

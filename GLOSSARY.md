@@ -133,6 +133,13 @@ _Avoid_: Distance, range
 The total number of widgets of all colors that a market can buy in one period.
 _Avoid_: Sales limit, throughput
 
+**Period**:
+The fixed span of time in which a market's capacity applies. Periods follow each other from the start of the game, with no gap. At the start of each period, the capacity used goes back to zero. The spec does not set the length of a period yet, so it is a placeholder in the data.
+_Avoid_: Cycle, round, turn
+
+**Capacity used**:
+The widgets that a market sold in the current period. A shipment carries only the capacity that is left when it leaves: the capacity less the capacity used and less the widgets already on their way to that market.
+
 **Community investment**:
 Money the player spends in a market to grow its population or its income.
 _Avoid_: Market upgrade, capacity upgrade

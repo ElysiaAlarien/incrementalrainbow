@@ -169,6 +169,7 @@ func test_the_market_sells_a_shipment_when_it_arrives() -> void:
 func test_the_sale_uses_the_price_of_the_shipment_color() -> void:
 	var colors := ContentFixture.colors_data()
 	var markets := {"markets": [{"id": "millbrook", "name": "Millbrook",
+		"population": ContentFixture.POPULATION, "income": ContentFixture.INCOME,
 		"prices": {"red": 1, "yellow": 2.5, "blue": 4}}]}
 	var sim := Simulation.new(ContentFixture.from_data(ContentFixture.data(colors,
 		ContentFixture.balance_data(), markets,

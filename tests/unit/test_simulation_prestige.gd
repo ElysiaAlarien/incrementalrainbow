@@ -18,8 +18,11 @@ const PREVIEW_NAME_OF_KEY := {
 	"next_shipment_id": "Links, with their vehicles and shipments",
 	"drift_key": "Demand and saturation",
 	"saturation": "Demand and saturation",
+	"demand_events": "Demand and saturation",
+	"next_demand_event_ms": "Demand and saturation",
 	"prisms": "Prisms",
 	"prisms_bought": "Prism price",
+	"markets": "Community investments and capacity used in each market",
 }
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.
@@ -51,6 +54,8 @@ func _played_run() -> Simulation:
 	sim.tick(ContentFixture.TRANSIT_TIME_MS + 100)
 	assert_true(sim.buy_prism().ok)
 	assert_true(sim.buy_prism().ok)
+	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.POPULATION).ok)
+	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.INCOME).ok)
 	return sim
 
 
@@ -135,6 +140,22 @@ func test_a_prestige_clears_saturation_and_shipments_on_their_way() -> void:
 	var money_before := sim.money()
 	sim.tick(60_000)
 	assert_true(sim.money().equals(money_before), "no old shipment sells in the new run")
+
+
+func test_a_prestige_clears_community_investments_and_capacity_used() -> void:
+	var sim := _played_run()
+	sim.tick(ContentFixture.TRANSIT_TIME_MS)
+	var before := sim.market(&"millbrook")
+	assert_gt(before.capacity_used, 0, "the run sold widgets in this period")
+	assert_gt(before.population, ContentFixture.POPULATION, "the run grew the population")
+
+	sim.prestige()
+
+	var market := sim.market(&"millbrook")
+	assert_eq([market.population, market.income, market.capacity_used, market.capacity_in_transit],
+		[ContentFixture.POPULATION, ContentFixture.INCOME, 0, 0])
+	assert_eq(market.investment_cost(MarketView.Investment.POPULATION).format(),
+		str(ContentFixture.INVESTMENT_COST), "investment costs start again")
 
 
 func test_a_prestige_keeps_prisms_and_the_prism_price() -> void:
@@ -237,7 +258,8 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 	assert_eq(view.message, "")
 	assert_eq(view.keeps, PackedStringArray(["Prisms", "Prism price"]))
 	assert_eq(view.clears, PackedStringArray(["Money", "Factories",
-		"Links, with their vehicles and shipments", "Demand and saturation"]))
+		"Links, with their vehicles and shipments", "Demand and saturation",
+		"Community investments and capacity used in each market"]))
 
 
 func test_the_preview_with_no_prisms_gives_the_reason() -> void:

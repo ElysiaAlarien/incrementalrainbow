@@ -40,9 +40,13 @@ func _rich_game() -> Simulation:
 	sim.start_shipment(1)
 	sim.tick(1400)
 	sim.start_shipment(1)
-	# The sales saturate red and blue in millbrook.
+	# The sales saturate red and blue in millbrook, and use some of its
+	# capacity in this period.
 	sim.buy_prism()
 	sim.buy_prism()
+	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.POPULATION).ok)
+	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.INCOME).ok)
+	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.INCOME).ok)
 	return sim
 
 
@@ -77,6 +81,11 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_eq(sim.link(1).destination_kind, LinkView.Destination.MARKET)
 	assert_eq(sim.link(1).shipments_in_transit.size(), 2, "two shipments to a market")
 	assert_gt(sim.demand_events().size(), 0, "active demand events")
+	var millbrook := sim.market(&"millbrook")
+	assert_gt(millbrook.capacity_used, 0, "sales in this period")
+	assert_gt(millbrook.capacity_in_transit, 0, "widgets on their way to the market")
+	assert_gt(millbrook.population, ContentFixture.POPULATION, "a community investment for population")
+	assert_gt(millbrook.income, ContentFixture.INCOME, "community investments for income")
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -115,6 +124,10 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.demands, view.demands, "demand in %s" % view.id)
 		for color in view.prices:
 			assert_true(got.price(color).equals(view.price(color)), "price of %s" % color)
+		assert_eq([got.population, got.income, got.capacity, got.capacity_used, got.capacity_in_transit],
+			[view.population, view.income, view.capacity, view.capacity_used, view.capacity_in_transit])
+		for goal: MarketView.Investment in MarketView.Investment.values():
+			assert_true(got.investment_cost(goal).equals(view.investment_cost(goal)), "investment cost")
 	assert_eq(sim.prisms().owned, 2, "the rich game has prisms")
 	assert_eq(loaded.prisms().owned, 2)
 	assert_eq(loaded.prisms().total_bought, 2)
@@ -465,6 +478,45 @@ func test_a_next_demand_event_before_now_fails() -> void:
 		"state.next_demand_event_ms: must be -1 (no start set) or not before time_ms")
 
 
+func _assert_market_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state.markets)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_an_unknown_market_fails() -> void:
+	_assert_market_change_fails(func(markets: Array) -> void: markets[0].id = "nowhere",
+		"state.markets[0].id: there is no market \"nowhere\"")
+
+
+func test_a_market_twice_fails() -> void:
+	_assert_market_change_fails(func(markets: Array) -> void: markets.append(markets[0].duplicate()),
+		"state.markets[1].id: market millbrook is in the save more than once")
+
+
+func test_capacity_used_over_the_capacity_fails() -> void:
+	_assert_market_change_fails(func(markets: Array) -> void: markets[0].capacity_used = 5000,
+		"state.markets[0].capacity_used: is more than the capacity")
+
+
+func test_a_market_with_no_population_fails() -> void:
+	_assert_market_change_fails(func(markets: Array) -> void: markets[0].population = 0,
+		"state.markets[0].population")
+
+
+func test_a_market_that_is_not_in_the_save_starts_as_at_the_start_of_a_run() -> void:
+	# Such as a market that is new in the content.
+	var data := _save_data()
+	data.state.markets = []
+
+	var result := _load(JSON.stringify(data))
+
+	assert_true(result.ok, result.message)
+	var market := result.simulation.market(&"millbrook")
+	assert_eq([market.population, market.income, market.capacity_used],
+		[ContentFixture.POPULATION, ContentFixture.INCOME, 0])
+
+
 func test_a_link_of_an_unknown_kind_fails() -> void:
 	_assert_link_change_fails(func(link: Dictionary) -> void: link.destination_kind = "warehouse",
 		"state.links[0].destination_kind: must be one of market, factory, but it is \"warehouse\"")
@@ -797,6 +849,40 @@ func test_a_version_6_save_still_loads() -> void:
 	sim.tick(4000 + 2100)
 	assert_eq(sim.factory(3).output_bay_count, 3, "the blue widgets arrived and made green widgets")
 	assert_eq(sim.factory(3).input_bays.map(func(b: InputBayView) -> int: return b.count), [0, 3])
+
+
+## A save of version 8 (#10: population, income, community investment, and
+## capacity used), as the game wrote it.
+func test_a_version_8_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v8.json")
+
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 9000)
+	var millbrook := sim.market(&"millbrook")
+	assert_eq([millbrook.population, millbrook.income], [1100, 150])
+	assert_eq([millbrook.capacity_used, millbrook.capacity_in_transit], [4, 6])
+	assert_eq(millbrook.investment_cost(MarketView.Investment.POPULATION).format(), "20")
+	assert_eq(millbrook.investment_cost(MarketView.Investment.INCOME).format(), "20")
+	assert_eq(sim.money().format(), "111")
+	sim.tick(ContentFixture.TRANSIT_TIME_MS)
+	assert_eq(sim.money().format(), "178.5",
+		"6 red widgets sold for 5, times 1.5 for income 150, times 1.5 for the red and blue spike")
+	assert_eq(sim.market(&"millbrook").capacity_used, 10)
+
+
+func test_a_version_7_save_has_markets_as_at_the_start_of_a_run_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v7.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var millbrook := result.simulation.market(&"millbrook")
+	assert_eq([millbrook.population, millbrook.income, millbrook.capacity_used],
+		[ContentFixture.POPULATION, ContentFixture.INCOME, 0])
+	assert_eq(millbrook.investment_cost(MarketView.Investment.POPULATION).format(),
+		str(ContentFixture.INVESTMENT_COST))
 
 
 func test_a_version_4_save_has_no_prisms_after_migration() -> void:

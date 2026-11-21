@@ -1,7 +1,7 @@
 {
-	"_about": "Hand-made markets. A run starts with every market in this file open (one for now). prices: color id to the base price, the money one widget of that color sells for at demand 1. Demand (see balance.json) changes the price. PLACEHOLDER prices until playtests set them.",
+	"_about": "Hand-made markets. A run starts with every market in this file open (one for now). population and income: the population and income of the market at the start of a run (see market in balance.json). prices: color id to the base price, the money one widget of that color sells for at demand 1 and at the reference income. Demand (see balance.json) changes the price. PLACEHOLDER populations, incomes, and prices until playtests set them.",
 	"placeholder": true,
 	"markets": [
-		{"id": "millbrook", "name": "Millbrook", "prices": {"red": 5, "yellow": 5, "blue": 5, "green": 14, "orange": 14, "purple": 14, "red_orange": 28, "yellow_orange": 28, "yellow_green": 28, "blue_green": 28, "blue_purple": 28, "red_purple": 28, "brown": 22}}
+		{"id": "millbrook", "name": "Millbrook", "population": 1000, "income": 100, "prices": {"red": 5, "yellow": 5, "blue": 5, "green": 14, "orange": 14, "purple": 14, "red_orange": 28, "yellow_orange": 28, "yellow_green": 28, "blue_green": 28, "blue_purple": 28, "red_purple": 28, "brown": 22}}
 	]
 }

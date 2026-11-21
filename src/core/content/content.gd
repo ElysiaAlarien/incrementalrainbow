@@ -42,6 +42,11 @@ var automatic_transport_cost: BigNumber:
 var prism_balance: PrismBalance:
 	get:
 		return _prism_balance
+## Balance values for market capacity, prices from income, and community
+## investment.
+var market_balance: MarketBalance:
+	get:
+		return _market_balance
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
@@ -49,6 +54,7 @@ var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0, 1, 1)
 var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
 var _prism_balance := PrismBalance.new(BigNumber.from_int(1), 2.0)
+var _market_balance := MarketBalance.new(1, 1.0, 1.0, BigNumber.ZERO, 1.0, 1, 1)
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}
 var _markets: Array[MarketDef] = []
@@ -197,6 +203,7 @@ func _parse_balance(data: Dictionary) -> void:
 		_errors.append("balance.json: \"run\" must be an object")
 	_parse_demand_balance(data.get("demand", {}))
 	_parse_prism_balance(data.get("prism", {}))
+	_parse_market_balance(data.get("market", {}))
 	var factory: Variant = data.get("factory", {})
 	if not factory is Dictionary:
 		_errors.append("balance.json: \"factory\" must be an object")
@@ -265,10 +272,39 @@ func _parse_prism_balance(prism: Variant) -> void:
 	_prism_balance = PrismBalance.new(BigNumber.from_float(first_price), growth)
 
 
+func _parse_market_balance(market: Variant) -> void:
+	if not market is Dictionary:
+		_errors.append("balance.json: \"market\" must be an object")
+		return
+	var per_population := _read_number(market, "capacity_per_population", "market", 0.0)
+	if per_population <= 0.0:
+		_errors.append("market.capacity_per_population must be more than 0, so that a higher population gives a higher capacity")
+	var reference_income := _read_number(market, "reference_income", "market", 0.0)
+	if reference_income <= 0.0:
+		_errors.append("market.reference_income must be more than 0")
+		reference_income = 1.0
+	_market_balance = MarketBalance.new(maxi(1, _read_positive_int(market, "period_ms", "market")),
+		per_population, reference_income,
+		_read_money(market, "investment_cost", "market"),
+		_read_number(market, "investment_cost_growth", "market", 1.0),
+		_read_positive_int(market, "population_step", "market"),
+		_read_positive_int(market, "income_step", "market"))
+	if per_population > 0.0 and _market_balance.population_step > 0 \
+			and _market_balance.population_step * per_population < 1.0:
+		_errors.append("market.population_step times market.capacity_per_population must be at least 1, so that each community investment for population gives more capacity")
+
+
+## Markets come after the balance, because each market must have a capacity of
+## at least 1 at the start.
 func _parse_markets(data: Dictionary) -> void:
 	for entry in _read_entries(data, "markets.json", "markets", "market"):
 		var id := StringName(entry.id)
-		var def := MarketDef.new(id, entry.name, _parse_prices(id, entry.get("prices", {})))
+		var population := _read_positive_int(entry, "population", id)
+		var def := MarketDef.new(id, entry.name, _parse_prices(id, entry.get("prices", {})),
+			population, _read_positive_int(entry, "income", id))
+		if population > 0 and _market_balance.capacity(population) < 1:
+			_errors.append("%s: a population of %d gives a capacity of 0 (market.capacity_per_population)" % [
+				id, population])
 		_markets.append(def)
 		_markets_by_id[id] = def
 
