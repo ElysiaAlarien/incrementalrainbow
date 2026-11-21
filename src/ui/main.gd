@@ -1,8 +1,8 @@
 extends Control
-## The first screen: money, base factories with their production lines and
-## output bays, links from factories to markets with manual shipments,
-## automatic transport, and throughput, and markets with the price and demand
-## of each color.
+## The first screen: money, prisms, base factories with their production
+## lines and output bays, links from factories to markets with manual
+## shipments, automatic transport, and throughput, and markets with the price
+## and demand of each color.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -25,6 +25,8 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _links_empty_label: Label = %LinksEmptyLabel
 @onready var _market_list: VBoxContainer = %MarketList
 @onready var _money_label: Label = %MoneyLabel
+@onready var _prism_label: Label = %PrismLabel
+@onready var _buy_prism_button: Button = %BuyPrism
 @onready var _message_label: Label = %MessageLabel
 @onready var _export_code_button: Button = %ExportCodeButton
 
@@ -63,6 +65,7 @@ func _ready() -> void:
 	_export_code_dialog.import_confirmed.connect(_replace_game)
 	add_child(_export_code_dialog)
 	_export_code_button.pressed.connect(func() -> void: _export_code_dialog.open(_sim))
+	_buy_prism_button.pressed.connect(_on_buy_prism_pressed)
 	_refresh()
 
 
@@ -169,6 +172,10 @@ func _on_make_link_pressed() -> void:
 		_new_link_market.get_item_metadata(market_index)))
 
 
+func _on_buy_prism_pressed() -> void:
+	_show_result(_sim.buy_prism())
+
+
 func _on_ship_pressed(link_id: int) -> void:
 	_show_result(_sim.start_shipment(link_id))
 
@@ -188,6 +195,9 @@ func _on_add_line_requested(factory_id: int) -> void:
 
 func _refresh() -> void:
 	_money_label.text = "Money: %s" % _sim.money().format()
+	var prisms := _sim.prisms()
+	_prism_label.text = "Prisms: %s" % BigNumber.from_int(prisms.owned).format()
+	_buy_prism_button.text = "Buy prism (%s)" % prisms.next_price.format()
 	var cost := _sim.factory_build_cost().format()
 	for color_id in _build_button_by_color:
 		_build_button_by_color[color_id].text = "Build %s factory (%s)" % [_content.color(color_id).name, cost]

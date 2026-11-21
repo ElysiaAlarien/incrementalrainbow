@@ -53,6 +53,42 @@ func test_reports_bad_production_line_cost_and_starting_money() -> void:
 			"factory.production_line_cost must be a number of at least 0",
 			"factory.production_line_cost_growth must be a number of at least 1"]:
 		assert_string_contains(text, expected)
+
+
+func test_reads_the_prism_price_values() -> void:
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"first_price": 30, "price_growth": 1.5})))
+	assert_eq(content.errors, PackedStringArray())
+	assert_true(content.prism_balance.first_price.equals(BigNumber.from_int(30)))
+	assert_eq(content.prism_balance.price_growth, 1.5)
+
+
+func test_reports_bad_prism_price_values() -> void:
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"first_price": 0, "price_growth": 0.5})))
+	var text := "\n".join(content.errors)
+	assert_string_contains(text, "prism.first_price must be a number of at least 1")
+	assert_string_contains(text, "prism.price_growth must be a number of at least 1")
+
+
+func test_reports_prism_prices_that_would_not_go_up() -> void:
+	# 3, 3.3, 3.63 all give a whole-number price of 4 after the first.
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"first_price": 3, "price_growth": 1.1})))
+	assert_string_contains("\n".join(content.errors),
+		"prism.price_growth is too low: first_price * (price_growth - 1) must be at least 1")
+
+
+func test_reports_a_missing_prism_section() -> void:
+	var balance := ContentFixture.balance_data()
+	balance.prism = "none"
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "balance.json: \"prism\" must be an object")
+
+
 func test_reads_the_economy_values() -> void:
 	var balance := ContentFixture.balance_data(1000, 10, {"build_cost": 25, "starting_money": 120})
 	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))

@@ -38,12 +38,16 @@ var starting_money: BigNumber:
 var automatic_transport_cost: BigNumber:
 	get:
 		return _automatic_transport_cost
+var prism_balance: PrismBalance:
+	get:
+		return _prism_balance
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO)
 var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0)
 var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
+var _prism_balance := PrismBalance.new(BigNumber.from_int(1), 2.0)
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}
 var _markets: Array[MarketDef] = []
@@ -169,6 +173,7 @@ func _parse_balance(data: Dictionary) -> void:
 	else:
 		_errors.append("balance.json: \"run\" must be an object")
 	_parse_demand_balance(data.get("demand", {}))
+	_parse_prism_balance(data.get("prism", {}))
 	var factory: Variant = data.get("factory", {})
 	if not factory is Dictionary:
 		_errors.append("balance.json: \"factory\" must be an object")
@@ -195,6 +200,20 @@ func _parse_demand_balance(demand: Variant) -> void:
 		half = 1.0
 	_demand_balance = DemandBalance.new(maxi(1, _read_positive_int(demand, "drift_period_ms", "demand")),
 		amplitude, _read_whole_number(demand, "saturation_ms_per_widget", "demand"), float(half))
+
+
+func _parse_prism_balance(prism: Variant) -> void:
+	if not prism is Dictionary:
+		_errors.append("balance.json: \"prism\" must be an object")
+		return
+	var error_count := _errors.size()
+	var first_price := _read_number(prism, "first_price", "prism", 1.0)
+	var growth := _read_number(prism, "price_growth", "prism", 1.0)
+	# A whole-number price goes up after each prism only if each step adds at
+	# least 1 (ADR-0003).
+	if _errors.size() == error_count and first_price * (growth - 1.0) < 1.0:
+		_errors.append("prism.price_growth is too low: first_price * (price_growth - 1) must be at least 1, so that each prism costs more than the one before it")
+	_prism_balance = PrismBalance.new(BigNumber.from_float(first_price), growth)
 
 
 func _parse_markets(data: Dictionary) -> void:

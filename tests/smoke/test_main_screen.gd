@@ -383,3 +383,43 @@ func test_format_demand_shows_a_whole_percent() -> void:
 	assert_eq(MarketRow.format_demand(1.0), "100%")
 	assert_eq(MarketRow.format_demand(0.874), "87%")
 	assert_eq(MarketRow.format_demand(1.296), "130%")
+
+
+# --- Prisms --------------------------------------------------------------------
+
+func test_buying_a_prism_shows_the_prisms_and_the_next_price() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var label: Label = main.find_child("PrismLabel", true, false)
+	var button: Button = main.find_child("BuyPrism", true, false)
+	assert_eq(label.text, "Prisms: 0")
+	var first_price := sim.prisms().next_price
+	assert_eq(button.text, "Buy prism (%s)" % first_price.format())
+
+	button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(sim.prisms().owned, 1)
+	assert_eq(label.text, "Prisms: 1")
+	assert_true(first_price.is_less_than(sim.prisms().next_price), "the price went up")
+	assert_eq(button.text, "Buy prism (%s)" % sim.prisms().next_price.format())
+
+
+func test_buying_a_prism_with_too_little_money_shows_the_reason() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var button: Button = main.find_child("BuyPrism", true, false)
+	while not sim.money().is_less_than(sim.prisms().next_price):
+		button.pressed.emit()
+	button.pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "A prism costs")
+
+
+func test_the_header_fits_the_screen_width() -> void:
+	var main := await _open_main()
+	var header: Control = main.find_child("Header", true, false)
+	assert_lt(header.get_combined_minimum_size().x, 1280.0 - 64.0)
