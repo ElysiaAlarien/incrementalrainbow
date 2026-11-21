@@ -856,7 +856,7 @@ func test_a_version_6_save_still_loads() -> void:
 func test_a_version_8_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v8.json")
 
-	var result := _load(text, SaveCodec.migrations(), _flat_content())
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -866,15 +866,16 @@ func test_a_version_8_save_still_loads() -> void:
 	assert_eq([millbrook.capacity_used, millbrook.capacity_in_transit], [4, 6])
 	assert_eq(millbrook.investment_cost(MarketView.Investment.POPULATION).format(), "20")
 	assert_eq(millbrook.investment_cost(MarketView.Investment.INCOME).format(), "20")
-	assert_eq(sim.money().format(), "96")
+	assert_eq(sim.money().format(), "111")
 	sim.tick(ContentFixture.TRANSIT_TIME_MS)
-	assert_eq(sim.money().format(), "141", "6 red widgets sold for 5 times 1.5 each")
+	assert_eq(sim.money().format(), "178.5",
+		"6 red widgets sold for 5, times 1.5 for income 150, times 1.5 for the red and blue spike")
 	assert_eq(sim.market(&"millbrook").capacity_used, 10)
 
 
 func test_a_version_7_save_has_markets_as_at_the_start_of_a_run_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v7.json"),
-		SaveCodec.migrations(), _flat_content())
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var millbrook := result.simulation.market(&"millbrook")

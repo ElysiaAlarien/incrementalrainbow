@@ -18,6 +18,8 @@ const PREVIEW_NAME_OF_KEY := {
 	"next_shipment_id": "Links, with their vehicles and shipments",
 	"drift_key": "Demand and saturation",
 	"saturation": "Demand and saturation",
+	"demand_events": "Demand and saturation",
+	"next_demand_event_ms": "Demand and saturation",
 	"prisms": "Prisms",
 	"prisms_bought": "Prism price",
 	"markets": "Community investments and capacity used in each market",
@@ -142,7 +144,10 @@ func test_a_prestige_clears_saturation_and_shipments_on_their_way() -> void:
 
 func test_a_prestige_clears_community_investments_and_capacity_used() -> void:
 	var sim := _played_run()
-	assert_gt(sim.market(&"millbrook").capacity_used, 0, "the run sold widgets in this period")
+	sim.tick(ContentFixture.TRANSIT_TIME_MS)
+	var before := sim.market(&"millbrook")
+	assert_gt(before.capacity_used, 0, "the run sold widgets in this period")
+	assert_gt(before.population, ContentFixture.POPULATION, "the run grew the population")
 
 	sim.prestige()
 
@@ -253,7 +258,8 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 	assert_eq(view.message, "")
 	assert_eq(view.keeps, PackedStringArray(["Prisms", "Prism price"]))
 	assert_eq(view.clears, PackedStringArray(["Money", "Factories",
-		"Links, with their vehicles and shipments", "Demand and saturation"]))
+		"Links, with their vehicles and shipments", "Demand and saturation",
+		"Community investments and capacity used in each market"]))
 
 
 func test_the_preview_with_no_prisms_gives_the_reason() -> void:

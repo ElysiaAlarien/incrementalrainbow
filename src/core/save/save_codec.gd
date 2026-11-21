@@ -86,6 +86,7 @@ static func _v5_add_mixed_factories(state: Dictionary) -> Dictionary:
 static func _v6_add_demand_events(state: Dictionary) -> Dictionary:
 	state.demand_events = []
 	state.next_demand_event_ms = -1
+	return state
 
 
 ## Version 8 (#10) adds the state of each market: population, income,
