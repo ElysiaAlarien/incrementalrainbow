@@ -16,6 +16,15 @@ enum Reason {
 	UNKNOWN_FACTORY,
 	## The player has less money than the command costs.
 	NOT_ENOUGH_MONEY,
+	## There is no market with that id.
+	UNKNOWN_MARKET,
+	## A link from that factory to that market already exists.
+	LINK_EXISTS,
+	## There is no link with that id.
+	UNKNOWN_LINK,
+	## The shipment would carry no widgets: the source has none, or the
+	## destination accepts none.
+	NOTHING_TO_SHIP,
 }
 
 var ok: bool

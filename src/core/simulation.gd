@@ -12,6 +12,8 @@ extends RefCounted
 ## The same content, seed, commands, and ticks always give the same state.
 
 const FactoryState := preload("res://src/core/state/factory_state.gd")
+const LinkState := preload("res://src/core/state/link_state.gd")
+const ShipmentState := preload("res://src/core/state/shipment_state.gd")
 
 var _content: Content
 var _rng: SimRng
@@ -19,6 +21,9 @@ var _time_ms: int = 0
 var _money: BigNumber
 var _next_factory_id: int = 1
 var _factories: Array[FactoryState] = []
+var _next_link_id: int = 1
+var _links: Array[LinkState] = []
+var _next_shipment_id: int = 1
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -53,13 +58,42 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 			factory_reader.fail("id", "must be less than next_factory_id (%d)" % sim._next_factory_id)
 		ids[state.id] = true
 		sim._factories.append(state)
+	sim._read_links(reader)
 	return sim
+
+
+## Reads the links and their shipments for [method from_snapshot], and checks
+## them against the factories and the time, which it has read first.
+func _read_links(reader: SnapshotReader) -> void:
+	_next_link_id = reader.integer("next_link_id", 1)
+	_next_shipment_id = reader.integer("next_shipment_id", 1)
+	var link_ids := {}
+	var shipment_ids := {}
+	var routes := {}
+	for link_reader in reader.objects("links"):
+		var state := LinkState.from_snapshot(link_reader, _content, _time_ms,
+			_next_shipment_id, shipment_ids)
+		if link_ids.has(state.id):
+			link_reader.fail("id", "is used by more than one link")
+		elif state.id >= _next_link_id:
+			link_reader.fail("id", "must be less than next_link_id (%d)" % _next_link_id)
+		link_ids[state.id] = true
+		var source := _factory_state(state.source_factory_id)
+		if source == null:
+			link_reader.fail("source_factory_id", "there is no factory #%d" % state.source_factory_id)
+		elif source.color != state.color:
+			link_reader.fail("color", "must be the color of factory #%d (%s)" % [source.id, source.color])
+		var ends := [state.source_factory_id, state.destination_market_id]
+		if routes.has(ends):
+			link_reader.fail("destination_market_id", "factory #%d has more than one link to %s" % ends)
+		routes[ends] = true
+		_links.append(state)
 
 
 # --- Commands -----------------------------------------------------------------
 
-## Builds a base factory of [param color]. On success, [member CommandResult.value]
-## is the new factory id.
+## Builds a base factory of [param color] for [method factory_build_cost]. On
+## success, [member CommandResult.value] is the new factory id.
 func build_factory(color: StringName) -> CommandResult:
 	var color_def := _content.color(color)
 	if color_def == null:
@@ -68,7 +102,11 @@ func build_factory(color: StringName) -> CommandResult:
 	if not color_def.is_base():
 		return CommandResult.failure(CommandResult.Reason.NOT_A_BASE_COLOR,
 			"%s needs inputs, so it cannot have a base factory." % color_def.name)
+	var cost := factory_build_cost()
+	if _money.is_less_than(cost):
+		return _not_enough_money("A factory", cost)
 
+	_money = _money.sub(cost)
 	var state := FactoryState.new(_next_factory_id, color)
 	_next_factory_id += 1
 	_factories.append(state)
@@ -84,12 +122,68 @@ func add_production_line(factory_id: int) -> CommandResult:
 			"There is no factory #%d." % factory_id)
 	var cost := _content.factory_balance.next_line_cost(state.size)
 	if _money.is_less_than(cost):
-		return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_MONEY,
-			"A new production line costs %s, but you have only %s." % [cost.format(), _money.format()])
+		return _not_enough_money("A new production line", cost)
 
 	_money = _money.sub(cost)
 	state.size += 1
 	return CommandResult.success(state.size)
+
+
+## Makes a link from the factory [param factory_id] to the market
+## [param market_id]. The link carries the factory's color, and its vehicle is
+## the first transport tier. Making a link is free; each shipment costs money.
+## On success, [member CommandResult.value] is the new link id.
+func make_link(factory_id: int, market_id: StringName) -> CommandResult:
+	var source := _factory_state(factory_id)
+	if source == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_FACTORY,
+			"There is no factory #%d." % factory_id)
+	var market := _content.market(market_id)
+	if market == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_MARKET,
+			"There is no market \"%s\"." % market_id)
+	if has_link(factory_id, market_id):
+		return CommandResult.failure(CommandResult.Reason.LINK_EXISTS,
+			"Factory #%d already has a link to %s." % [factory_id, market.name])
+
+	var state := LinkState.new(_next_link_id, source.color, factory_id, market_id,
+		_content.transport_tiers()[0].id)
+	_next_link_id += 1
+	_links.append(state)
+	return CommandResult.success(state.id)
+
+
+## Starts a shipment on the link [param link_id]. It costs the vehicle's
+## shipment cost now and arrives after the vehicle's transit time, when the
+## market sells it. It carries the widgets in the source's output bay, up to
+## what the destination accepts now (see [method _accepted_count]). On success,
+## [member CommandResult.value] is the widget count.
+func start_shipment(link_id: int) -> CommandResult:
+	var state := _link_state(link_id)
+	if state == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
+			"There is no link #%d." % link_id)
+	var source := _factory_state(state.source_factory_id)
+	var count := _accepted_count(state, source.output_bay_count)
+	if count <= 0:
+		var why := "Factory #%d has no widgets." % source.id if source.output_bay_count <= 0 \
+			else "%s accepts no widgets now." % _content.market(state.destination_market_id).name
+		return CommandResult.failure(CommandResult.Reason.NOTHING_TO_SHIP,
+			"Nothing to ship: %s" % why)
+	var tier := _content.transport_tier(state.vehicle)
+	if _money.is_less_than(tier.shipment_cost):
+		return _not_enough_money("A shipment by %s" % tier.name.to_lower(), tier.shipment_cost)
+
+	_money = _money.sub(tier.shipment_cost)
+	source.take_output(count)
+	state.shipments.append(ShipmentState.new(_next_shipment_id, count, _time_ms + tier.transit_time_ms))
+	_next_shipment_id += 1
+	return CommandResult.success(count)
+
+
+func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
+	return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_MONEY,
+		"%s costs %s, but you have only %s." % [what, cost.format(), _money.format()])
 
 
 # --- Time ---------------------------------------------------------------------
@@ -103,6 +197,7 @@ func tick(duration_ms: int) -> void:
 	for state in _factories:
 		state.advance(duration_ms, _content.factory_balance)
 	_time_ms += duration_ms
+	_sell_arrived_shipments()
 
 
 # --- Queries ------------------------------------------------------------------
@@ -115,6 +210,11 @@ func time_ms() -> int:
 ## The money the player has now.
 func money() -> BigNumber:
 	return _money
+
+
+## The money that [method build_factory] costs now.
+func factory_build_cost() -> BigNumber:
+	return _content.factory_balance.build_cost
 
 
 ## The colors that [method build_factory] accepts now, in content order.
@@ -137,7 +237,44 @@ func factories() -> Array[FactoryView]:
 ## The factory with [param id], or null.
 func factory(id: int) -> FactoryView:
 	var state := _factory_state(id)
-	return state.to_view(_content.factory_balance) if state != null else null
+	return null if state == null else state.to_view(_content.factory_balance)
+
+
+## All markets that are open, in content order.
+func markets() -> Array[MarketView]:
+	var views: Array[MarketView] = []
+	for def in _content.markets():
+		views.append(_market_view(def))
+	return views
+
+
+## The market with [param id], or null.
+func market(id: StringName) -> MarketView:
+	var def := _content.market(id)
+	return null if def == null else _market_view(def)
+
+
+## All links, in the order they were made.
+func links() -> Array[LinkView]:
+	var views: Array[LinkView] = []
+	for state in _links:
+		views.append(_link_view(state))
+	return views
+
+
+## The link with [param id], or null.
+func link(id: int) -> LinkView:
+	var state := _link_state(id)
+	return null if state == null else _link_view(state)
+
+
+## True if a link goes from the factory [param factory_id] to the market
+## [param market_id].
+func has_link(factory_id: int, market_id: StringName) -> bool:
+	for state in _links:
+		if state.source_factory_id == factory_id and state.destination_market_id == market_id:
+			return true
+	return false
 
 
 ## The full state as plain data. Two simulations with equal snapshots behave
@@ -146,19 +283,80 @@ func snapshot() -> Dictionary:
 	var factory_dicts: Array[Dictionary] = []
 	for state in _factories:
 		factory_dicts.append(state.to_dict())
+	var link_dicts: Array[Dictionary] = []
+	for state in _links:
+		link_dicts.append(state.to_dict())
 	return {
 		"time_ms": _time_ms,
 		"rng": _rng.get_state(),
 		"money": _money.to_data(),
 		"next_factory_id": _next_factory_id,
 		"factories": factory_dicts,
+		"next_link_id": _next_link_id,
+		"links": link_dicts,
+		"next_shipment_id": _next_shipment_id,
 	}
 
 
 # --- Internal -----------------------------------------------------------------
+
+## The shipment size rule, in one place: how many of [param available] widgets
+## a shipment on [param state] carries, which is what its destination accepts
+## when the shipment leaves. A market accepts all widgets for now. Later rules
+## (free input bay space, free warehouse space, and market capacity left in the
+## period) go here.
+func _accepted_count(state: LinkState, available: int) -> int:
+	assert(_content.market(state.destination_market_id) != null, "links go to markets")
+	return available
+
+
+## Sells every shipment that has arrived by now. Sales happen in arrival order
+## (then start order), so one long tick adds money in the same order as many
+## short ticks. BigNumber sums are float sums, so the order matters.
+func _sell_arrived_shipments() -> void:
+	var arrived: Array[Dictionary] = []
+	for state in _links:
+		var in_transit: Array[ShipmentState] = []
+		for shipment in state.shipments:
+			if shipment.arrives_at_ms <= _time_ms:
+				arrived.append({"link": state, "shipment": shipment})
+			else:
+				in_transit.append(shipment)
+		state.shipments = in_transit
+	arrived.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a.shipment.arrives_before(b.shipment))
+	for entry in arrived:
+		_sell(entry.link, entry.shipment.count)
+
+
+## The market at the end of [param state] buys [param count] widgets at its
+## current price for the link's color.
+func _sell(state: LinkState, count: int) -> void:
+	var price := _content.market(state.destination_market_id).price(state.color)
+	_money = _money.add(price.mul(BigNumber.from_int(count)))
+
 
 func _factory_state(id: int) -> FactoryState:
 	for state in _factories:
 		if state.id == id:
 			return state
 	return null
+
+
+func _link_state(id: int) -> LinkState:
+	for state in _links:
+		if state.id == id:
+			return state
+	return null
+
+
+func _link_view(state: LinkState) -> LinkView:
+	return state.to_view(_content.transport_tier(state.vehicle), _time_ms)
+
+
+func _market_view(def: MarketDef) -> MarketView:
+	var view := MarketView.new()
+	view.id = def.id
+	view.name = def.name
+	view.prices = def.prices
+	return view

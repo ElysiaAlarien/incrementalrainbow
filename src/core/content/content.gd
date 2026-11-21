@@ -1,6 +1,7 @@
 class_name Content
 extends RefCounted
-## The game content: colors, symbols, recipes, and balance values. Read-only.
+## The game content: colors, symbols, recipes, markets, transport tiers, and
+## balance values. Read-only.
 ##
 ## Content is data, not code. It loads from JSON files in [constant DEFAULT_DIR]
 ## (see ADR-0007), and the simulation gets it at construction, so tests can use
@@ -14,6 +15,8 @@ const DEFAULT_DIR := "res://data"
 const FILES: Dictionary[String, String] = {
 	"colors": "colors.json",
 	"balance": "balance.json",
+	"markets": "markets.json",
+	"transport": "transport.json",
 }
 
 ## Problems found in the data. Empty when the content is valid.
@@ -29,10 +32,14 @@ var starting_money: BigNumber:
 		return _starting_money
 
 var _errors: PackedStringArray = []
-var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0)
+var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO)
 var _starting_money := BigNumber.ZERO
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}
+var _markets: Array[MarketDef] = []
+var _markets_by_id: Dictionary[StringName, MarketDef] = {}
+var _tiers: Array[TransportTier] = []
+var _tiers_by_id: Dictionary[StringName, TransportTier] = {}
 
 
 static func load_dir(dir_path: String) -> Content:
@@ -52,6 +59,9 @@ static func from_data(data: Dictionary) -> Content:
 	var content := Content.new()
 	content._parse_colors(data.get("colors", {}))
 	content._parse_balance(data.get("balance", {}))
+	# Markets name colors, so parse them after the colors.
+	content._parse_markets(data.get("markets", {}))
+	content._parse_transport(data.get("transport", {}))
 	return content
 
 
@@ -63,6 +73,26 @@ func colors() -> Array[ColorDef]:
 ## The color with [param id], or null.
 func color(id: StringName) -> ColorDef:
 	return _colors_by_id.get(id)
+
+
+## All markets, in data order. A run starts with all of them open.
+func markets() -> Array[MarketDef]:
+	return _markets.duplicate()
+
+
+## The market with [param id], or null.
+func market(id: StringName) -> MarketDef:
+	return _markets_by_id.get(id)
+
+
+## All transport tiers, lowest first. A new link uses the first one.
+func transport_tiers() -> Array[TransportTier]:
+	return _tiers.duplicate()
+
+
+## The transport tier with [param id], or null.
+func transport_tier(id: StringName) -> TransportTier:
+	return _tiers_by_id.get(id)
 
 
 func _parse_colors(data: Dictionary) -> void:
@@ -125,7 +155,7 @@ func _parse_recipe(color_id: StringName, data: Variant) -> Dictionary[StringName
 func _parse_balance(data: Dictionary) -> void:
 	var run: Variant = data.get("run", {})
 	if run is Dictionary:
-		_starting_money = BigNumber.from_float(_read_number(run, "starting_money", "run", 0.0))
+		_starting_money = _read_money(run, "starting_money", "run")
 	else:
 		_errors.append("balance.json: \"run\" must be an object")
 	var factory: Variant = data.get("factory", {})
@@ -135,8 +165,80 @@ func _parse_balance(data: Dictionary) -> void:
 	_factory_balance = FactoryBalance.new(
 		_read_positive_int(factory, "widget_time_ms", "factory"),
 		_read_positive_int(factory, "output_bay_capacity", "factory"),
-		BigNumber.from_float(_read_number(factory, "production_line_cost", "factory", 0.0)),
-		_read_number(factory, "production_line_cost_growth", "factory", 1.0))
+		_read_money(factory, "production_line_cost", "factory"),
+		_read_number(factory, "production_line_cost_growth", "factory", 1.0),
+		_read_money(factory, "build_cost", "factory"))
+
+
+func _parse_markets(data: Dictionary) -> void:
+	for entry in _read_entries(data, "markets.json", "markets", "market"):
+		var id := StringName(entry.id)
+		var def := MarketDef.new(id, entry.name, _parse_prices(id, entry.get("prices", {})))
+		_markets.append(def)
+		_markets_by_id[id] = def
+
+
+func _parse_prices(market_id: StringName, data: Variant) -> Dictionary[StringName, BigNumber]:
+	var prices: Dictionary[StringName, BigNumber] = {}
+	if not data is Dictionary:
+		_errors.append("%s: prices must be an object" % market_id)
+		return prices
+	for key: Variant in data:
+		var color_id := StringName(str(key))
+		if not _colors_by_id.has(color_id):
+			_errors.append("%s: price for %s, which is not a color" % [market_id, color_id])
+		elif _is_number(data[key]) and data[key] > 0:
+			prices[color_id] = BigNumber.from_float(float(data[key]))
+		else:
+			_errors.append("%s: price for %s must be a positive number" % [market_id, color_id])
+	for def in _colors:
+		if not data.has(String(def.id)) and not data.has(def.id):
+			_errors.append("%s: no price for %s" % [market_id, def.id])
+	return prices
+
+
+func _parse_transport(data: Dictionary) -> void:
+	for entry in _read_entries(data, "transport.json", "tiers", "transport tier"):
+		var id := StringName(entry.id)
+		var tier := TransportTier.new(id, entry.name,
+			_read_positive_int(entry, "transit_time_ms", id),
+			_read_money(entry, "shipment_cost", id))
+		_tiers.append(tier)
+		_tiers_by_id[id] = tier
+
+
+## The entries of the list [param list_key] in [param file]: objects, each with
+## a unique id and a name. Reports a missing or empty list, an entry that is not
+## an object, a missing or duplicate id (and skips that entry), and a missing
+## name. In each returned entry, "id" and "name" are Strings.
+func _read_entries(data: Dictionary, file: String, list_key: String, noun: String) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	var list: Variant = data.get(list_key)
+	if not list is Array:
+		_errors.append("%s: \"%s\" must be a list" % [file, list_key])
+		return entries
+	if list.is_empty():
+		_errors.append("%s: there must be at least one %s" % [file, noun])
+	var seen := {}
+	for entry: Variant in list:
+		if not entry is Dictionary:
+			_errors.append("%s: each %s must be an object" % [file, noun])
+			continue
+		var id := str(entry.get("id", ""))
+		if id.is_empty():
+			_errors.append("%s: a %s has no id" % [file, noun])
+			continue
+		if seen.has(id):
+			_errors.append("duplicate %s id %s" % [noun, id])
+			continue
+		seen[id] = true
+		var checked: Dictionary = entry.duplicate()
+		checked.id = id
+		checked.name = str(entry.get("name", ""))
+		if checked.name.is_empty():
+			_errors.append("%s: name is missing" % id)
+		entries.append(checked)
+	return entries
 
 
 func _read_positive_int(section: Dictionary, key: String, section_name: String) -> int:
@@ -155,6 +257,13 @@ func _read_number(section: Dictionary, key: String, section_name: String, minimu
 		return float(value)
 	_errors.append("%s.%s must be a number of at least %s" % [section_name, key, String.num(minimum)])
 	return minimum
+## A money value: a number of 0 or more.
+func _read_money(section: Dictionary, key: String, section_name: String) -> BigNumber:
+	return BigNumber.from_float(_read_number(section, key, section_name, 0.0))
+
+
+static func _is_number(value: Variant) -> bool:
+	return (value is int or value is float) and is_finite(float(value))
 
 
 ## JSON numbers load as floats, so accept a float that holds a whole number.
