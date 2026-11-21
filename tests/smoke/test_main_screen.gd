@@ -905,3 +905,51 @@ func test_a_lab_pays_for_research_that_unlocks_a_color() -> void:
 	var saved := _read_save()
 	assert_true(saved.ok, saved.message)
 	assert_true(saved.simulation.is_color_unlocked(&"brown"), "the save keeps the research")
+
+
+func test_the_player_sets_a_split_and_sees_it() -> void:
+	var main := await _open_main()
+	for color in ["red", "purple"]:
+		_card(main, color).build_button().pressed.emit()
+	await wait_process_frames(1)
+	main.find_child("MakeLink", true, false).pressed.emit()
+	_choose(main, "NewLinkDestination", "Purple factory #2")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+	assert_true(main.find_child("SplitsEmptyLabel", true, false).visible, "no automatic links yet")
+	for link_row: LinkRow in main.find_children("Link*", "LinkRow", true, false):
+		link_row.automate_button().pressed.emit()
+	await wait_process_frames(1)
+
+	var rows := main.find_children("Split*", "SplitRow", true, false)
+	assert_eq(rows.size(), 1, "one split row for the red factory")
+	var row: SplitRow = rows[0]
+	assert_false(main.find_child("SplitsEmptyLabel", true, false).visible)
+	assert_string_contains(row.text(), "Split from Red factory #1")
+	assert_string_contains(row.text(), "No split")
+	assert_eq(row.shares(), {1: 50, 2: 50}, "equal parts to start")
+	assert_true(row.clear_button().disabled)
+
+	row.percent_box(1).value = 70
+	row.percent_box(2).value = 20
+	await wait_process_frames(1)
+	assert_string_contains(row.text(), "Total: 90%")
+	row.set_button().pressed.emit()
+	await wait_process_frames(1)
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "must add up to 100")
+	assert_eq(main.simulation().splits().size(), 0)
+
+	row.percent_box(2).value = 30
+	row.set_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_false(message.visible)
+	assert_eq(main.simulation().splits()[0].shares, {1: 70, 2: 30})
+	assert_string_contains(row.text(), "Split: Millbrook 70%, Purple factory #2 30%")
+	assert_eq(row.shares(), {1: 70, 2: 30}, "the boxes keep the split")
+
+	row.clear_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_eq(main.simulation().splits().size(), 0)
+	assert_string_contains(row.text(), "No split")

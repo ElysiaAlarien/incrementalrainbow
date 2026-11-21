@@ -81,6 +81,13 @@ func _rich_game() -> Simulation:
 	assert_true(blue.ok, blue.message)
 	var green := sim.start_shipment(11)
 	assert_true(green.ok, green.message)
+	# A split of yellow factory #3 between the green factory (link 3) and the
+	# lab (link 9), and its first automatic starts.
+	assert_true(sim.buy_automatic_transport(3).ok)
+	assert_true(sim.buy_automatic_transport(9).ok)
+	var split := sim.set_split({3: 60, 9: 40})
+	assert_true(split.ok, split.message)
+	sim.tick(1)
 	return sim
 
 
@@ -179,6 +186,10 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 		"progress on research that is not selected")
 	assert_eq(sim.selected_research(), &"cool_mixes")
 	assert_eq(sim.lab_stock(), {&"yellow": 1} as Dictionary[StringName, int])
+	assert_eq(sim.splits().size(), 1, "a split")
+	var split := sim.splits()[0]
+	assert_eq(split.shares, {3: 60, 9: 40})
+	assert_gt(split.shipped[3] + split.shipped[9], 0, "the split counts shipped widgets")
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -252,6 +263,9 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_eq(loaded.selected_research(), &"cool_mixes")
 	assert_eq(loaded.lab_stock(), sim.lab_stock())
 	assert_true(loaded.is_color_unlocked(&"brown"), "complete research keeps its unlocks")
+	var split := loaded.splits()[0]
+	assert_eq([split.source_factory_id, split.color, split.shares, split.shipped],
+		[3, &"yellow", sim.splits()[0].shares, sim.splits()[0].shipped])
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -885,6 +899,42 @@ func test_an_input_bay_that_would_overflow_when_its_shipments_arrive_fails() -> 
 		"state.factories[3].input_bays: 16 blue widgets are in the bay and on the way, but the bay holds 10")
 
 
+## [param change] gets the links of the saved state. Links 3 and 9 (at
+## indexes 2 and 8) share the split of yellow factory #3.
+func _assert_split_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state.links)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_split_percentages_that_do_not_add_up_to_100_fail() -> void:
+	_assert_split_change_fails(func(links: Array) -> void: links[8].split_percent = 30,
+		"state.links[2].split_percent: the split percentages of the links from this source add up to 90, not 100")
+
+
+func test_a_split_on_only_some_links_of_a_source_fails() -> void:
+	_assert_split_change_fails(func(links: Array) -> void:
+			links[8].split_percent = -1
+			links[8].split_shipped = 0,
+		"state.links[2].split_percent: the links from this source must all have a split percentage, or none")
+
+
+func test_a_split_percentage_over_100_fails() -> void:
+	_assert_split_change_fails(func(links: Array) -> void: links[2].split_percent = 101,
+		"state.links[2].split_percent: must be from -1 to 100")
+
+
+func test_shipped_widgets_on_a_link_with_no_split_fail() -> void:
+	_assert_split_change_fails(func(links: Array) -> void: links[0].split_shipped = 3,
+		"state.links[0].split_shipped: must be 0 on a link with no split")
+
+
+func test_a_split_percentage_on_a_manual_link_fails() -> void:
+	_assert_split_change_fails(func(links: Array) -> void:
+			links[0].split_percent = 100,
+		"state.links[0].split_percent: must be 0 on a manual link")
+
+
 func test_an_unknown_transport_tier_fails() -> void:
 	var data := _save_data()
 	data.state.transport_tier = "rocket"
@@ -1226,6 +1276,36 @@ func test_a_version_7_save_has_markets_as_at_the_start_of_a_run_after_migration(
 		[ContentFixture.POPULATION, ContentFixture.INCOME, 0])
 	assert_eq(millbrook.investment_cost(MarketView.Investment.POPULATION).format(),
 		str(ContentFixture.INVESTMENT_COST))
+
+
+## A save of version 12 (#14: splits), as the game wrote it.
+func test_a_version_12_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v12.json")
+
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	var split := sim.splits()[0]
+	assert_eq([split.source_factory_id, split.color], [1, &"red"])
+	assert_eq(split.shares, {1: 75, 2: 25, 3: 0})
+	assert_eq(split.shipped, {1: 4, 2: 1, 3: 0})
+	assert_eq(sim.link(3).split_percent, 0, "a manual link of the source gets 0%")
+	sim.tick(120_000)
+	# Purple has no blue widgets, so its red bay fills at 10 and the red factory
+	# holds the rest of its 25%. Of 61 widgets, the market gets its 75% (45),
+	# and 6 wait in the full output bay.
+	assert_eq(sim.splits()[0].shipped, {1: 45, 2: 10, 3: 0})
+	assert_eq(sim.factory(1).status, FactoryView.Status.OUTPUT_BAY_FULL)
+
+
+func test_a_version_11_save_has_no_splits_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v11.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.simulation.splits().size(), 0)
+	assert_eq(result.simulation.link(1).split_percent, LinkView.NO_SPLIT)
 
 
 func test_a_version_4_save_has_no_prisms_after_migration() -> void:

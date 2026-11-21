@@ -186,7 +186,8 @@ func _read_links(reader: SnapshotReader) -> void:
 	var link_ids := {}
 	var shipment_ids := {}
 	var routes := {}
-	for link_reader in reader.objects("links"):
+	var link_readers: Array[SnapshotReader] = reader.objects("links")
+	for link_reader in link_readers:
 		var state := LinkState.from_snapshot(link_reader, _content, _time_ms,
 			_next_shipment_id, shipment_ids)
 		if link_ids.has(state.id):
@@ -232,6 +233,27 @@ func _read_links(reader: SnapshotReader) -> void:
 			link_reader.fail(destination_key, "%s has more than one link to %s" % [source_text, destination_text])
 		routes[ends] = true
 		_links.append(state)
+	_check_splits(link_readers)
+
+
+## Checks for [method from_snapshot] that the links of each source agree on
+## its split: all of them have a percentage or none do, and the percentages
+## add up to 100. [param readers] read the links, in the same order.
+func _check_splits(readers: Array[SnapshotReader]) -> void:
+	var checked := {}
+	for i in _links.size():
+		if checked.has(_links[i]):
+			continue
+		var group := _split_group(_links[i])
+		var with_split := group.filter(func(l: LinkState) -> bool: return l.has_split()).size()
+		var total := 0
+		for state in group:
+			checked[state] = true
+			total += maxi(state.split_percent, 0)
+		if with_split != 0 and with_split != group.size():
+			readers[i].fail("split_percent", "the links from this source must all have a split percentage, or none")
+		elif with_split != 0 and total != 100:
+			readers[i].fail("split_percent", "the split percentages of the links from this source add up to %d, not 100" % total)
 
 
 ## Reads the markets for [method from_snapshot]. A market that the save does
@@ -550,7 +572,12 @@ func _unknown_warehouse(id: int) -> CommandResult:
 	return CommandResult.failure(CommandResult.Reason.UNKNOWN_WAREHOUSE, "There is no warehouse #%d." % id)
 
 
+## Adds [param state]. If its source has a split, the new link gets 0% of it.
 func _add_link(state: LinkState) -> CommandResult:
+	for other in _split_group(state):
+		if other.has_split():
+			state.split_percent = 0
+			break
 	_next_link_id += 1
 	_links.append(state)
 	return CommandResult.success(state.id)
@@ -561,14 +588,16 @@ func _add_link(state: LinkState) -> CommandResult:
 ## a market, the market sells it. At a mixed factory, it goes into the input
 ## bay of its color. At a warehouse, it goes into the warehouse. It carries the
 ## widgets in the source (a factory's output bay or a warehouse), up to what
-## the destination accepts now (see [method _accepted_count]). On success,
+## the destination accepts now (see [method _accepted_count]). A shipment
+## by hand is outside the split of its source: it can take any widgets there,
+## and they do not count in the split. On success,
 ## [member CommandResult.value] is the widget count.
 func start_shipment(link_id: int) -> CommandResult:
 	var state := _link_state(link_id)
 	if state == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
 			"There is no link #%d." % link_id)
-	return _start_shipment(state)
+	return _start_shipment(state, false)
 
 
 ## Buys automatic transport for the link [param link_id], for
@@ -634,14 +663,73 @@ func upgrade_vehicle(link_id: int) -> CommandResult:
 	return CommandResult.success(state.vehicle)
 
 
+## Sets the split of one source: [param shares] maps link ids to whole
+## percentages from 0 to 100, which add up to 100. Each link must have
+## automatic transport, and all must start at one source with one color. The
+## other links from that source, and links made from it later, get 0%. From
+## now on, each automatic start ships only up to its link's percentage of the
+## source's widgets (see [method _split_allowance]), and a new split counts
+## from 0. A shipment by hand is outside the split.
+func set_split(shares: Dictionary) -> CommandResult:
+	var first: LinkState = null
+	var total := 0
+	for key: Variant in shares:
+		var state: LinkState = _link_state(key) if key is int else null
+		if state == null:
+			return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
+				"There is no link %s." % ("#%d" % key if key is int else "\"%s\"" % key))
+		var percent: Variant = shares[key]
+		if not percent is int or percent < 0 or percent > 100:
+			return CommandResult.failure(CommandResult.Reason.BAD_PERCENT,
+				"A percentage must be a whole number from 0 to 100, but link #%d has %s." % [key, percent])
+		if not state.is_automatic():
+			return CommandResult.failure(CommandResult.Reason.NOT_AUTOMATIC,
+				"Link #%d has manual transport. A split is only across automatic links." % key)
+		if first == null:
+			first = state
+		elif not first.same_source_as(state):
+			return CommandResult.failure(CommandResult.Reason.MIXED_SOURCES,
+				"Link #%d does not start at %s. A split is across the links of one color from one source." % [
+					key, _source_name(first)])
+		total += percent
+	if total != 100:
+		return CommandResult.failure(CommandResult.Reason.SPLIT_NOT_100,
+			"The percentages of a split must add up to 100, but these add up to %d." % total)
+
+	for state in _split_group(first):
+		state.set_split(shares.get(state.id, 0))
+	return CommandResult.success()
+
+
+## Removes the split of the source of the link [param link_id]. Then each link
+## from that source ships what it can, as before the split.
+func clear_split(link_id: int) -> CommandResult:
+	var state := _link_state(link_id)
+	if state == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
+			"There is no link #%d." % link_id)
+	if not state.has_split():
+		return CommandResult.failure(CommandResult.Reason.NO_SPLIT,
+			"%s has no split." % _source_name(state))
+
+	for other in _split_group(state):
+		other.set_split(LinkView.NO_SPLIT)
+	return CommandResult.success()
+
+
 ## Starts a shipment on [param state] if the rules allow it, for
-## [method start_shipment] and for automatic starts.
-func _start_shipment(state: LinkState) -> CommandResult:
+## [method start_shipment] and, when [param automatic] is true, for automatic
+## starts. Only automatic starts follow the split.
+func _start_shipment(state: LinkState, automatic: bool) -> CommandResult:
 	var available := _source_count(state)
-	var count := _accepted_count(state, available)
+	var allowed := _split_allowance(state, available) if automatic else available
+	var count := _accepted_count(state, allowed)
 	if count <= 0:
-		var why := "%s has no widgets." % _source_name(state) if available <= 0 \
-			else _accepts_nothing_text(state)
+		var why := _accepts_nothing_text(state)
+		if available <= 0:
+			why = "%s has no widgets." % _source_name(state)
+		elif allowed <= 0:
+			why = _split_used_text(state)
 		return CommandResult.failure(CommandResult.Reason.NOTHING_TO_SHIP,
 			"Nothing to ship: %s" % why)
 	var tier := _content.transport_tier(state.vehicle)
@@ -653,6 +741,8 @@ func _start_shipment(state: LinkState) -> CommandResult:
 		_warehouse_state(state.source_warehouse_id).take(count)
 	else:
 		_factory_state(state.source_factory_id).take_output(count)
+	if automatic:
+		state.record_split_shipment(count)
 	state.add_shipment(_next_shipment_id, count, _time_ms, tier.transit_time_ms)
 	_next_shipment_id += 1
 	return CommandResult.success(count)
@@ -741,6 +831,13 @@ func _accepts_nothing_text(state: LinkState) -> String:
 		market.name, _markets[market.id].capacity(_content.market_balance)]
 
 
+## Why the split lets [param state] ship nothing now.
+func _split_used_text(state: LinkState) -> String:
+	if state.split_percent == 0:
+		return "the split of %s sends 0%% to link #%d." % [_source_name(state), state.id]
+	return "link #%d has its %d%% of the split of %s now." % [state.id, state.split_percent, _source_name(state)]
+
+
 func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
 	return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_MONEY,
 		"%s costs %s, but you have only %s." % [what, cost.format(), _money.format()])
@@ -805,7 +902,7 @@ func _start_automatic_shipments() -> void:
 	for state in _links:
 		if not state.is_automatic() or state.next_automatic_ms != _time_ms:
 			continue
-		var result := _start_shipment(state)
+		var result := _start_shipment(state, true)
 		state.record_automatic_start(result, _content.transport_tier(state.vehicle).transit_time_ms)
 
 
@@ -998,6 +1095,27 @@ func link(id: int) -> LinkView:
 	return null if state == null else _link_view(state)
 
 
+## The split of each color at each source that has one, in the order of the
+## first link from each source.
+func splits() -> Array[SplitView]:
+	var views: Array[SplitView] = []
+	var seen := {}
+	for state in _links:
+		if not state.has_split() or seen.has(state):
+			continue
+		var view := SplitView.new()
+		view.source_kind = state.source_kind
+		view.source_factory_id = state.source_factory_id
+		view.source_warehouse_id = state.source_warehouse_id
+		view.color = state.color
+		for other in _split_group(state):
+			seen[other] = true
+			view.shares[other.id] = other.split_percent
+			view.shipped[other.id] = other.split_shipped
+		views.append(view)
+	return views
+
+
 ## True if a link goes from the factory [param factory_id] to the market
 ## [param market_id].
 func has_link(factory_id: int, market_id: StringName) -> bool:
@@ -1112,6 +1230,37 @@ func _widgets_in_transit_to_market(market_id: StringName) -> int:
 		if state.goes_to_market(market_id):
 			count += state.widgets_in_transit()
 	return count
+
+
+## The split rule, in one place: how many of [param available] widgets at the
+## source an automatic start on [param state] may carry. With no split, all of them.
+## With a split, the link may carry up to its percentage of all the widgets
+## that the source had since the split was set (the widgets that its links
+## shipped since then, plus [param available]), less what it shipped. Thus a
+## link that ships often does not take the share of a link that ships less
+## often, and a link that cannot take widgets for a time keeps its share, so
+## it gets them later. A blocked link can fill the source and stop it.
+## Widgets that a shipment by hand takes leave the source and are not in the
+## total, so the percentages apply to the widgets of automatic starts.
+func _split_allowance(state: LinkState, available: int) -> int:
+	if not state.has_split():
+		return available
+	var total := available
+	for other in _split_group(state):
+		total += other.split_shipped
+	@warning_ignore("integer_division")
+	return clampi(state.split_percent * total / 100 - state.split_shipped, 0, available)
+
+
+## The links that share a split with [param state]: the links from its source
+## with its color, in link order. It includes [param state] when it is a link
+## of the simulation.
+func _split_group(state: LinkState) -> Array[LinkState]:
+	var group: Array[LinkState] = []
+	for other in _links:
+		if other.same_source_as(state):
+			group.append(other)
+	return group
 
 
 ## Widgets of [param color] in shipments on their way to the factory

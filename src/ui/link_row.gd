@@ -205,6 +205,8 @@ static func _in_transit_text(shipments: Array[ShipmentView]) -> String:
 		next_ms = mini(next_ms, shipment.remaining_ms)
 	var count_text := BigNumber.from_int(widgets).format()
 	if shipments.size() == 1:
+		if widgets == 1:
+			return "1 widget on the way, arrives in %s" % format_seconds(next_ms)
 		return "%s widgets on the way, arrive in %s" % [count_text, format_seconds(next_ms)]
 	return "%s widgets in %d shipments, next in %s" % [
 		count_text, shipments.size(), format_seconds(next_ms)]

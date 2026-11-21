@@ -270,6 +270,18 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
 text = "No demand events now. A demand event raises or lowers the demand for some colors in every market for a short time."
 
+[node name="SplitList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SplitsEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/SplitList"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+text = "Splits: buy automatic transport for a link, then set the percentage of a factory's widgets that goes to each of its automatic links."
+autowrap_mode = 3
+
 [node name="MarketsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24

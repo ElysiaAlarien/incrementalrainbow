@@ -5,7 +5,8 @@ extends Control
 ## a button to buy the next one, links from factories and warehouses to
 ## markets, mixed factories, warehouses, and labs, with their vehicles, manual
 ## shipments, automatic transport, and throughput, labs and research with its
-## progress and unlocks, the active demand events,
+## progress and unlocks, the split of each source with automatic links, the
+## active demand events,
 ## and markets with their remoteness, population, income, capacity, community
 ## investment, and the price and demand of each color.
 ##
@@ -43,6 +44,8 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _research_list: VBoxContainer = %ResearchList
 @onready var _demand_event_list: VBoxContainer = %DemandEventList
 @onready var _demand_events_empty_label: Label = %DemandEventsEmptyLabel
+@onready var _split_list: VBoxContainer = %SplitList
+@onready var _splits_empty_label: Label = %SplitsEmptyLabel
 @onready var _market_list: VBoxContainer = %MarketList
 @onready var _money_label: Label = %MoneyLabel
 @onready var _prism_label: Label = %PrismLabel
@@ -60,6 +63,8 @@ var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _warehouse_rows: Dictionary[int, WarehouseRow] = {}
+## The row of the split of each source, by a key such as "factory_1".
+var _split_rows: Dictionary[String, SplitRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
 ## One row for each research in the content. A new run shows them again.
 var _research_rows: Dictionary[StringName, ResearchRow] = {}
@@ -187,12 +192,14 @@ func _replace_game(simulation: Simulation) -> void:
 ## Shows the run of the game after an import or a prestige replaced the last
 ## run. It removes the rows of the last run, and saves the game at once.
 func _show_replaced_run() -> void:
-	for row: Node in _rows.values() + _link_rows.values() + _warehouse_rows.values():
+	for row: Node in _rows.values() + _link_rows.values() + _warehouse_rows.values() \
+			+ _split_rows.values():
 		row.get_parent().remove_child(row)
 		row.queue_free()
 	_rows.clear()
 	_link_rows.clear()
 	_warehouse_rows.clear()
+	_split_rows.clear()
 	_new_link_source.clear()
 	_new_link_destination.clear()
 	_source_keys = []
@@ -290,6 +297,13 @@ func _on_invest_pressed(market_id: StringName, goal: MarketView.Investment) -> v
 func _on_upgrade_vehicle_pressed(link_id: int) -> void:
 	_show_result(_sim.upgrade_vehicle(link_id))
 
+func _on_set_split_pressed(shares: Dictionary) -> void:
+	_show_result(_sim.set_split(shares))
+
+
+func _on_clear_split_pressed(link_id: int) -> void:
+	_show_result(_sim.clear_split(link_id))
+
 
 func _show_result(result: CommandResult) -> void:
 	_show_message("" if result.ok else result.message)
@@ -321,12 +335,14 @@ func _refresh() -> void:
 
 	var automatic_cost := _sim.automatic_transport_cost()
 	var tier := _sim.transport_tier()
-	for view in _sim.links():
+	var links := _sim.links()
+	for view in links:
 		var link_row: LinkRow = _link_rows.get(view.id)
 		if link_row == null:
 			link_row = _add_link_row(view)
 		link_row.show_state(view, automatic_cost, _content.transport_tier(view.vehicle), tier)
 	_links_empty_label.visible = _link_rows.is_empty()
+	_refresh_splits(links)
 	_refresh_research()
 
 	_refresh_demand_events()
@@ -509,26 +525,66 @@ func _warehouse_name(view: WarehouseView) -> String:
 	return "%s warehouse #%d" % [_content.color(view.color).name, view.id]
 
 
-func _add_link_row(view: LinkView) -> LinkRow:
-	var source_name := _factory_name(_sim.factory(view.source_factory_id)) \
-		if view.source_kind == LinkView.Source.FACTORY else _warehouse_name(_sim.warehouse(view.source_warehouse_id))
-	var destination_name := ""
+## Such as "Red factory #1" or "Red warehouse #2".
+func _source_name(view: LinkView) -> String:
+	if view.source_kind == LinkView.Source.WAREHOUSE:
+		return _warehouse_name(_sim.warehouse(view.source_warehouse_id))
+	return _factory_name(_sim.factory(view.source_factory_id))
+
+
+## Such as "Millbrook", "Green factory #4", or "Lab #1".
+func _destination_name(view: LinkView) -> String:
 	match view.destination_kind:
 		LinkView.Destination.FACTORY:
-			destination_name = _factory_name(_sim.factory(view.destination_factory_id))
+			return _factory_name(_sim.factory(view.destination_factory_id))
 		LinkView.Destination.WAREHOUSE:
-			destination_name = _warehouse_name(_sim.warehouse(view.destination_warehouse_id))
+			return _warehouse_name(_sim.warehouse(view.destination_warehouse_id))
 		LinkView.Destination.LAB:
-			destination_name = _lab_name(view.destination_lab_id)
-		_:
-			destination_name = _sim.market(view.destination_market_id).name
-	var row := LinkRow.new(view, _content.color(view.color), source_name, destination_name)
+			return _lab_name(view.destination_lab_id)
+	return _sim.market(view.destination_market_id).name
+
+
+func _add_link_row(view: LinkView) -> LinkRow:
+	var row := LinkRow.new(view, _content.color(view.color), _source_name(view), _destination_name(view))
 	row.ship_pressed.connect(_on_ship_pressed)
 	row.automate_pressed.connect(_on_automate_pressed)
 	row.upgrade_vehicle_pressed.connect(_on_upgrade_vehicle_pressed)
 	_link_rows[view.id] = row
 	_link_list.add_child(row)
 	return row
+
+
+## Shows a split row for each source (a factory or a warehouse) with an
+## automatic link, in the order of the first link from each source.
+## [param links] are all links.
+func _refresh_splits(links: Array[LinkView]) -> void:
+	var by_source: Dictionary[String, Array] = {}
+	var with_automatic := {}
+	for view in links:
+		var key := "%s_%d" % [LinkView.Source.find_key(view.source_kind).to_lower(),
+			view.source_factory_id if view.source_kind == LinkView.Source.FACTORY else view.source_warehouse_id]
+		if not by_source.has(key):
+			by_source[key] = [] as Array[LinkView]
+		by_source[key].append(view)
+		if view.is_automatic():
+			with_automatic[key] = true
+	for key in by_source:
+		if not with_automatic.has(key):
+			continue
+		var source_links: Array[LinkView] = by_source[key]
+		var row: SplitRow = _split_rows.get(key)
+		if row == null:
+			var first := source_links[0]
+			row = SplitRow.new(key, _source_name(first), _content.color(first.color))
+			row.set_pressed.connect(_on_set_split_pressed)
+			row.clear_pressed.connect(_on_clear_split_pressed)
+			_split_rows[key] = row
+			_split_list.add_child(row)
+		var names: Dictionary[int, String] = {}
+		for view in source_links:
+			names[view.id] = _destination_name(view)
+		row.show_state(source_links, names)
+	_splits_empty_label.visible = _split_rows.is_empty()
 
 
 func _show_message(text: String) -> void:

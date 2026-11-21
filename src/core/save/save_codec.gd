@@ -21,7 +21,8 @@ const FORMAT := "incremental-rainbow-save"
 static func migrations() -> Array[Callable]:
 	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
 		_v5_add_mixed_factories, _v6_add_demand_events,
-		_v7_add_markets, _v8_add_warehouses, _v9_add_transport_tier, _v10_add_research]
+		_v7_add_markets, _v8_add_warehouses, _v9_add_transport_tier, _v10_add_research,
+		_v11_add_splits]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -133,6 +134,18 @@ static func _v10_add_research(state: Dictionary) -> Dictionary:
 	state.research_progress = []
 	state.completed_research = []
 	state.lab_stock = []
+	return state
+
+
+## Version 12 (#14) adds splits: each link has a split percentage and the
+## widgets it shipped since the split was set. A version 11 game had no splits.
+static func _v11_add_splits(state: Dictionary) -> Dictionary:
+	var links: Variant = state.get("links")
+	if links is Array:
+		for link: Variant in links:
+			if link is Dictionary:
+				link.split_percent = -1
+				link.split_shipped = 0
 	return state
 
 
