@@ -1,4 +1,4 @@
-class_name TestContent
+class_name ContentFixture
 extends RefCounted
 ## Small content for tests, so tests do not depend on the game's data files.
 
@@ -18,9 +18,14 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 	}}
 
 
+## Data for [method Content.from_data], with each section replaceable.
+static func data(colors: Dictionary = colors_data(), balance: Dictionary = balance_data()) -> Dictionary:
+	return {"colors": colors, "balance": balance}
+
+
 ## Content with one widget per [param widget_time_ms] and an output bay of
 ## [param output_bay_capacity].
 static func make(widget_time_ms: int = 1000, output_bay_capacity: int = 10) -> Content:
-	var content := Content.from_data(colors_data(), balance_data(widget_time_ms, output_bay_capacity))
+	var content := Content.from_data(data(colors_data(), balance_data(widget_time_ms, output_bay_capacity)))
 	assert(content.errors.is_empty(), "test content is valid")
 	return content

@@ -33,6 +33,10 @@ A color mixed from a hue and black.
 The set of input widgets that a factory of a given color consumes to make one widget of that color.
 _Avoid_: Formula, combination
 
+**Symbol**:
+The shape shown with a color, such as a square for red, so that a colorblind player can tell colors apart. Each color has its own symbol.
+_Avoid_: Icon, glyph
+
 ## Production
 
 **Widget**:

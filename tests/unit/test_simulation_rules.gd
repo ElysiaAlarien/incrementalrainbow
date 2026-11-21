@@ -4,7 +4,7 @@ extends GutTest
 
 
 func test_an_unknown_color_fails_with_a_reason_and_changes_nothing() -> void:
-	var sim := Simulation.new(TestContent.make(), 1)
+	var sim := Simulation.new(ContentFixture.make(), 1)
 	sim.build_factory(&"red")
 	sim.tick(1500)
 	var before := sim.snapshot()
@@ -18,10 +18,10 @@ func test_an_unknown_color_fails_with_a_reason_and_changes_nothing() -> void:
 
 
 func test_a_color_with_a_recipe_cannot_be_built_as_a_base_factory() -> void:
-	var colors := TestContent.colors_data()
+	var colors := ContentFixture.colors_data()
 	colors.colors.append({"id": "green", "name": "Green", "symbol": "diamond",
 		"display": "#3a9a4a", "recipe": {"yellow": 1, "blue": 1}})
-	var content := Content.from_data(colors, TestContent.balance_data())
+	var content := Content.from_data(ContentFixture.data(colors))
 	var sim := Simulation.new(content, 1)
 	var before := sim.snapshot()
 
@@ -34,7 +34,7 @@ func test_a_color_with_a_recipe_cannot_be_built_as_a_base_factory() -> void:
 
 
 func _play(seed: int) -> Simulation:
-	var sim := Simulation.new(TestContent.make(700, 6), seed)
+	var sim := Simulation.new(ContentFixture.make(700, 6), seed)
 	sim.build_factory(&"red")
 	sim.tick(1234)
 	sim.build_factory(&"blue")
@@ -54,8 +54,8 @@ func test_the_seed_is_part_of_the_state() -> void:
 
 
 func test_one_long_tick_gives_the_same_state_as_many_short_ticks() -> void:
-	var one := Simulation.new(TestContent.make(700, 50), 9)
-	var many := Simulation.new(TestContent.make(700, 50), 9)
+	var one := Simulation.new(ContentFixture.make(700, 50), 9)
+	var many := Simulation.new(ContentFixture.make(700, 50), 9)
 	one.build_factory(&"red")
 	many.build_factory(&"red")
 

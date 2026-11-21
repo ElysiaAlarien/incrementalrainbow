@@ -10,21 +10,22 @@ extends Control
 @onready var _message_label: Label = %MessageLabel
 
 var _sim: Simulation
+var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
 
 
 func _ready() -> void:
-	var content := Content.load_dir(Content.DEFAULT_DIR)
-	if not content.errors.is_empty():
-		_show_message("The game data has errors:\n" + "\n".join(content.errors))
+	_content = Content.load_dir(Content.DEFAULT_DIR)
+	if not _content.errors.is_empty():
+		_show_message("The game data has errors:\n" + "\n".join(_content.errors))
 		set_process(false)
 		return
 	# Saves (a later ticket) will keep the seed; a new game takes a fresh one.
-	_sim = Simulation.new(content, randi())
+	_sim = Simulation.new(_content, randi())
 	for color_id in _sim.buildable_factory_colors():
-		_add_build_button(content.color(color_id))
+		_add_build_button(_content.color(color_id))
 	_refresh()
 
 
@@ -60,7 +61,7 @@ func _refresh() -> void:
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)
 		if row == null:
-			row = FactoryRow.new(view.id, _sim.content().color(view.color))
+			row = FactoryRow.new(view.id, _content.color(view.color))
 			_rows[view.id] = row
 			_factory_list.add_child(row)
 		row.show_state(view)

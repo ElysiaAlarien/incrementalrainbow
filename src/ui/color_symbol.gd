@@ -57,12 +57,6 @@ static func shape_points(symbol: StringName, box: Rect2) -> PackedVector2Array:
 			return PackedVector2Array([Vector2(c.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)])
 		&"circle":
 			return _regular_polygon(c, r, 48, 0.0)
-		&"diamond":
-			return _regular_polygon(c, r, 4, -PI / 2.0)
-		&"hexagon":
-			return _regular_polygon(c, r, 6, 0.0)
-		&"pentagon":
-			return _regular_polygon(c, r, 5, -PI / 2.0)
 	return PackedVector2Array()
 
 

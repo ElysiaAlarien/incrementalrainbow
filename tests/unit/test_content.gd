@@ -26,19 +26,19 @@ func test_each_color_has_its_own_symbol() -> void:
 
 
 func test_reads_balance_values_as_ints() -> void:
-	var content := Content.from_data(
-		TestContent.colors_data(), TestContent.balance_data(2500, 4))
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(2500, 4)))
 	assert_eq(content.errors, PackedStringArray())
-	assert_eq(content.widget_time_ms, 2500)
-	assert_eq(typeof(content.widget_time_ms), TYPE_INT)
-	assert_eq(content.output_bay_capacity, 4)
+	assert_eq(content.factory_balance.widget_time_ms, 2500)
+	assert_eq(typeof(content.factory_balance.widget_time_ms), TYPE_INT)
+	assert_eq(content.factory_balance.output_bay_capacity, 4)
 
 
 func test_reads_a_recipe() -> void:
-	var colors := TestContent.colors_data()
+	var colors := ContentFixture.colors_data()
 	colors.colors.append({"id": "green", "name": "Green", "symbol": "diamond",
 		"display": "#3a9a4a", "recipe": {"yellow": 1, "blue": 1}})
-	var content := Content.from_data(colors, TestContent.balance_data())
+	var content := Content.from_data(ContentFixture.data(colors))
 	assert_eq(content.errors, PackedStringArray())
 	assert_false(content.color(&"green").is_base())
 	assert_eq(content.color(&"green").recipe, {&"yellow": 1, &"blue": 1})
@@ -51,7 +51,7 @@ func test_reports_bad_data() -> void:
 		{"id": "pink", "name": "Pink", "symbol": "square", "display": "not a color", "recipe": {"white": 1}},
 		{"id": "teal", "name": "", "symbol": "", "display": "#00aaaa", "recipe": {"red": 0.5}},
 	]}
-	var content := Content.from_data(colors, {"factory": {"widget_time_ms": 0}})
+	var content := Content.from_data(ContentFixture.data(colors, {"factory": {"widget_time_ms": 0}}))
 	var text := "\n".join(content.errors)
 	for expected in ["duplicate color id red", "pink: symbol square is already used",
 			"pink: bad display color", "pink: recipe input white is not a color",
@@ -66,3 +66,13 @@ func test_reports_a_missing_data_file() -> void:
 	var content := Content.load_dir("res://no_such_dir")
 	assert_eq(content.errors.size(), 2)
 	assert_string_contains(content.errors[0], "cannot read res://no_such_dir/colors.json")
+
+
+func test_content_cannot_be_changed_through_what_it_returns() -> void:
+	var content := ContentFixture.make()
+	content.color(&"red").recipe[&"blue"] = 1
+	content.colors().clear()
+	content.errors.append("not an error")
+	assert_true(content.color(&"red").is_base())
+	assert_eq(content.colors().size(), 3)
+	assert_eq(content.errors, PackedStringArray())

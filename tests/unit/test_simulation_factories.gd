@@ -8,7 +8,7 @@ var content: Content
 
 func before_each() -> void:
 	# One widget each second, and an output bay of 10.
-	content = TestContent.make(1000, 10)
+	content = ContentFixture.make(1000, 10)
 
 
 func _build(sim: Simulation, color: StringName) -> int:

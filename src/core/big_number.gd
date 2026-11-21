@@ -11,7 +11,7 @@ extends RefCounted
 ## [method mul], [method compare], and [method format].
 
 ## Above this exponent difference, the smaller value has no effect on a sum.
-const _MAX_SIGNIFICANT_DIGITS := 17
+const _MAX_EXPONENT_GAP := 17
 ## Short suffixes for each group of three digits, starting at 10^3.
 const _SUFFIXES: PackedStringArray = ["K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"]
 ## Above this exponent, the format shows only the size of the exponent.
@@ -76,7 +76,7 @@ func add(other: BigNumber) -> BigNumber:
 	var larger := self if _exponent >= other._exponent else other
 	var smaller := other if larger == self else self
 	var gap := larger._exponent - smaller._exponent
-	if gap > _MAX_SIGNIFICANT_DIGITS:
+	if gap > _MAX_EXPONENT_GAP:
 		return larger
 	return BigNumber.new(larger._mantissa + smaller._mantissa / pow(10.0, gap), larger._exponent)
 

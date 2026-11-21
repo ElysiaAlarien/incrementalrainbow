@@ -55,13 +55,13 @@ func tick(duration_ms: int) -> void:
 	if duration_ms <= 0:
 		return
 	for factory in _factories:
-		factory.advance(duration_ms, _content.widget_time_ms, _content.output_bay_capacity)
+		factory.advance(duration_ms, _content.factory_balance)
 	_time_ms += duration_ms
 
 
 # --- Queries ------------------------------------------------------------------
 
-## The content this simulation runs on. Treat it as read-only.
+## The content this simulation runs on. Content is read-only.
 func content() -> Content:
 	return _content
 
@@ -84,15 +84,15 @@ func buildable_factory_colors() -> Array[StringName]:
 func factories() -> Array[FactoryView]:
 	var views: Array[FactoryView] = []
 	for factory in _factories:
-		views.append(_view_of(factory))
+		views.append(factory.to_view(_content.factory_balance))
 	return views
 
 
 ## The factory with [param id], or null.
 func factory(id: int) -> FactoryView:
-	for f in _factories:
-		if f.id == id:
-			return _view_of(f)
+	for state in _factories:
+		if state.id == id:
+			return state.to_view(_content.factory_balance)
 	return null
 
 
@@ -100,8 +100,8 @@ func factory(id: int) -> FactoryView:
 ## the same from here on. Use it to compare states, not to read single values.
 func snapshot() -> Dictionary:
 	var factory_dicts: Array[Dictionary] = []
-	for f in _factories:
-		factory_dicts.append(f.to_dict())
+	for state in _factories:
+		factory_dicts.append(state.to_dict())
 	return {
 		"time_ms": _time_ms,
 		"rng": _rng.get_state(),
@@ -109,13 +109,3 @@ func snapshot() -> Dictionary:
 		"factories": factory_dicts,
 	}
 
-
-func _view_of(f: FactoryState) -> FactoryView:
-	var view := FactoryView.new()
-	view.id = f.id
-	view.color = f.color
-	view.output_bay_count = f.output_bay_count
-	view.output_bay_capacity = _content.output_bay_capacity
-	view.status = FactoryView.Status.OUTPUT_BAY_FULL \
-		if f.is_output_bay_full(_content.output_bay_capacity) else FactoryView.Status.RUNNING
-	return view

@@ -5,6 +5,11 @@ extends PanelContainer
 
 const STOPPED_COLOR := Color(1.0, 0.55, 0.45)
 const RUNNING_COLOR := Color(0.6, 0.85, 0.6)
+## Text for each status. Add an entry for each new FactoryView.Status.
+const STATUS_TEXT: Dictionary[FactoryView.Status, String] = {
+	FactoryView.Status.RUNNING: "Running",
+	FactoryView.Status.OUTPUT_BAY_FULL: "Stopped: output bay full",
+}
 const BAR_BACKGROUND := Color(0.2, 0.22, 0.29)
 
 var factory_id: int
@@ -51,13 +56,9 @@ func show_state(view: FactoryView) -> void:
 		BigNumber.from_int(view.output_bay_capacity).format()]
 	_bay_bar.max_value = view.output_bay_capacity
 	_bay_bar.value = view.output_bay_count
-	match view.status:
-		FactoryView.Status.OUTPUT_BAY_FULL:
-			_status_label.text = "Stopped: output bay full"
-			_status_label.add_theme_color_override(&"font_color", STOPPED_COLOR)
-		_:
-			_status_label.text = "Running"
-			_status_label.add_theme_color_override(&"font_color", RUNNING_COLOR)
+	_status_label.text = STATUS_TEXT[view.status]
+	_status_label.add_theme_color_override(&"font_color",
+		STOPPED_COLOR if view.is_stopped() else RUNNING_COLOR)
 
 
 static func _bar_style(color: Color) -> StyleBoxFlat:
