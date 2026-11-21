@@ -1,5 +1,6 @@
 extends Control
-## The first screen: build base factories and watch their output bays.
+## The first screen: build base factories, add production lines to them, and
+## watch their output bays.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return.
@@ -8,6 +9,7 @@ extends Control
 @onready var _factory_list: VBoxContainer = %FactoryList
 @onready var _empty_label: Label = %EmptyLabel
 @onready var _message_label: Label = %MessageLabel
+@onready var _money_label: Label = %MoneyLabel
 
 var _sim: Simulation
 var _content: Content
@@ -57,11 +59,19 @@ func _on_build_pressed(color_id: StringName) -> void:
 	_refresh()
 
 
+func _on_add_line_requested(factory_id: int) -> void:
+	var result := _sim.add_production_line(factory_id)
+	_show_message("" if result.ok else result.message)
+	_refresh()
+
+
 func _refresh() -> void:
+	_money_label.text = "Money: %s" % _sim.money().format()
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)
 		if row == null:
 			row = FactoryRow.new(view.id, _content.color(view.color))
+			row.add_line_requested.connect(_on_add_line_requested)
 			_rows[view.id] = row
 			_factory_list.add_child(row)
 		row.show_state(view)

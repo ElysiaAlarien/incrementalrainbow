@@ -47,6 +47,10 @@ _Avoid_: Item, unit, good
 A building that makes widgets of one color. Its size is how many production lines it has. A base factory makes a base color from nothing. Any other factory consumes the inputs of its recipe.
 _Avoid_: Machine, producer, plant
 
+**Production line**:
+One unit of a factory's capacity to make widgets. A new factory has one line, and the player pays money to add more. Each line makes widgets at the same rate, so a factory with more lines makes more widgets in the same time.
+_Avoid_: Assembly line, worker, slot
+
 **Output bay**:
 The small space where a factory holds its finished widgets until transport moves them. When it is full, the factory stops.
 _Avoid_: Buffer, output storage

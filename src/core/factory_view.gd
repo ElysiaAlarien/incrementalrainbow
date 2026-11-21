@@ -12,6 +12,10 @@ enum Status {
 
 var id: int
 var color: StringName
+## How many production lines the factory has.
+var size: int
+## The cost to add one more production line.
+var next_line_cost: BigNumber
 var output_bay_count: int
 var output_bay_capacity: int
 var status: Status
