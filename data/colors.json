@@ -1,0 +1,8 @@
+{
+	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, and recipe (input color id to count; empty for a base color).",
+	"colors": [
+		{"id": "red", "name": "Red", "symbol": "square", "display": "#d64545", "recipe": {}},
+		{"id": "yellow", "name": "Yellow", "symbol": "triangle", "display": "#f2c230", "recipe": {}},
+		{"id": "blue", "name": "Blue", "symbol": "circle", "display": "#3a6fd8", "recipe": {}}
+	]
+}

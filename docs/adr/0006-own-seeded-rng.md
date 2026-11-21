@@ -1,0 +1,3 @@
+# The core owns its seeded random number generator
+
+The simulation must give the same state from the same seed, commands, and ticks, on every platform and engine version, so that saves replay the same way. Godot's `RandomNumberGenerator` docs say its algorithm "is an implementation detail and should not be depended upon", so a Godot upgrade could change the values. `SimRng` implements xoshiro128** in GDScript, with all math kept inside 32 bits so that no int operation overflows. Tests pin its output to the published xoshiro128** vectors and to values from an independent reference. The core never calls Godot's global random functions.
