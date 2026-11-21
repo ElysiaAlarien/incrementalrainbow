@@ -178,7 +178,7 @@ func test_a_factory_can_be_linked_to_a_market_and_ship_for_money() -> void:
 
 	main.find_child("Build_red", true, false).pressed.emit()
 	await wait_process_frames(1)
-	var factory_choice: OptionButton = main.find_child("NewLinkFactory", true, false)
+	var factory_choice: OptionButton = main.find_child("NewLinkSource", true, false)
 	var market_choice: OptionButton = main.find_child("NewLinkDestination", true, false)
 	assert_eq(factory_choice.get_item_text(factory_choice.selected), "Red factory #1")
 	assert_eq(market_choice.get_item_text(market_choice.selected), "Millbrook")
@@ -315,7 +315,7 @@ func test_the_export_code_imports_after_the_player_confirms() -> void:
 	assert_gte(main.simulation().time_ms(), exported.time_ms)
 	assert_eq(_rows(main).size(), 1, "the screen shows the imported game")
 	assert_eq(main.find_children("Link*", "LinkRow", true, false).size(), 1)
-	assert_eq((main.find_child("NewLinkFactory", true, false) as OptionButton).item_count, 1)
+	assert_eq((main.find_child("NewLinkSource", true, false) as OptionButton).item_count, 1)
 	var saved := _read_save()
 	assert_true(saved.ok, saved.message)
 	assert_eq(saved.simulation.factories().size(), 1, "the import is saved at once")
@@ -652,7 +652,7 @@ func test_a_mixed_factory_shows_its_input_bays_and_waits_for_input() -> void:
 		_card(main, color).build_button().pressed.emit()
 	await wait_process_frames(1)
 
-	_choose(main, "NewLinkFactory", "Blue factory #2")
+	_choose(main, "NewLinkSource", "Blue factory #2")
 	_choose(main, "NewLinkDestination", "Green factory #3")
 	main.find_child("MakeLink", true, false).pressed.emit()
 	await wait_process_frames(1)
@@ -691,3 +691,79 @@ func test_a_link_to_a_factory_whose_recipe_does_not_use_the_color_shows_the_reas
 	var message: Label = main.find_child("MessageLabel", true, false)
 	assert_true(message.visible)
 	assert_string_contains(message.text, "does not use red")
+
+
+func _warehouse_row(main: Control, id: int) -> WarehouseRow:
+	return main.find_child("Warehouse%d" % id, true, false)
+
+
+func test_a_warehouse_unlocks_and_shows_its_widgets_and_throughput() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var locked: Label = main.find_child("WarehouseLockedLabel", true, false)
+	var build: Button = main.find_child("BuildWarehouse", true, false)
+	assert_true(locked.visible, "warehouses are locked at the start")
+	assert_string_contains(locked.text, "Warehouses unlock when you have")
+	assert_false(build.visible)
+	assert_true(main.find_child("WarehousesEmptyLabel", true, false).visible)
+
+	while not sim.is_warehouse_unlocked():
+		_card(main, "red").build_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_false(locked.visible)
+	assert_true(build.visible)
+	assert_eq(build.text, "Build warehouse (%s)" % sim.warehouse_build_cost().format())
+	_choose(main, "NewWarehouseColor", "Red")
+	build.pressed.emit()
+	await wait_process_frames(1)
+
+	var row := _warehouse_row(main, 1)
+	assert_not_null(row, "a row for the warehouse")
+	assert_string_contains(row.text(), "Red warehouse #1 | Widgets: 0 / ")
+	assert_false(main.find_child("WarehousesEmptyLabel", true, false).visible)
+
+	_choose(main, "NewLinkSource", "Red factory #1")
+	_choose(main, "NewLinkDestination", "Red warehouse #1")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var link_row: LinkRow = main.find_child("Link1", true, false)
+	assert_string_contains(link_row.text(), "Red factory #1 to Red warehouse #1")
+	sim.tick(3000)
+	link_row.ship_button().pressed.emit()
+	sim.tick(sim.link(1).transit_time_ms)
+	await wait_process_frames(1)
+
+	var view := sim.warehouse(1)
+	assert_gt(view.count, 0, "the widgets arrived")
+	assert_string_contains(row.text(), "Widgets: %d / %d" % [view.count, view.space])
+	assert_string_contains(row.text(), "In: %d/min | Out: 0/min" % view.inflow_per_minute)
+
+	_choose(main, "NewLinkSource", "Red warehouse #1")
+	_choose(main, "NewLinkDestination", "Millbrook")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var out_row: LinkRow = main.find_child("Link2", true, false)
+	assert_string_contains(out_row.text(), "Red warehouse #1 to Millbrook")
+	out_row.ship_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_string_contains(row.text(), "Out: %d/min" % view.count)
+
+
+func test_a_link_from_a_warehouse_to_a_warehouse_shows_why_it_cannot_be_made() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	while not sim.is_warehouse_unlocked():
+		_card(main, "red").build_button().pressed.emit()
+	await wait_process_frames(1)
+	main.find_child("BuildWarehouse", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	_choose(main, "NewLinkSource", "Red warehouse #1")
+	_choose(main, "NewLinkDestination", "Red warehouse #1")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "cannot link to another warehouse")
+	assert_eq(sim.links().size(), 0)

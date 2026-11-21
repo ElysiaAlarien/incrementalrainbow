@@ -26,16 +26,32 @@ const AUTOMATIC_STATUSES: Dictionary[StringName, LinkView.Automatic] = {
 const DESTINATION_NAMES: Dictionary[String, LinkView.Destination] = {
 	"market": LinkView.Destination.MARKET,
 	"factory": LinkView.Destination.FACTORY,
+	"warehouse": LinkView.Destination.WAREHOUSE,
+}
+
+## The name of each source kind in a save.
+const SOURCE_NAMES: Dictionary[String, LinkView.Source] = {
+	"factory": LinkView.Source.FACTORY,
+	"warehouse": LinkView.Source.WAREHOUSE,
 }
 
 var id: int
 var color: StringName
+var source_kind := LinkView.Source.FACTORY
+## The factory at the start of the link, or 0 when it starts at a warehouse.
 var source_factory_id: int
+## The warehouse at the start of the link, or 0 when it starts at a factory.
+var source_warehouse_id: int = 0
 var destination_kind: LinkView.Destination
-## The market at the end of the link, or &"" when it goes to a factory.
+## The market at the end of the link, or &"" when it goes to another kind of
+## place.
 var destination_market_id: StringName = &""
-## The factory at the end of the link, or 0 when it goes to a market.
+## The factory at the end of the link, or 0 when it goes to another kind of
+## place.
 var destination_factory_id: int = 0
+## The warehouse at the end of the link, or 0 when it goes to another kind of
+## place.
+var destination_warehouse_id: int = 0
 ## The transport tier id of the link's vehicle.
 var vehicle: StringName
 ## Shipments in transit, in the order they started.
@@ -113,6 +129,34 @@ static func to_factory(p_id: int, p_color: StringName, p_source_factory_id: int,
 	return state
 
 
+static func to_warehouse(p_id: int, p_color: StringName, p_source_factory_id: int,
+		warehouse_id: int, p_vehicle: StringName) -> LinkState:
+	var state := LinkState.new(p_id, p_color, p_source_factory_id, p_vehicle)
+	state.destination_kind = LinkView.Destination.WAREHOUSE
+	state.destination_warehouse_id = warehouse_id
+	return state
+
+
+## Makes the link start at the warehouse [param warehouse_id] instead of a
+## factory. Returns the link, so that it can follow [method to_market] or
+## [method to_factory] with a source factory id of 0.
+func from_warehouse(warehouse_id: int) -> LinkState:
+	source_kind = LinkView.Source.WAREHOUSE
+	source_factory_id = 0
+	source_warehouse_id = warehouse_id
+	return self
+
+
+## True if the link starts at the factory [param factory_id].
+func comes_from_factory(factory_id: int) -> bool:
+	return source_kind == LinkView.Source.FACTORY and source_factory_id == factory_id
+
+
+## True if the link starts at the warehouse [param warehouse_id].
+func comes_from_warehouse(warehouse_id: int) -> bool:
+	return source_kind == LinkView.Source.WAREHOUSE and source_warehouse_id == warehouse_id
+
+
 ## True if the link goes to the market [param market_id].
 func goes_to_market(market_id: StringName) -> bool:
 	return destination_kind == LinkView.Destination.MARKET and destination_market_id == market_id
@@ -121,6 +165,27 @@ func goes_to_market(market_id: StringName) -> bool:
 ## True if the link goes to the factory [param factory_id].
 func goes_to_factory(factory_id: int) -> bool:
 	return destination_kind == LinkView.Destination.FACTORY and destination_factory_id == factory_id
+
+
+## True if the link goes to the warehouse [param warehouse_id].
+func goes_to_warehouse(warehouse_id: int) -> bool:
+	return destination_kind == LinkView.Destination.WAREHOUSE and destination_warehouse_id == warehouse_id
+
+
+## What the link starts at, as [code][source_kind, id][/code], to compare links.
+func source_key() -> Array:
+	return [source_kind, source_factory_id if source_kind == LinkView.Source.FACTORY else source_warehouse_id]
+
+
+## What the link goes to, as [code][destination_kind, id][/code], to compare
+## links.
+func destination_key() -> Array:
+	match destination_kind:
+		LinkView.Destination.FACTORY:
+			return [destination_kind, destination_factory_id]
+		LinkView.Destination.WAREHOUSE:
+			return [destination_kind, destination_warehouse_id]
+	return [destination_kind, destination_market_id]
 
 
 ## Widgets in all shipments in transit.
@@ -132,13 +197,22 @@ func widgets_in_transit() -> int:
 
 
 ## The inverse of [method to_dict]. Records problems in [param reader]. Checks
-## the ids that the content must know; the simulation checks the factories at
-## each end and the link id. [param now_ms], [param next_shipment_id], and
+## the ids that the content must know; the simulation checks the factories and
+## warehouses at each end and the link id. [param now_ms], [param next_shipment_id], and
 ## [param shipment_ids] are for [method ShipmentState.from_snapshot].
 static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 		next_shipment_id: int, shipment_ids: Dictionary) -> LinkState:
-	var state := LinkState.new(reader.integer("id", 1), reader.text_id("color"),
-		reader.integer("source_factory_id", 1), reader.text_id("vehicle"))
+	var state := LinkState.new(reader.integer("id", 1), reader.text_id("color"), 0,
+		reader.text_id("vehicle"))
+	var source_name := reader.text_id("source_kind")
+	if source_name != &"" and not SOURCE_NAMES.has(String(source_name)):
+		reader.fail("source_kind", "must be one of %s, but it is \"%s\"" % [
+			", ".join(SOURCE_NAMES.keys()), source_name])
+	state.source_kind = SOURCE_NAMES.get(String(source_name), LinkView.Source.FACTORY)
+	if source_name == &"factory":
+		state.source_factory_id = reader.integer("source_factory_id", 1)
+	elif source_name == &"warehouse":
+		state.source_warehouse_id = reader.integer("source_warehouse_id", 1)
 	var kind_name := reader.text_id("destination_kind")
 	if kind_name != &"" and not DESTINATION_NAMES.has(String(kind_name)):
 		reader.fail("destination_kind", "must be one of %s, but it is \"%s\"" % [
@@ -146,6 +220,8 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 	state.destination_kind = DESTINATION_NAMES.get(String(kind_name), LinkView.Destination.MARKET)
 	if kind_name == &"factory":
 		state.destination_factory_id = reader.integer("destination_factory_id", 1)
+	elif kind_name == &"warehouse":
+		state.destination_warehouse_id = reader.integer("destination_warehouse_id", 1)
 	elif kind_name == &"market":
 		state.destination_market_id = reader.text_id("destination_market_id")
 		if state.destination_market_id != &"" and content.market(state.destination_market_id) == null:
@@ -194,10 +270,13 @@ func to_view(tier: TransportTier, now_ms: int) -> LinkView:
 	var view := LinkView.new()
 	view.id = id
 	view.color = color
+	view.source_kind = source_kind
 	view.source_factory_id = source_factory_id
+	view.source_warehouse_id = source_warehouse_id
 	view.destination_kind = destination_kind
 	view.destination_market_id = destination_market_id
 	view.destination_factory_id = destination_factory_id
+	view.destination_warehouse_id = destination_warehouse_id
 	view.vehicle = vehicle
 	view.transit_time_ms = tier.transit_time_ms
 	view.shipment_cost = tier.shipment_cost
@@ -205,18 +284,27 @@ func to_view(tier: TransportTier, now_ms: int) -> LinkView:
 		view.shipments_in_transit.append(shipment.to_view(now_ms))
 	view.automatic = AUTOMATIC_STATUSES[automatic_status]
 	view.next_automatic_in_ms = next_automatic_ms - now_ms if is_automatic() else 0
-	for start in recent_starts:
-		if start[0] > now_ms - THROUGHPUT_WINDOW_MS:
-			view.widgets_per_minute += start[1]
+	view.widgets_per_minute = widgets_per_minute(now_ms)
 	return view
 
 
-## Only the destination key of the link's kind is in the save.
+## The throughput at [param now_ms]: widgets that started on the link in the
+## last minute.
+func widgets_per_minute(now_ms: int) -> int:
+	var count := 0
+	for start in recent_starts:
+		if start[0] > now_ms - THROUGHPUT_WINDOW_MS:
+			count += start[1]
+	return count
+
+
+## Only the source key and the destination key of the link's kinds are in the
+## save.
 func to_dict() -> Dictionary:
 	var data := {
 		"id": id,
 		"color": color,
-		"source_factory_id": source_factory_id,
+		"source_kind": SOURCE_NAMES.find_key(source_kind),
 		"destination_kind": DESTINATION_NAMES.find_key(destination_kind),
 		"vehicle": vehicle,
 		"shipments": shipments.map(func(s: ShipmentState) -> Dictionary: return s.to_dict()),
@@ -225,8 +313,15 @@ func to_dict() -> Dictionary:
 		"recent_starts": recent_starts.map(func(s: PackedInt64Array) -> Dictionary:
 			return {"started_at_ms": s[0], "count": s[1]}),
 	}
-	if destination_kind == LinkView.Destination.FACTORY:
-		data.destination_factory_id = destination_factory_id
+	if source_kind == LinkView.Source.WAREHOUSE:
+		data.source_warehouse_id = source_warehouse_id
 	else:
-		data.destination_market_id = destination_market_id
+		data.source_factory_id = source_factory_id
+	match destination_kind:
+		LinkView.Destination.FACTORY:
+			data.destination_factory_id = destination_factory_id
+		LinkView.Destination.WAREHOUSE:
+			data.destination_warehouse_id = destination_warehouse_id
+		_:
+			data.destination_market_id = destination_market_id
 	return data

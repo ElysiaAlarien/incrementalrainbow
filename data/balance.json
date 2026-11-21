@@ -25,6 +25,11 @@
 		"population_step": 250,
 		"income_step": 10
 	},
+	"warehouse": {
+		"cost": 50,
+		"space": 100,
+		"unlock_factory_count": 4
+	},
 	"demand": {
 		"drift_period_ms": 60000,
 		"drift_amplitude": 0.3,

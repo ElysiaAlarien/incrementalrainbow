@@ -1,7 +1,7 @@
 class_name LinkRow
 extends PanelContainer
-## One link on the screen. The first line has its factory and destination (a
-## market or a mixed factory), vehicle, shipment cost, transit time, a button
+## One link on the screen. The first line has its source (a factory or a
+## warehouse) and destination (a market, a mixed factory, or a warehouse), vehicle, shipment cost, transit time, a button
 ## to start a shipment, and a button to buy automatic transport. The second line has its transport (manual, or what
 ## automatic transport did last), its throughput, and its shipments in transit.
 
@@ -26,7 +26,8 @@ var _throughput_label := Label.new()
 var _in_transit_label := Label.new()
 
 
-func _init(view: LinkView, color: ColorDef, destination_name: String, vehicle_name: String) -> void:
+func _init(view: LinkView, color: ColorDef, source_name: String, destination_name: String,
+		vehicle_name: String) -> void:
 	link_id = view.id
 	name = "Link%d" % view.id
 	var lines := VBoxContainer.new()
@@ -40,7 +41,7 @@ func _init(view: LinkView, color: ColorDef, destination_name: String, vehicle_na
 	_symbol.custom_minimum_size = Vector2(32, 32)
 	top.add_child(_symbol)
 
-	_ends_label.text = "%s factory #%d to %s" % [color.name, view.source_factory_id, destination_name]
+	_ends_label.text = "%s to %s" % [source_name, destination_name]
 	_ends_label.tooltip_text = _ends_label.text
 	# A fixed width keeps the columns of all rows in line. Trim a long name.
 	_ends_label.custom_minimum_size.x = 400

@@ -1,7 +1,8 @@
 class_name Content
 extends RefCounted
 ## The game content: colors, symbols, recipes, markets, transport tiers,
-## demand events, and balance values. Read-only.
+## demand events, and balance values, such as those of factories, prisms,
+## markets, and warehouses. Read-only.
 ##
 ## Content is data, not code. It loads from JSON files in [constant DEFAULT_DIR]
 ## (see ADR-0007), and the simulation gets it at construction, so tests can use
@@ -47,6 +48,9 @@ var prism_balance: PrismBalance:
 var market_balance: MarketBalance:
 	get:
 		return _market_balance
+var warehouse_balance: WarehouseBalance:
+	get:
+		return _warehouse_balance
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
@@ -55,6 +59,7 @@ var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
 var _prism_balance := PrismBalance.new(BigNumber.from_int(1), 2.0)
 var _market_balance := MarketBalance.new(1, 1.0, 1.0, BigNumber.ZERO, 1.0, 1, 1)
+var _warehouse_balance := WarehouseBalance.new(BigNumber.ZERO, 1, 0)
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}
 var _markets: Array[MarketDef] = []
@@ -204,6 +209,7 @@ func _parse_balance(data: Dictionary) -> void:
 	_parse_demand_balance(data.get("demand", {}))
 	_parse_prism_balance(data.get("prism", {}))
 	_parse_market_balance(data.get("market", {}))
+	_parse_warehouse_balance(data.get("warehouse", {}))
 	var factory: Variant = data.get("factory", {})
 	if not factory is Dictionary:
 		_errors.append("balance.json: \"factory\" must be an object")
@@ -292,6 +298,15 @@ func _parse_market_balance(market: Variant) -> void:
 	if per_population > 0.0 and _market_balance.population_step > 0 \
 			and _market_balance.population_step * per_population < 1.0:
 		_errors.append("market.population_step times market.capacity_per_population must be at least 1, so that each community investment for population gives more capacity")
+
+
+func _parse_warehouse_balance(warehouse: Variant) -> void:
+	if not warehouse is Dictionary:
+		_errors.append("balance.json: \"warehouse\" must be an object")
+		return
+	_warehouse_balance = WarehouseBalance.new(_read_money(warehouse, "cost", "warehouse"),
+		maxi(1, _read_positive_int(warehouse, "space", "warehouse")),
+		_read_whole_number(warehouse, "unlock_factory_count", "warehouse"))
 
 
 ## Markets come after the balance, because each market must have a capacity of

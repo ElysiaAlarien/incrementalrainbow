@@ -33,9 +33,18 @@ func _rich_game() -> Simulation:
 	assert_true(sim.build_factory(&"blue").ok)
 	sim.make_factory_link(3, 4)
 	sim.make_factory_link(5, 4)
+	# A red warehouse, fed by the red factory #1, that holds widgets and has
+	# widgets on their way to it, and a link from it to the market.
+	assert_true(sim.build_warehouse(&"red").ok)
+	sim.link_factory_to_warehouse(1, 1)
+	sim.link_warehouse_to_market(1, &"millbrook")
 	sim.add_production_line(4)
 	sim.start_shipment(3)
-	sim.tick(ContentFixture.TRANSIT_TIME_MS)
+	sim.tick(1400)
+	sim.start_shipment(5)
+	sim.tick(2100)
+	sim.start_shipment(5)
+	sim.tick(1500)
 	sim.start_shipment(4)
 	sim.start_shipment(1)
 	sim.tick(1400)
@@ -86,6 +95,12 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_gt(millbrook.capacity_in_transit, 0, "widgets on their way to the market")
 	assert_gt(millbrook.population, ContentFixture.POPULATION, "a community investment for population")
 	assert_gt(millbrook.income, ContentFixture.INCOME, "community investments for income")
+	var warehouse := sim.warehouse(1)
+	assert_gt(warehouse.count, 0, "widgets in the warehouse")
+	assert_gt(warehouse.in_transit, 0, "widgets on their way to the warehouse")
+	assert_gt(warehouse.inflow_per_minute, 0, "widgets started to the warehouse")
+	assert_eq(sim.link(5).destination_kind, LinkView.Destination.WAREHOUSE)
+	assert_eq(sim.link(6).source_kind, LinkView.Source.WAREHOUSE)
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -108,7 +123,16 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.status, want.status)
 		assert_eq(got.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]),
 			want.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]))
-	assert_eq(loaded.links().size(), 4)
+	assert_eq(loaded.links().size(), 6)
+	var want_warehouse := sim.warehouse(1)
+	var got_warehouse := loaded.warehouse(1)
+	assert_eq([got_warehouse.color, got_warehouse.count, got_warehouse.in_transit,
+			got_warehouse.inflow_per_minute, got_warehouse.outflow_per_minute],
+		[want_warehouse.color, want_warehouse.count, want_warehouse.in_transit,
+			want_warehouse.inflow_per_minute, want_warehouse.outflow_per_minute])
+	assert_eq([loaded.link(6).source_kind, loaded.link(6).source_warehouse_id], [LinkView.Source.WAREHOUSE, 1])
+	assert_eq([loaded.link(5).destination_kind, loaded.link(5).destination_warehouse_id],
+		[LinkView.Destination.WAREHOUSE, 1])
 	assert_eq([loaded.link(3).destination_kind, loaded.link(3).destination_factory_id],
 		[LinkView.Destination.FACTORY, 4])
 	var shipments := loaded.link(1).shipments_in_transit
@@ -148,6 +172,8 @@ func test_the_loaded_game_plays_on_the_same_as_the_saved_game() -> void:
 		game.tick(98_765)
 		game.start_shipment(1)
 		game.start_shipment(4)
+		game.start_shipment(6)
+		game.tick(7000)
 
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
@@ -341,8 +367,8 @@ func test_two_links_on_the_same_factory_and_market_fail() -> void:
 
 
 func test_a_link_id_that_is_not_below_the_next_id_fails() -> void:
-	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 5,
-		"state.links[0].id: must be less than next_link_id (5)")
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 7,
+		"state.links[0].id: must be less than next_link_id (7)")
 
 
 func test_two_shipments_with_the_same_id_fail() -> void:
@@ -518,8 +544,92 @@ func test_a_market_that_is_not_in_the_save_starts_as_at_the_start_of_a_run() -> 
 
 
 func test_a_link_of_an_unknown_kind_fails() -> void:
-	_assert_link_change_fails(func(link: Dictionary) -> void: link.destination_kind = "warehouse",
-		"state.links[0].destination_kind: must be one of market, factory, but it is \"warehouse\"")
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.destination_kind = "moon",
+		"state.links[0].destination_kind: must be one of market, factory, warehouse, but it is \"moon\"")
+
+
+func test_a_link_from_an_unknown_kind_of_place_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.source_kind = "moon",
+		"state.links[0].source_kind: must be one of factory, warehouse, but it is \"moon\"")
+
+
+# --- Damaged warehouses ----------------------------------------------------------
+
+## [param change] gets the saved state, whose warehouse #1 is red, link 5 goes
+## from red factory #1 to it, and link 6 goes from it to millbrook.
+func _assert_warehouse_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_a_warehouse_of_an_unknown_color_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void: state.warehouses[0].color = "magenta",
+		"state.warehouses[0].color: there is no color \"magenta\"")
+
+
+func test_a_warehouse_over_its_space_fails() -> void:
+	_assert_warehouse_change_fails(
+		func(state: Dictionary) -> void: state.warehouses[0].count = ContentFixture.WAREHOUSE_SPACE + 1,
+		"state.warehouses[0].count: must be from 0 to %d" % ContentFixture.WAREHOUSE_SPACE)
+
+
+func test_a_warehouse_that_would_overflow_when_its_shipments_arrive_fails() -> void:
+	_assert_warehouse_change_fails(
+		func(state: Dictionary) -> void: state.warehouses[0].count = ContentFixture.WAREHOUSE_SPACE,
+		"state.warehouses[0].count: %d widgets are in the warehouse and on the way, but it holds %d" % [
+			ContentFixture.WAREHOUSE_SPACE + _rich_game().warehouse(1).in_transit, ContentFixture.WAREHOUSE_SPACE])
+
+
+func test_a_warehouse_id_that_is_not_below_the_next_id_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void: state.warehouses[0].id = 2,
+		"state.warehouses[0].id: must be less than next_warehouse_id (2)")
+
+
+func test_two_warehouses_with_the_same_id_fail() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void:
+			state.next_warehouse_id = 3
+			state.warehouses.append(state.warehouses[0].duplicate()),
+		"state.warehouses[1].id: is used by more than one warehouse")
+
+
+func test_a_link_to_a_missing_warehouse_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void: state.links[4].destination_warehouse_id = 9,
+		"state.links[4].destination_warehouse_id: there is no warehouse #9")
+
+
+func test_a_link_to_a_warehouse_of_another_color_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void: state.warehouses[0].color = "blue",
+		"state.links[4].destination_warehouse_id: warehouse #1 holds blue, not red")
+
+
+func test_a_link_from_a_missing_warehouse_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void: state.links[5].source_warehouse_id = 9,
+		"state.links[5].source_warehouse_id: there is no warehouse #9")
+
+
+func test_a_link_from_a_warehouse_of_another_color_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void: state.links[5].color = "blue",
+		"state.links[5].color: must be the color of warehouse #1 (red)")
+
+
+func test_a_link_from_a_warehouse_to_a_warehouse_fails() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void:
+			var link: Dictionary = state.links[5]
+			link.erase("destination_market_id")
+			link.destination_kind = "warehouse"
+			link.destination_warehouse_id = 1,
+		"state.links[5].destination_warehouse_id: a link cannot go from a warehouse to a warehouse")
+
+
+func test_two_links_from_one_warehouse_to_one_market_fail() -> void:
+	_assert_warehouse_change_fails(func(state: Dictionary) -> void:
+			var copy: Dictionary = state.links[5].duplicate(true)
+			copy.id = state.next_link_id
+			copy.shipments = []
+			state.next_link_id += 1
+			state.links.append(copy),
+		"state.links[6].destination_market_id: warehouse #1 has more than one link to millbrook")
 
 
 ## [param change] gets the link from the yellow factory to the green factory.
@@ -825,6 +935,36 @@ func test_a_version_5_save_still_loads() -> void:
 	assert_eq(sim.prisms().total_bought, 2)
 	assert_eq(sim.prisms().next_price.format(), "80")
 	assert_eq(sim.money().format(), "30")
+
+
+## A save of version 9 (#13: warehouses), as the game wrote it.
+func test_a_version_9_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v9.json")
+
+	var result := _load(text, SaveCodec.migrations(), _flat_content())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	var warehouse := sim.warehouse(1)
+	assert_eq([warehouse.color, warehouse.count, warehouse.in_transit], [&"red", 4, 6])
+	assert_eq([warehouse.inflow_per_minute, warehouse.outflow_per_minute], [14, 4])
+	assert_eq([sim.link(1).destination_kind, sim.link(1).destination_warehouse_id],
+		[LinkView.Destination.WAREHOUSE, 1])
+	assert_eq([sim.link(2).source_kind, sim.link(2).source_warehouse_id], [LinkView.Source.WAREHOUSE, 1])
+	sim.tick(ContentFixture.TRANSIT_TIME_MS)
+	assert_eq(sim.warehouse(1).count, 10, "the widgets on their way arrived")
+
+
+func test_a_version_8_save_has_no_warehouses_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v8.json"),
+		SaveCodec.migrations(), _flat_content())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.warehouses().size(), 0)
+	for link in sim.links():
+		assert_eq(link.source_kind, LinkView.Source.FACTORY, "a version 8 link starts at a factory")
+	assert_eq(sim.build_warehouse(&"red").value, 1, "warehouse ids start at 1")
 
 
 ## A save of version 6 (#6: mixed factories, input bays, and links between

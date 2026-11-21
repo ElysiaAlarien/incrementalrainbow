@@ -23,6 +23,8 @@ const PREVIEW_NAME_OF_KEY := {
 	"prisms": "Prisms",
 	"prisms_bought": "Prism price",
 	"markets": "Community investments and capacity used in each market",
+	"next_warehouse_id": "Warehouses and the widgets in them",
+	"warehouses": "Warehouses and the widgets in them",
 }
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.

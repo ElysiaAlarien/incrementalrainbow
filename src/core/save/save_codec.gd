@@ -21,7 +21,7 @@ const FORMAT := "incremental-rainbow-save"
 static func migrations() -> Array[Callable]:
 	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
 		_v5_add_mixed_factories, _v6_add_demand_events,
-		_v7_add_markets]
+		_v7_add_markets, _v8_add_warehouses]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -98,6 +98,20 @@ static func _v6_add_demand_events(state: Dictionary) -> Dictionary:
 ## of the load.
 static func _v7_add_markets(state: Dictionary) -> Dictionary:
 	state.markets = []
+	return state
+
+
+## Version 9 (#13) adds warehouses, and a link starts at a factory or at a
+## warehouse. A version 8 game had no warehouses, so each link starts at a
+## factory.
+static func _v8_add_warehouses(state: Dictionary) -> Dictionary:
+	state.next_warehouse_id = 1
+	state.warehouses = []
+	var links: Variant = state.get("links")
+	if links is Array:
+		for link: Variant in links:
+			if link is Dictionary:
+				link.source_kind = "factory"
 	return state
 
 
