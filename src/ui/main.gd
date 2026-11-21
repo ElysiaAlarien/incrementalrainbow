@@ -1,7 +1,8 @@
 extends Control
 ## The first screen: money, base factories with their production lines and
-## output bays, and links from factories to markets with manual shipments,
-## automatic transport, and throughput.
+## output bays, links from factories to markets with manual shipments,
+## automatic transport, and throughput, and markets with the price and demand
+## of each color.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -22,6 +23,7 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _make_link_button: Button = %MakeLink
 @onready var _link_list: VBoxContainer = %LinkList
 @onready var _links_empty_label: Label = %LinksEmptyLabel
+@onready var _market_list: VBoxContainer = %MarketList
 @onready var _money_label: Label = %MoneyLabel
 @onready var _message_label: Label = %MessageLabel
 @onready var _export_code_button: Button = %ExportCodeButton
@@ -34,6 +36,7 @@ var _can_save := true
 var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
+var _market_rows: Dictionary[StringName, MarketRow] = {}
 var _build_button_by_color: Dictionary[StringName, Button] = {}
 var _export_code_dialog: ExportCodeDialog
 ## Frame time that is not yet a whole millisecond.
@@ -204,6 +207,14 @@ func _refresh() -> void:
 			link_row = _add_link_row(view)
 		link_row.show_state(view, automatic_cost)
 	_links_empty_label.visible = _link_rows.is_empty()
+
+	for view in _sim.markets():
+		var market_row: MarketRow = _market_rows.get(view.id)
+		if market_row == null:
+			market_row = MarketRow.new(view, _content.colors())
+			_market_rows[view.id] = market_row
+			_market_list.add_child(market_row)
+		market_row.show_state(view)
 
 
 func _add_factory_row(view: FactoryView) -> FactoryRow:

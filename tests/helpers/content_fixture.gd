@@ -17,10 +17,12 @@ static func colors_data() -> Dictionary:
 	]}
 
 
-## Balance data: 100 starting money, factories that cost 10, and a flat
-## production line cost of 10.
+## Balance data: 100 starting money, factories that cost 10, a flat
+## production line cost of 10, and demand that stays at 1 (no drift and no
+## saturation), so that prices stay at the base price.
 ## [param overrides] replaces values by key, such as
 ## [code]{"starting_money": 15, "production_line_cost_growth": 2.0}[/code].
+## [method demand_overrides] turns drift and saturation on.
 static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 10,
 		overrides: Dictionary = {}) -> Dictionary:
 	var run := {"starting_money": 100}
@@ -31,20 +33,40 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 		"production_line_cost": 10,
 		"production_line_cost_growth": 1.0,
 	}
+	var demand := {
+		"drift_period_ms": 10_000,
+		"drift_amplitude": 0.0,
+		"saturation_ms_per_widget": 0,
+		"saturation_half_widgets": 10,
+	}
 	for key: String in overrides:
-		var section := run if run.has(key) else factory
-		assert(section.has(key), "unknown balance key %s" % key)
+		var section: Dictionary = {}
+		for candidate: Dictionary in [run, factory, demand]:
+			if candidate.has(key):
+				section = candidate
+		assert(not section.is_empty(), "unknown balance key %s" % key)
 		section[key] = overrides[key]
-	return {"run": run, "factory": factory}
+	return {"run": run, "factory": factory, "demand": demand}
 
 
-## One market, "millbrook", that pays [param price] for each color in
-## [param colors].
-static func markets_data(price: float = PRICE, colors: Dictionary = colors_data()) -> Dictionary:
+## Overrides for [method balance_data] that turn on drift (up to 30%, with a
+## knot each 10 s) and saturation (10 recent widgets halve demand, and each
+## widget takes 1 s to recover).
+static func demand_overrides() -> Dictionary:
+	return {"drift_amplitude": 0.3, "saturation_ms_per_widget": 1000}
+
+
+## Markets, one for each of [param ids] (by default only "millbrook"), that
+## each pay a base price of [param price] for each color in [param colors].
+static func markets_data(price: float = PRICE, colors: Dictionary = colors_data(),
+		ids: PackedStringArray = ["millbrook"]) -> Dictionary:
 	var prices := {}
 	for color: Dictionary in colors.colors:
 		prices[color.id] = price
-	return {"markets": [{"id": "millbrook", "name": "Millbrook", "prices": prices}]}
+	var markets := []
+	for id in ids:
+		markets.append({"id": id, "name": id.capitalize(), "prices": prices})
+	return {"markets": markets}
 
 
 ## One transport tier, carts, and automatic transport for [param automatic_cost].

@@ -6,7 +6,7 @@ extends GutTest
 ## default. When you add core state, give it a non-default value here, so that
 ## the round-trip tests fail if save or load forgets it.
 func _rich_game() -> Simulation:
-	var sim := Simulation.new(ContentFixture.make(700, 6), 77)
+	var sim := Simulation.new(_content(), 77)
 	sim.build_factory(&"red")
 	sim.tick(1234)
 	sim.build_factory(&"blue")
@@ -25,11 +25,25 @@ func _rich_game() -> Simulation:
 	# Link 2 is automatic and has shipped.
 	sim.tick(3500)
 	sim.start_shipment(1)
+	# The sales saturate red and blue in millbrook.
 	return sim
 
 
-func _load(text: String, steps: Array[Callable] = SaveCodec.migrations()) -> LoadResult:
-	return SaveCodec.decode(ContentFixture.make(700, 6), text, steps)
+## The content of the rich game, with drift and saturation.
+func _content() -> Content:
+	return ContentFixture.make_with_balance(ContentFixture.balance_data(700, 6,
+		ContentFixture.demand_overrides()))
+
+
+## Content with demand that stays at 1, for the saves of old versions, whose
+## tests check money from sales at the base price.
+func _flat_content() -> Content:
+	return ContentFixture.make(700, 6)
+
+
+func _load(text: String, steps: Array[Callable] = SaveCodec.migrations(),
+		content: Content = _content()) -> LoadResult:
+	return SaveCodec.decode(content, text, steps)
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -58,6 +72,12 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_eq(loaded.link(2).automatic, LinkView.Automatic.SHIPPED)
 	assert_eq(loaded.link(2).next_automatic_in_ms, sim.link(2).next_automatic_in_ms)
 	assert_eq(loaded.link(1).widgets_per_minute, sim.link(1).widgets_per_minute)
+	assert_eq(sim.snapshot().saturation.size(), 2, "the rich game has saturation")
+	for view in sim.markets():
+		var got := loaded.market(view.id)
+		assert_eq(got.demands, view.demands, "demand in %s" % view.id)
+		for color in view.prices:
+			assert_true(got.price(color).equals(view.price(color)), "price of %s" % color)
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -288,6 +308,44 @@ func test_recent_starts_out_of_order_fail() -> void:
 		"state.links[0].recent_starts[1].started_at_ms: must not be before the start before it")
 
 
+func test_a_drift_key_that_is_not_a_u32_fails() -> void:
+	var data := _save_data()
+	data.state.drift_key = 4294967296
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.drift_key: must be from 0 to 4294967295")
+
+
+## [param change] gets the first saturation entry of the saved state.
+func _assert_saturation_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state.saturation[0])
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_saturation_in_an_unknown_market_fails() -> void:
+	_assert_saturation_change_fails(func(entry: Dictionary) -> void: entry.market_id = "atlantis",
+		"state.saturation[0].market_id: there is no market \"atlantis\"")
+
+
+func test_saturation_of_an_unknown_color_fails() -> void:
+	_assert_saturation_change_fails(func(entry: Dictionary) -> void: entry.color = "magenta",
+		"state.saturation[0].color: there is no color \"magenta\"")
+
+
+func test_saturation_that_has_recovered_fails() -> void:
+	var data := _save_data()
+	data.state.saturation[0].saturated_until_ms = data.state.time_ms
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.saturation[0].saturated_until_ms: must be after time_ms")
+
+
+func test_two_saturation_entries_for_one_color_and_market_fail() -> void:
+	var data := _save_data()
+	data.state.saturation[1].color = data.state.saturation[0].color
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.saturation[1].color: blue in millbrook has more than one saturation entry")
+
+
 func test_a_random_number_state_of_all_zeros_fails() -> void:
 	var data := _save_data()
 	data.state.rng = [0, 0, 0, 0]
@@ -407,7 +465,7 @@ func test_a_migration_that_gives_damaged_state_fails() -> void:
 func test_a_version_1_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v1.json")
 
-	var result := _load(text)
+	var result := _load(text, SaveCodec.migrations(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -428,7 +486,7 @@ func test_a_version_1_save_still_loads() -> void:
 func test_a_version_2_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v2.json")
 
-	var result := _load(text)
+	var result := _load(text, SaveCodec.migrations(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -459,7 +517,7 @@ func test_a_version_2_save_has_manual_links_after_migration() -> void:
 func test_a_version_3_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v3.json")
 
-	var result := _load(text)
+	var result := _load(text, SaveCodec.migrations(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -473,6 +531,34 @@ func test_a_version_3_save_still_loads() -> void:
 	sim.tick(4001)
 	assert_eq(sim.money().format(), "81", "the 3 widgets sold for 5 each, then the full bay of 6 shipped for 2")
 	assert_eq(sim.link(1).widgets_per_minute, 9)
+
+
+## A save of version 4 (#8: drift and saturation), as the game wrote it. The
+## demand values pin drift: a change to the drift rule changes the demand of
+## every saved game, so it needs a migration.
+func test_a_version_4_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v4.json")
+
+	var result := _load(text)
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 8000)
+	var millbrook := sim.market(&"millbrook")
+	assert_almost_eq(millbrook.demand(&"red"), 0.83980851257007, 1e-12, "drift and saturation")
+	assert_almost_eq(millbrook.demand(&"yellow"), 1.13414130048789, 1e-12, "drift")
+	assert_almost_eq(millbrook.demand(&"blue"), 0.85485032533109, 1e-12, "drift")
+	sim.tick(4000)
+	assert_eq(sim.snapshot().saturation, [], "the 4 red widgets sold at 8 s recovered at 12 s")
+	assert_gt(sim.market(&"millbrook").demand(&"red"), millbrook.demand(&"red"))
+
+
+func test_a_version_3_save_has_no_saturation_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v3.json"))
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.simulation.snapshot().saturation, [])
+	assert_eq(result.simulation.snapshot().drift_key, 0)
 
 
 func test_a_version_1_save_has_no_links_after_migration() -> void:
