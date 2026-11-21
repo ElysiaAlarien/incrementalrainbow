@@ -82,9 +82,10 @@ func _assert_import_fails(code: String, reason: LoadResult.Reason, message_part:
 
 
 ## [param code] with the character at [param index] changed to another one of
-## the base64 alphabet.
+## the base64 alphabet. The new character also differs when case is ignored,
+## because the checksum check ignores case.
 func _with_changed_character(code: String, index: int) -> String:
-	var changed := "B" if code[index] == "A" else "A"
+	var changed := "B" if code[index].to_upper() == "A" else "A"
 	return code.substr(0, index) + changed + code.substr(index + 1)
 
 

@@ -26,6 +26,10 @@ var _next_link_id: int = 1
 var _links: Array[LinkState] = []
 var _next_shipment_id: int = 1
 var _demand: DemandState
+## Prisms owned now, and prisms bought across all runs (ADR-0003). Prestige
+## clears neither.
+var _prisms: int = 0
+var _prisms_bought: int = 0
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -63,6 +67,10 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		sim._factories.append(state)
 	sim._read_links(reader)
 	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms)
+	sim._prisms_bought = reader.integer("prisms_bought", 0)
+	sim._prisms = reader.integer("prisms", 0)
+	if sim._prisms > sim._prisms_bought:
+		reader.fail("prisms", "cannot be more than prisms_bought (%d)" % sim._prisms_bought)
 	return sim
 
 
@@ -213,6 +221,19 @@ func _start_shipment(state: LinkState) -> CommandResult:
 	return CommandResult.success(count)
 
 
+## Buys one prism for [method prisms] [code].next_price[/code]. On success,
+## [member CommandResult.value] is the number of prisms owned.
+func buy_prism() -> CommandResult:
+	var price := _prism_price()
+	if _money.is_less_than(price):
+		return _not_enough_money("A prism", price)
+
+	_money = _money.sub(price)
+	_prisms += 1
+	_prisms_bought += 1
+	return CommandResult.success(_prisms)
+
+
 func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
 	return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_MONEY,
 		"%s costs %s, but you have only %s." % [what, cost.format(), _money.format()])
@@ -280,6 +301,16 @@ func time_ms() -> int:
 ## The money the player has now.
 func money() -> BigNumber:
 	return _money
+
+
+## The prisms owned, the prisms bought across all runs, and the price of the
+## next prism.
+func prisms() -> PrismView:
+	var view := PrismView.new()
+	view.owned = _prisms
+	view.total_bought = _prisms_bought
+	view.next_price = _prism_price()
+	return view
 
 
 ## The money that [method build_factory] costs now.
@@ -371,6 +402,8 @@ func snapshot() -> Dictionary:
 		"next_link_id": _next_link_id,
 		"links": link_dicts,
 		"next_shipment_id": _next_shipment_id,
+		"prisms": _prisms,
+		"prisms_bought": _prisms_bought,
 	}.merged(_demand.to_dict())
 
 
@@ -422,6 +455,10 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 ## the base price times demand.
 func _price(def: MarketDef, color: StringName, demand: float) -> BigNumber:
 	return def.price(color).mul(BigNumber.from_float(demand))
+
+
+func _prism_price() -> BigNumber:
+	return _content.prism_balance.price(_prisms_bought)
 
 
 func _factory_state(id: int) -> FactoryState:

@@ -26,6 +26,8 @@ func _rich_game() -> Simulation:
 	sim.tick(3500)
 	sim.start_shipment(1)
 	# The sales saturate red and blue in millbrook.
+	sim.buy_prism()
+	sim.buy_prism()
 	return sim
 
 
@@ -78,6 +80,10 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.demands, view.demands, "demand in %s" % view.id)
 		for color in view.prices:
 			assert_true(got.price(color).equals(view.price(color)), "price of %s" % color)
+	assert_eq(sim.prisms().owned, 2, "the rich game has prisms")
+	assert_eq(loaded.prisms().owned, 2)
+	assert_eq(loaded.prisms().total_bought, 2)
+	assert_true(loaded.prisms().next_price.equals(sim.prisms().next_price))
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -346,6 +352,19 @@ func test_two_saturation_entries_for_one_color_and_market_fail() -> void:
 		"state.saturation[1].color: blue in millbrook has more than one saturation entry")
 
 
+func test_more_prisms_than_prisms_bought_fails() -> void:
+	var data := _save_data()
+	data.state.prisms = data.state.prisms_bought + 1
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.prisms: cannot be more than prisms_bought")
+
+
+func test_negative_prisms_fail() -> void:
+	var data := _save_data()
+	data.state.prisms_bought = -1
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "state.prisms_bought: must be from 0")
+
+
 func test_a_random_number_state_of_all_zeros_fails() -> void:
 	var data := _save_data()
 	data.state.rng = [0, 0, 0, 0]
@@ -568,3 +587,26 @@ func test_a_version_1_save_has_no_links_after_migration() -> void:
 	assert_eq(result.simulation.links().size(), 0)
 	assert_true(result.simulation.make_link(1, &"millbrook").ok, "link ids start at 1")
 	assert_eq(result.simulation.links()[0].id, 1)
+
+
+## A save of version 5 (#18: prisms), as the game wrote it.
+func test_a_version_5_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v5.json")
+
+	var result := _load(text)
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.prisms().owned, 2)
+	assert_eq(sim.prisms().total_bought, 2)
+	assert_eq(sim.prisms().next_price.format(), "80")
+	assert_eq(sim.money().format(), "30")
+
+
+func test_a_version_4_save_has_no_prisms_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v4.json"))
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.simulation.prisms().owned, 0)
+	assert_eq(result.simulation.prisms().total_bought, 0)
+	assert_eq(result.simulation.prisms().next_price.format(), str(ContentFixture.FIRST_PRISM_PRICE))

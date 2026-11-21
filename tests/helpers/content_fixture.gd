@@ -7,6 +7,7 @@ const PRICE := 5
 const TRANSIT_TIME_MS := 5000
 const SHIPMENT_COST := 2
 const AUTOMATIC_COST := 20
+const FIRST_PRISM_PRICE := 20
 
 
 static func colors_data() -> Dictionary:
@@ -18,10 +19,12 @@ static func colors_data() -> Dictionary:
 
 
 ## Balance data: 100 starting money, factories that cost 10, a flat
-## production line cost of 10, and demand that stays at 1 (no drift and no
-## saturation), so that prices stay at the base price.
+## production line cost of 10, prisms that cost 20, then 40, 80, and so on, and
+## demand that stays at 1 (no drift and no saturation), so that prices stay at
+## the base price.
 ## [param overrides] replaces values by key, such as
 ## [code]{"starting_money": 15, "production_line_cost_growth": 2.0}[/code].
+## Keys are unique across the sections.
 ## [method demand_overrides] turns drift and saturation on.
 static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 10,
 		overrides: Dictionary = {}) -> Dictionary:
@@ -39,14 +42,15 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 		"saturation_ms_per_widget": 0,
 		"saturation_half_widgets": 10,
 	}
+	var prism := {"first_price": FIRST_PRISM_PRICE, "price_growth": 2.0}
 	for key: String in overrides:
 		var section: Dictionary = {}
-		for candidate: Dictionary in [run, factory, demand]:
+		for candidate: Dictionary in [run, factory, demand, prism]:
 			if candidate.has(key):
 				section = candidate
 		assert(not section.is_empty(), "unknown balance key %s" % key)
 		section[key] = overrides[key]
-	return {"run": run, "factory": factory, "demand": demand}
+	return {"run": run, "factory": factory, "demand": demand, "prism": prism}
 
 
 ## Overrides for [method balance_data] that turn on drift (up to 30%, with a

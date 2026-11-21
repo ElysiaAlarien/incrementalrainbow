@@ -1,8 +1,12 @@
 {
-	"_about": "PLACEHOLDER balance values. No balance numbers exist yet (spec gap); playtests will set them. Every value in this file is a placeholder until this note is removed. run.starting_money: money at the start of a run. factory.build_cost: cost of a new factory. factory.production_line_cost: cost of a factory's second line; each later line costs production_line_cost_growth times the one before it. demand: a market's price for a color is its base price in markets.json times its demand. Drift moves demand smoothly between random knots, one knot each drift_period_ms, by up to drift_amplitude (0.3 gives 0.7 to 1.3). Each sold widget adds saturation that takes saturation_ms_per_widget to recover (0 turns saturation off), and saturation_half_widgets recent widgets halve demand.",
+	"_about": "PLACEHOLDER balance values. No balance numbers exist yet (spec gap); playtests will set them. Every value in this file is a placeholder until this note is removed. run.starting_money: money at the start of a run. factory.build_cost: cost of a new factory. factory.production_line_cost: cost of a factory's second line; each later line costs production_line_cost_growth times the one before it. demand: a market's price for a color is its base price in markets.json times its demand. Drift moves demand smoothly between random knots, one knot each drift_period_ms, by up to drift_amplitude (0.3 gives 0.7 to 1.3). Each sold widget adds saturation that takes saturation_ms_per_widget to recover (0 turns saturation off), and saturation_half_widgets recent widgets halve demand. prism.first_price: price of the first prism of the game; each later prism costs prism.price_growth times the one before it (ADR-0003). first_price * (price_growth - 1) must be at least 1.",
 	"placeholder": true,
 	"run": {
 		"starting_money": 100
+	},
+	"prism": {
+		"first_price": 50,
+		"price_growth": 2.0
 	},
 	"factory": {
 		"widget_time_ms": 1000,
