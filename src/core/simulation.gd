@@ -15,6 +15,7 @@ const FactoryState := preload("res://src/core/state/factory_state.gd")
 const LinkState := preload("res://src/core/state/link_state.gd")
 const ShipmentState := preload("res://src/core/state/shipment_state.gd")
 const DemandState := preload("res://src/core/state/demand_state.gd")
+const MarketState := preload("res://src/core/state/market_state.gd")
 
 ## The prestige keep set, in one place (see ADR-0012). A prestige makes a
 ## fresh run with [method Simulation.new], the same path as a new game, and
@@ -35,6 +36,7 @@ const _PRESTIGE_CLEARS: PackedStringArray = [
 	"Factories",
 	"Links, with their vehicles and shipments",
 	"Demand and saturation",
+	"Community investments and capacity used in each market",
 ]
 
 var _content: Content
@@ -47,6 +49,8 @@ var _next_link_id: int = 1
 var _links: Array[LinkState] = []
 var _next_shipment_id: int = 1
 var _demand: DemandState
+## Market id to the state of that market, for each market in the content.
+var _markets: Dictionary[StringName, MarketState] = {}
 ## Prisms owned now, and prisms bought across all runs (ADR-0003). Prestige
 ## clears neither.
 var _prisms: int = 0
@@ -61,6 +65,8 @@ func _init(p_content: Content, p_seed: int) -> void:
 	_demand = DemandState.new(_rng.next_u32())
 	_demand.schedule_events(0, _rng, _content)
 	_money = _content.starting_money
+	for def in _content.markets():
+		_markets[def.id] = MarketState.from_def(def)
 
 
 ## Makes a simulation from saved state: the inverse of [method snapshot].
@@ -90,6 +96,7 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		sim._factories.append(state)
 	sim._read_links(reader)
 	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms)
+	sim._read_markets(reader)
 	sim._prisms_bought = reader.integer("prisms_bought", 0)
 	sim._prisms = reader.integer("prisms", 0)
 	if sim._prisms > sim._prisms_bought:
@@ -138,6 +145,27 @@ func _read_links(reader: SnapshotReader) -> void:
 				state.source_factory_id, destination_text])
 		routes[ends] = true
 		_links.append(state)
+
+
+## Reads the markets for [method from_snapshot]. A market that the save does
+## not have, such as one that is new in the content, starts as at the start of
+## a run. The widgets on their way to a market are not checked against its
+## capacity, because a save from before capacity (version 7) can have more on
+## the way. Capacity left is never less than 0, so the market accepts no more
+## until they arrive.
+func _read_markets(reader: SnapshotReader) -> void:
+	var seen := {}
+	for market_reader in reader.objects("markets"):
+		var state := MarketState.from_snapshot(market_reader, _time_ms, _content.market_balance)
+		if state.id == &"":
+			continue
+		if _content.market(state.id) == null:
+			market_reader.fail("id", "there is no market \"%s\"" % state.id)
+		elif seen.has(state.id):
+			market_reader.fail("id", "market %s is in the save more than once" % state.id)
+		else:
+			seen[state.id] = true
+			_markets[state.id] = state
 
 
 ## Checks for [method from_snapshot] that no input bay can overflow: the
@@ -346,13 +374,37 @@ func _prestige_blocked() -> CommandResult:
 	return null
 
 
+## Makes a community investment in the market [param market_id] for
+## [param goal]: it grows the population, which gives more capacity, or the
+## income, which gives higher prices. It costs
+## [method MarketView.investment_cost]. On success,
+## [member CommandResult.value] is the new population or income.
+func make_community_investment(market_id: StringName, goal: MarketView.Investment) -> CommandResult:
+	assert(MarketView.Investment.values().has(goal), "unknown investment goal %d" % goal)
+	var state: MarketState = _markets.get(market_id)
+	if state == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_MARKET,
+			"There is no market \"%s\"." % market_id)
+	var cost := _investment_cost(state, goal)
+	if _money.is_less_than(cost):
+		var what := "population" if goal == MarketView.Investment.POPULATION else "income"
+		return _not_enough_money("A community investment for %s in %s" % [what,
+			_content.market(market_id).name], cost)
+
+	_money = _money.sub(cost)
+	state.invest(goal, _content.market_balance)
+	return CommandResult.success(state.population if goal == MarketView.Investment.POPULATION else state.income)
+
+
 ## Why the destination of [param state] accepts no widgets now.
 func _accepts_nothing_text(state: LinkState) -> String:
 	if state.destination_kind == LinkView.Destination.FACTORY:
 		var destination := _factory_state(state.destination_factory_id)
 		return "the %s input bay of %s is full, with the widgets on the way." % [
 			_content.color(state.color).name.to_lower(), _factory_name(destination)]
-	return "%s accepts no widgets now." % _content.market(state.destination_market_id).name
+	var market := _content.market(state.destination_market_id)
+	return "%s has no capacity left in this period, with the widgets on the way. Its capacity is %d widgets in each period." % [
+		market.name, _markets[market.id].capacity(_content.market_balance)]
 
 
 func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
@@ -395,6 +447,8 @@ func tick(duration_ms: int) -> void:
 	for state in _links:
 		state.forget_old_starts(_time_ms)
 	_demand.prune(_time_ms)
+	for state: MarketState in _markets.values():
+		state.forget_old_periods(_time_ms, _content.market_balance)
 
 
 ## The time of the next event: the earliest arrival after now, or demand
@@ -497,7 +551,7 @@ func factory(id: int) -> FactoryView:
 
 
 ## All markets that are open, in content order, with the demand and price of
-## each color now.
+## each color now, and the population, income, and capacity.
 func markets() -> Array[MarketView]:
 	var views: Array[MarketView] = []
 	for def in _content.markets():
@@ -569,26 +623,58 @@ func snapshot() -> Dictionary:
 		"next_shipment_id": _next_shipment_id,
 		"prisms": _prisms,
 		"prisms_bought": _prisms_bought,
+		"markets": _markets_to_dicts(),
 	}.merged(_demand.to_dict())
+
+
+## The markets for [method snapshot], in content order.
+func _markets_to_dicts() -> Array[Dictionary]:
+	var dicts: Array[Dictionary] = []
+	for def in _content.markets():
+		dicts.append(_markets[def.id].to_dict())
+	return dicts
 
 
 # --- Internal -----------------------------------------------------------------
 
 ## The shipment size rule, in one place: how many of [param available] widgets
 ## a shipment on [param state] carries, which is what its destination accepts
-## when the shipment leaves. A market accepts all widgets for now. A mixed
-## factory accepts the free space in the input bay of the link's color, less
-## the widgets already on their way to that bay, so that the bay cannot
-## overflow when they arrive. Later rules (free warehouse space and market
-## capacity left in the period) go here.
+## when the shipment leaves. A mixed factory accepts the free space in the
+## input bay of the link's color, less the widgets already on their way to
+## that bay, so that the bay cannot overflow when they arrive. A market accepts
+## the capacity that is left in the current period: its capacity less the
+## widgets it sold in this period and the widgets on their way to it. So a
+## market never gets more widgets than its capacity, and there is no overflow
+## rule. Widgets on their way count against the capacity of each period until
+## they arrive, and a sale counts against the period in which it arrives.
+## Later rules (free warehouse space) go here.
 func _accepted_count(state: LinkState, available: int) -> int:
+	var free := 0
 	if state.destination_kind == LinkView.Destination.FACTORY:
 		var destination := _factory_state(state.destination_factory_id)
-		var free := _content.factory_balance.input_bay_capacity \
+		free = _content.factory_balance.input_bay_capacity \
 			- destination.input_bays[state.color] \
 			- _widgets_in_transit_to(destination.id, state.color)
-		return clampi(free, 0, available)
-	return available
+	else:
+		free = _capacity_left(_markets[state.destination_market_id])
+	return clampi(free, 0, available)
+
+
+## The capacity that [param market] has left now for a shipment that leaves
+## now. It can be less than 0 after a load of an old save.
+func _capacity_left(market: MarketState) -> int:
+	return market.capacity(_content.market_balance) \
+		- market.capacity_used(_time_ms, _content.market_balance) \
+		- _widgets_in_transit_to_market(market.id)
+
+
+## Widgets in shipments on their way to the market [param market_id].
+func _widgets_in_transit_to_market(market_id: StringName) -> int:
+	var count := 0
+	for state in _links:
+		if state.goes_to_market(market_id):
+			count += state.widgets_in_transit()
+	return count
 
 
 ## Widgets of [param color] in shipments on their way to the factory
@@ -630,7 +716,9 @@ func _deliver_arrived_shipments() -> void:
 ## The market at the end of [param state] buys [param shipment] at its price
 ## for the link's color when the shipment arrives, which can be before now in
 ## a long tick. Then the sale saturates that color in that market. All widgets
-## of one shipment sell at the same price.
+## of one shipment sell at the same price. The sale uses capacity of the
+## period in which it arrives. It is never more than the capacity left,
+## because the widgets on their way counted against capacity when they left.
 func _sell(state: LinkState, shipment: ShipmentState) -> void:
 	var market_id := state.destination_market_id
 	var at_ms := shipment.arrives_at_ms
@@ -638,12 +726,18 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 	var price := _price(def, state.color, _demand.demand(market_id, state.color, at_ms, _content.demand_balance))
 	_money = _money.add(price.mul(BigNumber.from_int(shipment.count)))
 	_demand.record_sale(market_id, state.color, shipment.count, at_ms, _content.demand_balance)
+	_markets[market_id].record_sale(shipment.count, at_ms, _content.market_balance)
 
 
 ## The price of one widget of [param color] in [param def] at [param demand]:
-## the base price times demand.
+## the base price times demand, times the factor from the market's income.
 func _price(def: MarketDef, color: StringName, demand: float) -> BigNumber:
-	return def.price(color).mul(BigNumber.from_float(demand))
+	var factor := _content.market_balance.income_factor(_markets[def.id].income)
+	return def.price(color).mul(BigNumber.from_float(demand * factor))
+
+
+func _investment_cost(state: MarketState, goal: MarketView.Investment) -> BigNumber:
+	return _content.market_balance.investment_cost_after(state.investments(goal))
 
 
 func _prism_price() -> BigNumber:
@@ -681,9 +775,20 @@ func _link_view(state: LinkState) -> LinkView:
 
 
 func _market_view(def: MarketDef) -> MarketView:
+	var balance := _content.market_balance
+	var state := _markets[def.id]
 	var view := MarketView.new()
 	view.id = def.id
 	view.name = def.name
+	view.population = state.population
+	view.income = state.income
+	view.capacity = state.capacity(balance)
+	view.capacity_used = state.capacity_used(_time_ms, balance)
+	view.capacity_in_transit = _widgets_in_transit_to_market(def.id)
+	view.capacity_left = maxi(0, _capacity_left(state))
+	view.period_ends_in_ms = balance.period_end_ms(_time_ms) - _time_ms
+	view.population_investment_cost = _investment_cost(state, MarketView.Investment.POPULATION)
+	view.income_investment_cost = _investment_cost(state, MarketView.Investment.INCOME)
 	for color in def.prices:
 		var demand := _demand.demand(def.id, color, _time_ms, _content.demand_balance)
 		view.demands[color] = demand

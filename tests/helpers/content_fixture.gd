@@ -13,6 +13,16 @@ const INPUT_BAY_CAPACITY := 10
 ## [method balance_data].
 const EVENT_INTERVAL_MIN_MS := 5000
 const EVENT_INTERVAL_MAX_MS := 10_000
+## Each fixture market starts with this population and income. With the
+## fixture balance, that gives a capacity of [constant CAPACITY] in each
+## period of [constant PERIOD_MS], and prices at the base price.
+const POPULATION := 1000
+const INCOME := 100
+const CAPACITY := 1000
+const PERIOD_MS := 60_000
+const INVESTMENT_COST := 10
+const POPULATION_STEP := 100
+const INCOME_STEP := 50
 
 
 static func colors_data() -> Dictionary:
@@ -47,7 +57,10 @@ static func mixed_colors_data() -> Dictionary:
 ## production line cost of 10, prisms that cost 20, then 40, 80, and so on, and
 ## demand that stays at 1 (no drift and no saturation), so that prices stay at
 ## the base price. A demand event starts each 5 to 10 s, but [method data]
-## has no demand events unless a test gives some.
+## has no demand events unless a test gives some. Markets: a capacity of 1 widget for each person, so the
+## fixture markets have a capacity of [constant CAPACITY] in each period of
+## [constant PERIOD_MS]; prices at the base price at [constant INCOME]; and
+## community investments that cost 10, then 20, 40, and so on.
 ## [param overrides] replaces values by key, such as
 ## [code]{"starting_money": 15, "production_line_cost_growth": 2.0}[/code].
 ## Keys are unique across the sections.
@@ -72,14 +85,23 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 		"event_interval_max_ms": EVENT_INTERVAL_MAX_MS,
 	}
 	var prism := {"first_price": FIRST_PRISM_PRICE, "price_growth": 2.0}
+	var market := {
+		"period_ms": PERIOD_MS,
+		"capacity_per_population": 1.0,
+		"reference_income": INCOME,
+		"investment_cost": INVESTMENT_COST,
+		"investment_cost_growth": 2.0,
+		"population_step": POPULATION_STEP,
+		"income_step": INCOME_STEP,
+	}
 	for key: String in overrides:
 		var section: Dictionary = {}
-		for candidate: Dictionary in [run, factory, demand, prism]:
+		for candidate: Dictionary in [run, factory, demand, prism, market]:
 			if candidate.has(key):
 				section = candidate
 		assert(not section.is_empty(), "unknown balance key %s" % key)
 		section[key] = overrides[key]
-	return {"run": run, "factory": factory, "demand": demand, "prism": prism}
+	return {"run": run, "factory": factory, "demand": demand, "prism": prism, "market": market}
 
 
 ## Overrides for [method balance_data] that turn on drift (up to 30%, with a
@@ -90,15 +112,18 @@ static func demand_overrides() -> Dictionary:
 
 
 ## Markets, one for each of [param ids] (by default only "millbrook"), that
-## each pay a base price of [param price] for each color in [param colors].
+## each pay a base price of [param price] for each color in [param colors], and
+## each start with [param population] and [param income].
 static func markets_data(price: float = PRICE, colors: Dictionary = colors_data(),
-		ids: PackedStringArray = ["millbrook"]) -> Dictionary:
+		ids: PackedStringArray = ["millbrook"], population: int = POPULATION,
+		income: int = INCOME) -> Dictionary:
 	var prices := {}
 	for color: Dictionary in colors.colors:
 		prices[color.id] = price
 	var markets := []
 	for id in ids:
-		markets.append({"id": id, "name": id.capitalize(), "prices": prices})
+		markets.append({"id": id, "name": id.capitalize(), "population": population,
+			"income": income, "prices": prices})
 	return {"markets": markets}
 
 

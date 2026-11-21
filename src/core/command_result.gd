@@ -25,7 +25,8 @@ enum Reason {
 	## There is no link with that id.
 	UNKNOWN_LINK,
 	## The shipment would carry no widgets: the source has none, or the
-	## destination accepts none.
+	## destination accepts none, such as a market with no capacity left in the
+	## current period.
 	NOTHING_TO_SHIP,
 	## The link already has automatic transport.
 	ALREADY_AUTOMATIC,

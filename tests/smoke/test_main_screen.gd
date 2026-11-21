@@ -378,6 +378,61 @@ func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -
 	assert_lte(row.get_global_rect().end.x, main.get_viewport_rect().size.x, "the row fits the screen")
 
 
+func test_the_screen_shows_capacity_population_and_income_of_each_market() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var row: MarketRow = main.find_child("Market_millbrook", true, false)
+	var view := sim.market(&"millbrook")
+	assert_string_contains(row.stats_text(), "Population: %s" % BigNumber.from_int(view.population).format())
+	assert_string_contains(row.stats_text(), "Income: %s" % BigNumber.from_int(view.income).format())
+	assert_string_contains(row.stats_text(), "Capacity: 0 of %s used" % BigNumber.from_int(view.capacity).format())
+	assert_string_contains(row.stats_text(), "New period in")
+
+	# A shipment on the way uses capacity.
+	main.find_child("Build_red", true, false).pressed.emit()
+	main.find_child("MakeLink", true, false).pressed.emit()
+	sim.tick(5000)
+	sim.start_shipment(1)
+	await wait_process_frames(1)
+	assert_string_contains(row.stats_text(), "on the way")
+	assert_lte(row.get_global_rect().end.x, main.get_viewport_rect().size.x, "the row fits the screen")
+
+
+func test_a_community_investment_grows_the_market_on_the_screen() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var row: MarketRow = main.find_child("Market_millbrook", true, false)
+	var before := sim.market(&"millbrook")
+	var button := row.invest_button(MarketView.Investment.POPULATION)
+	assert_eq(button.text, "Grow population (%s)" % before.population_investment_cost.format())
+
+	button.pressed.emit()
+	row.invest_button(MarketView.Investment.INCOME).pressed.emit()
+	await wait_process_frames(1)
+
+	var after := sim.market(&"millbrook")
+	assert_gt(after.population, before.population)
+	assert_gt(after.income, before.income)
+	assert_string_contains(row.stats_text(), "Population: %s" % BigNumber.from_int(after.population).format())
+	assert_string_contains(row.stats_text(), "Income: %s" % BigNumber.from_int(after.income).format())
+	assert_eq(button.text, "Grow population (%s)" % after.population_investment_cost.format())
+
+
+func test_a_community_investment_with_too_little_money_shows_the_reason() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var button := (main.find_child("Market_millbrook", true, false) as MarketRow).invest_button(
+		MarketView.Investment.INCOME)
+	while not sim.money().is_less_than(sim.market(&"millbrook").income_investment_cost):
+		button.pressed.emit()
+	button.pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "A community investment for income in Millbrook costs")
+
+
 func test_format_demand_shows_a_whole_percent() -> void:
 	assert_eq(MarketRow.format_demand(1.0), "100%")
 	assert_eq(MarketRow.format_demand(0.874), "87%")

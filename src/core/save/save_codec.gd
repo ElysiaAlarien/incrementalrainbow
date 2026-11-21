@@ -20,7 +20,8 @@ const FORMAT := "incremental-rainbow-save"
 ## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
 	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
-		_v5_add_mixed_factories, _v6_add_demand_events]
+		_v5_add_mixed_factories, _v6_add_demand_events,
+		_v7_add_markets]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -85,6 +86,17 @@ static func _v5_add_mixed_factories(state: Dictionary) -> Dictionary:
 static func _v6_add_demand_events(state: Dictionary) -> Dictionary:
 	state.demand_events = []
 	state.next_demand_event_ms = -1
+
+
+## Version 8 (#10) adds the state of each market: population, income,
+## community investments, and capacity used in the current period. A step gets
+## no content, so it cannot know the markets. It writes none, and the load
+## starts each market that a save does not have as at the start of a run. A
+## version 7 game had made no community investments, so that is its state.
+## Capacity used is 0, so the market can buy its full capacity in the period
+## of the load.
+static func _v7_add_markets(state: Dictionary) -> Dictionary:
+	state.markets = []
 	return state
 
 
