@@ -1,6 +1,7 @@
 extends Control
 ## The first screen: money, base factories with their production lines and
-## output bays, and links from factories to markets with manual shipments.
+## output bays, and links from factories to markets with manual shipments,
+## automatic transport, and throughput.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -169,6 +170,10 @@ func _on_ship_pressed(link_id: int) -> void:
 	_show_result(_sim.start_shipment(link_id))
 
 
+func _on_automate_pressed(link_id: int) -> void:
+	_show_result(_sim.buy_automatic_transport(link_id))
+
+
 func _show_result(result: CommandResult) -> void:
 	_show_message("" if result.ok else result.message)
 	_refresh()
@@ -192,11 +197,12 @@ func _refresh() -> void:
 	_empty_label.visible = _rows.is_empty()
 	_refresh_new_link_choices()
 
+	var automatic_cost := _sim.automatic_transport_cost()
 	for view in _sim.links():
 		var link_row: LinkRow = _link_rows.get(view.id)
 		if link_row == null:
 			link_row = _add_link_row(view)
-		link_row.show_state(view)
+		link_row.show_state(view, automatic_cost)
 	_links_empty_label.visible = _link_rows.is_empty()
 
 
@@ -226,6 +232,7 @@ func _add_link_row(view: LinkView) -> LinkRow:
 	var row := LinkRow.new(view, _content.color(view.color), _sim.market(view.destination_market_id).name,
 		_content.transport_tier(view.vehicle).name)
 	row.ship_pressed.connect(_on_ship_pressed)
+	row.automate_pressed.connect(_on_automate_pressed)
 	_link_rows[view.id] = row
 	_link_list.add_child(row)
 	return row

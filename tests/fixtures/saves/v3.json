@@ -1,0 +1,53 @@
+{
+	"format": "incremental-rainbow-save",
+	"state": {
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"output_bay_count": 1,
+				"progress_ms": 300,
+				"size": 1
+			}
+		],
+		"links": [
+			{
+				"automatic_status": "shipped",
+				"color": "red",
+				"destination_market_id": "millbrook",
+				"id": 1,
+				"next_automatic_ms": 7100,
+				"recent_starts": [
+					{
+						"count": 3,
+						"started_at_ms": 2100
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 7100,
+						"count": 3,
+						"id": 1
+					}
+				],
+				"source_factory_id": 1,
+				"vehicle": "cart"
+			}
+		],
+		"money": [
+			6.8,
+			1
+		],
+		"next_factory_id": 2,
+		"next_link_id": 2,
+		"next_shipment_id": 2,
+		"rng": [
+			2750401650,
+			4262862330,
+			3989390757,
+			396504403
+		],
+		"time_ms": 3100
+	},
+	"version": 3
+}

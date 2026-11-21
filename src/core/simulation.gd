@@ -153,16 +153,44 @@ func make_link(factory_id: int, market_id: StringName) -> CommandResult:
 	return CommandResult.success(state.id)
 
 
-## Starts a shipment on the link [param link_id]. It costs the vehicle's
-## shipment cost now and arrives after the vehicle's transit time, when the
-## market sells it. It carries the widgets in the source's output bay, up to
-## what the destination accepts now (see [method _accepted_count]). On success,
-## [member CommandResult.value] is the widget count.
+## Starts a shipment on the link [param link_id] by hand. It costs the
+## vehicle's shipment cost now and arrives after the vehicle's transit time,
+## when the market sells it. It carries the widgets in the source's output bay,
+## up to what the destination accepts now (see [method _accepted_count]). On
+## success, [member CommandResult.value] is the widget count.
 func start_shipment(link_id: int) -> CommandResult:
 	var state := _link_state(link_id)
 	if state == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
 			"There is no link #%d." % link_id)
+	return _start_shipment(state)
+
+
+## Buys automatic transport for the link [param link_id], for
+## [method automatic_transport_cost]. From now on, the link starts a shipment
+## by itself: first now, and after that once each transit time of its vehicle, by the rules
+## of [method start_shipment]. A start with nothing to ship or too little money
+## sends nothing, and [member LinkView.automatic] shows why.
+func buy_automatic_transport(link_id: int) -> CommandResult:
+	var state := _link_state(link_id)
+	if state == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
+			"There is no link #%d." % link_id)
+	if state.is_automatic():
+		return CommandResult.failure(CommandResult.Reason.ALREADY_AUTOMATIC,
+			"Link #%d already has automatic transport." % link_id)
+	var cost := automatic_transport_cost()
+	if _money.is_less_than(cost):
+		return _not_enough_money("Automatic transport", cost)
+
+	_money = _money.sub(cost)
+	state.make_automatic(_time_ms)
+	return CommandResult.success()
+
+
+## Starts a shipment on [param state] if the rules allow it, for
+## [method start_shipment] and for automatic starts.
+func _start_shipment(state: LinkState) -> CommandResult:
 	var source := _factory_state(state.source_factory_id)
 	var count := _accepted_count(state, source.output_bay_count)
 	if count <= 0:
@@ -176,7 +204,7 @@ func start_shipment(link_id: int) -> CommandResult:
 
 	_money = _money.sub(tier.shipment_cost)
 	source.take_output(count)
-	state.shipments.append(ShipmentState.new(_next_shipment_id, count, _time_ms + tier.transit_time_ms))
+	state.add_shipment(_next_shipment_id, count, _time_ms, tier.transit_time_ms)
 	_next_shipment_id += 1
 	return CommandResult.success(count)
 
@@ -190,14 +218,51 @@ func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
 
 ## Advances the simulation by [param duration_ms] milliseconds. Time is an
 ## integer so that one long tick gives the same state as many short ticks.
+##
+## Inside the tick, things happen in time order. Factories make widgets until
+## the next event, then the event happens. The events are shipment arrivals,
+## which sell, and automatic starts. At one time, arrivals sell first, so their
+## money can pay for automatic starts at that time. A tick that ends at a time
+## sells the arrivals at that time, and the next tick does the automatic starts
+## at that time, so that ticks of any length give the same state. A tick takes
+## time in proportion to the size of the state and the number of events.
 func tick(duration_ms: int) -> void:
 	assert(duration_ms >= 0, "tick duration cannot be negative")
 	if duration_ms <= 0:
 		return
-	for state in _factories:
-		state.advance(duration_ms, _content.factory_balance)
-	_time_ms += duration_ms
-	_sell_arrived_shipments()
+	var end_ms := _time_ms + duration_ms
+	while true:
+		var event_ms := mini(end_ms, _next_event_ms())
+		for state in _factories:
+			state.advance(event_ms - _time_ms, _content.factory_balance)
+		_time_ms = event_ms
+		_sell_arrived_shipments()
+		if _time_ms == end_ms:
+			break
+		_start_automatic_shipments()
+	for state in _links:
+		state.forget_old_starts(_time_ms)
+
+
+## The time of the next event: the earliest arrival after now or automatic
+## start from now on. A large time when there is none.
+func _next_event_ms() -> int:
+	var next_ms := 9223372036854775807
+	for state in _links:
+		if state.is_automatic():
+			next_ms = mini(next_ms, state.next_automatic_ms)
+		for shipment in state.shipments:
+			next_ms = mini(next_ms, shipment.arrives_at_ms)
+	return next_ms
+
+
+## Does each automatic start that is due now, in link order.
+func _start_automatic_shipments() -> void:
+	for state in _links:
+		if not state.is_automatic() or state.next_automatic_ms != _time_ms:
+			continue
+		var result := _start_shipment(state)
+		state.record_automatic_start(result, _content.transport_tier(state.vehicle).transit_time_ms)
 
 
 # --- Queries ------------------------------------------------------------------
@@ -215,6 +280,11 @@ func money() -> BigNumber:
 ## The money that [method build_factory] costs now.
 func factory_build_cost() -> BigNumber:
 	return _content.factory_balance.build_cost
+
+
+## The money that [method buy_automatic_transport] costs now.
+func automatic_transport_cost() -> BigNumber:
+	return _content.automatic_transport_cost
 
 
 ## The colors that [method build_factory] accepts now, in content order.

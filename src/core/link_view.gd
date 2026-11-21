@@ -3,6 +3,21 @@ extends RefCounted
 ## A read-only copy of one link, returned by simulation queries. Changing it
 ## does not change the simulation.
 
+enum Automatic {
+	## The player starts each shipment by hand.
+	MANUAL,
+	## The link has automatic transport, and its first automatic start is next.
+	READY,
+	## The last automatic start sent a shipment.
+	SHIPPED,
+	## The last automatic start sent nothing: the source had no widgets, or
+	## the destination accepted none.
+	NOTHING_TO_SHIP,
+	## The last automatic start sent nothing, because the player had less
+	## money than the shipment costs.
+	NOT_ENOUGH_MONEY,
+}
+
 var id: int
 ## The one color that the link carries.
 var color: StringName
@@ -16,3 +31,16 @@ var transit_time_ms: int
 var shipment_cost: BigNumber
 ## Shipments on their way, in the order they started.
 var shipments_in_transit: Array[ShipmentView] = []
+## Whether the link has automatic transport, and if so, what its last
+## automatic start did.
+var automatic: Automatic
+## On an automatic link, the time until the next automatic start. 0 on a
+## manual link.
+var next_automatic_in_ms: int
+## The throughput: widgets that started on the link, by hand or automatically,
+## in the last minute.
+var widgets_per_minute: int
+
+
+func is_automatic() -> bool:
+	return automatic != Automatic.MANUAL

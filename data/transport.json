@@ -1,6 +1,7 @@
 {
-	"_about": "Transport tiers, lowest first. A new link uses the first tier as its vehicle. transit_time_ms and shipment_cost are per shipment. PLACEHOLDER values until playtests set them.",
+	"_about": "Transport tiers, lowest first. A new link uses the first tier as its vehicle. transit_time_ms and shipment_cost are per shipment. automatic_transport_cost is the price of automatic transport for one link. PLACEHOLDER values until playtests set them.",
 	"placeholder": true,
+	"automatic_transport_cost": 25,
 	"tiers": [
 		{"id": "cart", "name": "Cart", "transit_time_ms": 5000, "shipment_cost": 2}
 	]

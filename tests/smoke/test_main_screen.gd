@@ -208,6 +208,58 @@ func test_a_factory_can_be_linked_to_a_market_and_ship_for_money() -> void:
 	assert_eq(money_label.text, "Money: %s" % sim.money().format())
 
 
+func test_a_link_can_be_made_automatic_and_shows_its_throughput() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	main.find_child("Build_red", true, false).pressed.emit()
+	await wait_process_frames(1)
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
+	assert_string_contains(row.text(), "Manual")
+	assert_string_contains(row.text(), "Throughput: 0/min")
+	assert_false(row.automate_button().disabled)
+	assert_string_contains(row.automate_button().text, "(%s)" % sim.automatic_transport_cost().format())
+
+	sim.tick(3000)
+	row.automate_button().pressed.emit()
+	await wait_process_frames(2)
+
+	assert_true(sim.link(row.link_id).is_automatic())
+	assert_true(row.automate_button().disabled, "a link buys automatic transport once")
+	assert_eq(row.automate_button().text, "Automatic")
+	assert_string_contains(row.text(), "Automatic: next shipment in")
+	assert_string_contains(row.text(), "widgets on the way")
+	var shipped := sim.link(row.link_id).widgets_per_minute
+	assert_gt(shipped, 0)
+	assert_string_contains(row.text(), "Throughput: %d/min" % shipped)
+
+
+func test_an_automatic_link_with_too_little_money_shows_why() -> void:
+	# A save of an automatic link, with less money than a shipment costs.
+	var game := Simulation.new(Content.load_dir(Content.DEFAULT_DIR), 5)
+	game.build_factory(&"red")
+	game.make_link(1, &"millbrook")
+	game.buy_automatic_transport(1)
+	game.tick(3000)
+	var save: Dictionary = JSON.parse_string(SaveCodec.encode(game))
+	save.state.money = BigNumber.from_int(1).to_data()
+	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	file.store_string(JSON.stringify(save))
+	file.close()
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
+
+	sim.tick(sim.link(row.link_id).next_automatic_in_ms + 1)
+	await wait_process_frames(1)
+
+	assert_eq(sim.link(row.link_id).automatic, LinkView.Automatic.NOT_ENOUGH_MONEY)
+	assert_string_contains(row.text(), "Automatic: not enough money")
+	assert_eq(sim.link(row.link_id).shipments_in_transit.size(), 0)
+
+
 func test_a_failed_command_shows_its_reason() -> void:
 	var main := await _open_main()
 	main.find_child("Build_red", true, false).pressed.emit()

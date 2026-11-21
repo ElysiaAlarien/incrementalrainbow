@@ -89,6 +89,14 @@ _Avoid_: Carrier, truck
 One batch of widgets that moves along a link. It costs money and takes the link's transit time to arrive.
 _Avoid_: Delivery, trip, load
 
+**Automatic transport**:
+An upgrade that the player buys for one link. An automatic link starts a shipment by itself once each transit time of its vehicle. If there is nothing to ship or too little money, it sends nothing that time.
+_Avoid_: Auto-ship, autopilot
+
+**Throughput**:
+The number of widgets that started on a link in the last minute. It shows where widgets cannot move fast enough.
+_Avoid_: Flow, rate
+
 **Split**:
 The percentage of a color's widgets that the player sends to each of that color's links.
 _Avoid_: Allocation, ratio, distribution

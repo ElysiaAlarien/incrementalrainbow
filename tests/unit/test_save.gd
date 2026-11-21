@@ -13,6 +13,7 @@ func _rich_game() -> Simulation:
 	sim.add_production_line(2)
 	sim.make_link(1, &"millbrook")
 	sim.make_link(2, &"millbrook")
+	sim.buy_automatic_transport(2)
 	sim.tick(5000)
 	sim.start_shipment(1)
 	sim.start_shipment(2)
@@ -21,6 +22,7 @@ func _rich_game() -> Simulation:
 	sim.tick(1400)
 	sim.start_shipment(1)
 	# The first two shipments sell, and two are still in transit on link 1.
+	# Link 2 is automatic and has shipped.
 	sim.tick(3500)
 	sim.start_shipment(1)
 	return sim
@@ -53,6 +55,9 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_eq(shipments.size(), 2, "shipments in transit are kept")
 	assert_eq(shipments.map(func(v: ShipmentView) -> int: return v.remaining_ms),
 		sim.link(1).shipments_in_transit.map(func(v: ShipmentView) -> int: return v.remaining_ms))
+	assert_eq(loaded.link(2).automatic, LinkView.Automatic.SHIPPED)
+	assert_eq(loaded.link(2).next_automatic_in_ms, sim.link(2).next_automatic_in_ms)
+	assert_eq(loaded.link(1).widgets_per_minute, sim.link(1).widgets_per_minute)
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -256,6 +261,33 @@ func test_a_shipment_that_has_already_arrived_fails() -> void:
 		"state.links[0].shipments[0].arrives_at_ms: must be after time_ms")
 
 
+func test_an_unknown_automatic_status_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.automatic_status = "flying",
+		"state.links[0].automatic_status: must be one of manual, ready, shipped")
+
+
+func test_a_manual_link_with_a_next_automatic_start_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.next_automatic_ms = 5,
+		"state.links[0].next_automatic_ms: must be 0 on a manual link")
+
+
+func test_an_automatic_start_before_now_fails() -> void:
+	var data := _save_data()
+	data.state.links[1].next_automatic_ms = 0
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.links[1].next_automatic_ms: must not be before time_ms")
+
+
+func test_a_recent_start_out_of_the_throughput_window_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.recent_starts[0].started_at_ms = 99_999_999,
+		"state.links[0].recent_starts[0].started_at_ms: must be in the throughput window")
+
+
+func test_recent_starts_out_of_order_fail() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.recent_starts[1].started_at_ms = 0,
+		"state.links[0].recent_starts[1].started_at_ms: must not be before the start before it")
+
+
 func test_a_random_number_state_of_all_zeros_fails() -> void:
 	var data := _save_data()
 	data.state.rng = [0, 0, 0, 0]
@@ -409,6 +441,38 @@ func test_a_version_2_save_still_loads() -> void:
 	assert_eq([link.shipments_in_transit[0].count, link.shipments_in_transit[0].remaining_ms], [4, 4000])
 	sim.tick(4000)
 	assert_eq(sim.money().format(), "98", "the shipment of 4 red widgets sold for 5 each")
+
+
+func test_a_version_2_save_has_manual_links_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v2.json"))
+
+	assert_true(result.ok, result.message)
+	var link := result.simulation.link(1)
+	assert_false(link.is_automatic())
+	assert_eq(link.widgets_per_minute, 0)
+	result.simulation.tick(60_000)
+	assert_eq(result.simulation.link(1).shipments_in_transit.size(), 0, "a manual link ships nothing by itself")
+
+
+## A save of version 3 (#7: automatic transport and throughput), as the game
+## wrote it.
+func test_a_version_3_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v3.json")
+
+	var result := _load(text)
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 3100)
+	assert_eq(sim.money().format(), "68")
+	var link := sim.link(1)
+	assert_eq(link.automatic, LinkView.Automatic.SHIPPED)
+	assert_eq(link.next_automatic_in_ms, 4000)
+	assert_eq(link.widgets_per_minute, 3)
+	assert_eq([link.shipments_in_transit[0].count, link.shipments_in_transit[0].remaining_ms], [3, 4000])
+	sim.tick(4001)
+	assert_eq(sim.money().format(), "81", "the 3 widgets sold for 5 each, then the full bay of 6 shipped for 2")
+	assert_eq(sim.link(1).widgets_per_minute, 9)
 
 
 func test_a_version_1_save_has_no_links_after_migration() -> void:

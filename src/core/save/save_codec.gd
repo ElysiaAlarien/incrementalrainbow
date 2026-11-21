@@ -19,7 +19,7 @@ const FORMAT := "incremental-rainbow-save"
 ## step gets the state as parsed JSON and returns the new state. It must not
 ## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
-	return [_v1_add_links]
+	return [_v1_add_links, _v2_add_automatic_transport]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -27,6 +27,19 @@ static func _v1_add_links(state: Dictionary) -> Dictionary:
 	state.next_link_id = 1
 	state.links = []
 	state.next_shipment_id = 1
+	return state
+
+
+## Version 3 (#7) adds automatic transport and the recent starts that give
+## throughput. A version 2 link was manual, and it has no starts to count.
+static func _v2_add_automatic_transport(state: Dictionary) -> Dictionary:
+	var links: Variant = state.get("links")
+	if links is Array:
+		for link: Variant in links:
+			if link is Dictionary:
+				link.automatic_status = "manual"
+				link.next_automatic_ms = 0
+				link.recent_starts = []
 	return state
 
 
