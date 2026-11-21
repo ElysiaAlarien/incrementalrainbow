@@ -176,7 +176,7 @@ func test_reports_bad_demand_balance_values() -> void:
 	for expected in ["demand.drift_period_ms must be a positive integer",
 			"demand.drift_amplitude must be less than 1",
 			"demand.saturation_ms_per_widget must be a whole number of at least 0",
-			"demand.saturation_half_widgets must be more than 0"]:
+			"demand.saturation_half_widgets must be a number of more than 0"]:
 		assert_string_contains(text, expected)
 	bad = {"drift_amplitude": -0.1, "saturation_ms_per_widget": -1}
 	text = "\n".join(Content.from_data(ContentFixture.data(ContentFixture.colors_data(),

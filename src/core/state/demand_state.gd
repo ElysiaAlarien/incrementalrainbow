@@ -97,9 +97,14 @@ func prune(now_ms: int) -> void:
 			_saturated_until_ms.erase(market_id)
 
 
-## The saturation as plain data, sorted by market and color, so that equal
-## states give equal snapshots.
-func saturation_to_list() -> Array[Dictionary]:
+## The state as plain data for [method Simulation.snapshot]: the keys
+## "drift_key" and "saturation". Saturation is sorted by market and color, so
+## that equal states give equal snapshots.
+func to_dict() -> Dictionary:
+	return {"drift_key": drift_key, "saturation": _saturation_to_list()}
+
+
+func _saturation_to_list() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	var market_ids := _saturated_until_ms.keys()
 	market_ids.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
@@ -116,8 +121,8 @@ func saturation_to_list() -> Array[Dictionary]:
 	return entries
 
 
-## The inverse of [member drift_key] and [method saturation_to_list] in a
-## snapshot. Records problems in [param reader]. Each saturation entry must
+## The inverse of [method to_dict]. [param reader] reads the snapshot root.
+## Records problems in it. Each saturation entry must
 ## name a known market and color, once, and must not have recovered by
 ## [param now_ms], because a tick forgets saturation that has recovered.
 static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int) -> DemandState:
@@ -126,14 +131,18 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int)
 		var market_id := entry.text_id("market_id")
 		var color := entry.text_id("color")
 		var until_ms := entry.integer("saturated_until_ms")
-		if market_id != &"" and content.market(market_id) == null:
-			entry.fail("market_id", "there is no market \"%s\"" % market_id)
-		if color != &"" and content.color(color) == null:
-			entry.fail("color", "there is no color \"%s\"" % color)
-		if state._saturated_until_ms.has(market_id) and state._saturated_until_ms[market_id].has(color):
-			entry.fail("color", "%s in %s has more than one saturation entry" % [color, market_id])
 		if until_ms <= now_ms:
 			entry.fail("saturated_until_ms", "must be after time_ms (%d)" % now_ms)
+		if market_id != &"" and content.market(market_id) == null:
+			entry.fail("market_id", "there is no market \"%s\"" % market_id)
+			continue
+		if color != &"" and content.color(color) == null:
+			entry.fail("color", "there is no color \"%s\"" % color)
+			continue
+		if market_id == &"" or color == &"":
+			continue
+		if state._saturated_until_ms.has(market_id) and state._saturated_until_ms[market_id].has(color):
+			entry.fail("color", "%s in %s has more than one saturation entry" % [color, market_id])
 		if not state._saturated_until_ms.has(market_id):
 			state._saturated_until_ms[market_id] = {}
 		state._saturated_until_ms[market_id][color] = until_ms

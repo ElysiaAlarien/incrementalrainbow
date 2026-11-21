@@ -371,9 +371,7 @@ func snapshot() -> Dictionary:
 		"next_link_id": _next_link_id,
 		"links": link_dicts,
 		"next_shipment_id": _next_shipment_id,
-		"drift_key": _demand.drift_key,
-		"saturation": _demand.saturation_to_list(),
-	}
+	}.merged(_demand.to_dict())
 
 
 # --- Internal -----------------------------------------------------------------
@@ -414,15 +412,15 @@ func _sell_arrived_shipments() -> void:
 func _sell(state: LinkState, shipment: ShipmentState) -> void:
 	var market_id := state.destination_market_id
 	var at_ms := shipment.arrives_at_ms
-	var price := _price(_content.market(market_id), state.color, at_ms)
+	var def := _content.market(market_id)
+	var price := _price(def, state.color, _demand.demand(market_id, state.color, at_ms, _content.demand_balance))
 	_money = _money.add(price.mul(BigNumber.from_int(shipment.count)))
 	_demand.record_sale(market_id, state.color, shipment.count, at_ms, _content.demand_balance)
 
 
-## The price of one widget of [param color] in [param def] at [param at_ms]:
+## The price of one widget of [param color] in [param def] at [param demand]:
 ## the base price times demand.
-func _price(def: MarketDef, color: StringName, at_ms: int) -> BigNumber:
-	var demand := _demand.demand(def.id, color, at_ms, _content.demand_balance)
+func _price(def: MarketDef, color: StringName, demand: float) -> BigNumber:
 	return def.price(color).mul(BigNumber.from_float(demand))
 
 
@@ -449,6 +447,7 @@ func _market_view(def: MarketDef) -> MarketView:
 	view.id = def.id
 	view.name = def.name
 	for color in def.prices:
-		view.demands[color] = _demand.demand(def.id, color, _time_ms, _content.demand_balance)
-		view.prices[color] = _price(def, color, _time_ms)
+		var demand := _demand.demand(def.id, color, _time_ms, _content.demand_balance)
+		view.demands[color] = demand
+		view.prices[color] = _price(def, color, demand)
 	return view

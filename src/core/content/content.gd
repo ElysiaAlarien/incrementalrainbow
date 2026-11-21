@@ -189,18 +189,12 @@ func _parse_demand_balance(demand: Variant) -> void:
 	if amplitude >= 1.0:
 		_errors.append("demand.drift_amplitude must be less than 1, so that demand stays above 0")
 		amplitude = 0.0
-	var ms_per_widget := 0
-	var value: Variant = demand.get("saturation_ms_per_widget")
-	if _is_positive_int(value) or (_is_number(value) and value == 0):
-		ms_per_widget = int(value)
-	else:
-		_errors.append("demand.saturation_ms_per_widget must be a whole number of at least 0")
-	var half := _read_number(demand, "saturation_half_widgets", "demand", 0.0)
-	if half == 0.0:
-		_errors.append("demand.saturation_half_widgets must be more than 0")
+	var half: Variant = demand.get("saturation_half_widgets")
+	if not (_is_number(half) and half > 0):
+		_errors.append("demand.saturation_half_widgets must be a number of more than 0")
 		half = 1.0
 	_demand_balance = DemandBalance.new(maxi(1, _read_positive_int(demand, "drift_period_ms", "demand")),
-		amplitude, ms_per_widget, half)
+		amplitude, _read_whole_number(demand, "saturation_ms_per_widget", "demand"), float(half))
 
 
 func _parse_markets(data: Dictionary) -> void:
@@ -281,6 +275,15 @@ func _read_positive_int(section: Dictionary, key: String, section_name: String) 
 		_errors.append("%s.%s must be a positive integer" % [section_name, key])
 		return 0
 	return int(value)
+
+
+## Reads a whole number of 0 or more. On an error, returns 0.
+func _read_whole_number(section: Dictionary, key: String, section_name: String) -> int:
+	var value: Variant = section.get(key)
+	if _is_positive_int(value) or (_is_number(value) and value == 0):
+		return int(value)
+	_errors.append("%s.%s must be a whole number of at least 0" % [section_name, key])
+	return 0
 
 
 ## Reads a finite number that is at least [param minimum]. On an error, returns
