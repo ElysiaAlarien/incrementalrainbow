@@ -5,6 +5,7 @@ extends Control
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
 ## and saves at intervals and when the game exits or goes to the background.
+## The Export or import button exports the game as a code and imports a code.
 
 ## Seconds between saves while the game runs.
 const AUTOSAVE_INTERVAL_S := 30.0
@@ -22,6 +23,7 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _links_empty_label: Label = %LinksEmptyLabel
 @onready var _money_label: Label = %MoneyLabel
 @onready var _message_label: Label = %MessageLabel
+@onready var _export_code_button: Button = %ExportCodeButton
 
 var _sim: Simulation
 var _save_file: SaveFile
@@ -32,6 +34,7 @@ var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _build_button_by_color: Dictionary[StringName, Button] = {}
+var _export_code_dialog: ExportCodeDialog
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
 
@@ -50,9 +53,12 @@ func _ready() -> void:
 	autosave.timeout.connect(write_save)
 	add_child(autosave)
 	autosave.start()
-	for color_id in _sim.buildable_factory_colors():
-		_add_build_button(_content.color(color_id))
+	_add_build_buttons()
 	_make_link_button.pressed.connect(_on_make_link_pressed)
+	_export_code_dialog = ExportCodeDialog.new(_content)
+	_export_code_dialog.import_confirmed.connect(_replace_game)
+	add_child(_export_code_dialog)
+	_export_code_button.pressed.connect(func() -> void: _export_code_dialog.open(_sim))
 	_refresh()
 
 
@@ -107,6 +113,32 @@ func _load_or_start_game() -> Simulation:
 		push_warning("The save did not load: %s" % result.message)
 		_show_message("Your save could not load, so a new game started. %s\n%s" % [kept_text, result.message])
 	return Simulation.new(_content, randi())
+
+
+## Replaces the game with [param simulation], from an imported code, and saves
+## it at once.
+func _replace_game(simulation: Simulation) -> void:
+	_sim = simulation
+	for row: Node in _rows.values() + _link_rows.values():
+		row.get_parent().remove_child(row)
+		row.queue_free()
+	_rows.clear()
+	_link_rows.clear()
+	_new_link_factory.clear()
+	_new_link_market.clear()
+	for button in _build_button_by_color.values():
+		_build_buttons.remove_child(button)
+		button.queue_free()
+	_build_button_by_color.clear()
+	_add_build_buttons()
+	_show_message("")
+	write_save()
+	_refresh()
+
+
+func _add_build_buttons() -> void:
+	for color_id in _sim.buildable_factory_colors():
+		_add_build_button(_content.color(color_id))
 
 
 func _add_build_button(color: ColorDef) -> void:

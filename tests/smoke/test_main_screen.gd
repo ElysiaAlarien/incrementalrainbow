@@ -222,3 +222,79 @@ func test_a_failed_command_shows_its_reason() -> void:
 	var message: Label = main.find_child("MessageLabel", true, false)
 	assert_true(message.visible)
 	assert_string_contains(message.text, "already has a link")
+
+
+# --- Export and import ----------------------------------------------------------
+
+## Opens the export and import dialog of [param main].
+func _open_export_code_dialog(main: Control) -> ExportCodeDialog:
+	main.find_child("ExportCodeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var dialog: ExportCodeDialog = main.find_child("ExportCodeDialog", true, false)
+	assert_true(dialog.visible, "the dialog opens")
+	return dialog
+
+
+func _import_code(dialog: ExportCodeDialog, code: String) -> ConfirmationDialog:
+	(dialog.find_child("ImportCodeText", true, false) as TextEdit).text = code
+	dialog.find_child("ImportCode", true, false).pressed.emit()
+	await wait_process_frames(1)
+	return dialog.find_child("ImportConfirm", true, false)
+
+
+func test_the_export_code_imports_after_the_player_confirms() -> void:
+	var main: Control = await _main_with_red_factory()
+	main.find_child("MakeLink", true, false).pressed.emit()
+	var dialog := await _open_export_code_dialog(main)
+	var code := (dialog.find_child("ExportCodeText", true, false) as TextEdit).text
+	var exported: Dictionary = ExportCode.decode(Content.load_dir(Content.DEFAULT_DIR), code).simulation.snapshot()
+	# The game goes on: a second factory that the code does not have.
+	main.find_child("Build_blue", true, false).pressed.emit()
+	await wait_process_frames(1)
+	assert_eq(_rows(main).size(), 2)
+
+	var confirm := await _import_code(dialog, code)
+	assert_true(confirm.visible, "the import asks to confirm")
+	assert_eq(main.simulation().factories().size(), 2, "the game does not change before the player confirms")
+	confirm.confirmed.emit()
+	await wait_process_frames(1)
+
+	assert_false(dialog.visible, "the dialog closes")
+	assert_eq(main.simulation().factories().size(), 1)
+	assert_gte(main.simulation().time_ms(), exported.time_ms)
+	assert_eq(_rows(main).size(), 1, "the screen shows the imported game")
+	assert_eq(main.find_children("Link*", "LinkRow", true, false).size(), 1)
+	assert_eq((main.find_child("NewLinkFactory", true, false) as OptionButton).item_count, 1)
+	var saved := _read_save()
+	assert_true(saved.ok, saved.message)
+	assert_eq(saved.simulation.factories().size(), 1, "the import is saved at once")
+
+
+func test_a_canceled_import_does_not_change_the_game() -> void:
+	var main: Control = await _main_with_red_factory()
+	var dialog := await _open_export_code_dialog(main)
+	var code := (dialog.find_child("ExportCodeText", true, false) as TextEdit).text
+	main.find_child("Build_blue", true, false).pressed.emit()
+
+	var confirm := await _import_code(dialog, code)
+	confirm.canceled.emit()
+	await wait_process_frames(1)
+
+	assert_eq(main.simulation().factories().size(), 2)
+	assert_eq(_rows(main).size(), 2)
+
+
+func test_a_bad_code_shows_the_reason_and_does_not_change_the_game() -> void:
+	var main: Control = await _main_with_red_factory()
+	var dialog := await _open_export_code_dialog(main)
+	var before: Simulation = main.simulation()
+
+	var confirm := await _import_code(dialog, "IR2.abcd.00000000")
+
+	assert_false(confirm.visible, "a bad code does not ask to confirm")
+	var message: Label = dialog.find_child("ImportMessage", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "your game did not change")
+	assert_string_contains(message.text, "checksum does not match")
+	assert_same(main.simulation(), before, "the game is the same game")
+	assert_eq(main.simulation().factories().size(), 1)
