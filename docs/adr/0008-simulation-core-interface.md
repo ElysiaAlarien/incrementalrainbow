@@ -7,3 +7,5 @@
 - **Queries** return copies, such as `FactoryView`, never live state. `snapshot()` returns the full state as plain data, to compare states in tests.
 
 The same content, seed, commands, and ticks always give the same state.
+
+To load a save, the game makes a new simulation from saved state. ADR-0009 adds this entry point.

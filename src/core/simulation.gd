@@ -29,6 +29,33 @@ func _init(p_content: Content, p_seed: int) -> void:
 	_money = _content.starting_money
 
 
+## Makes a simulation from saved state: the inverse of [method snapshot].
+## [param reader] records each problem in the state, and the caller must check
+## [method SnapshotReader.errors]. Use [method SaveCodec.decode] to load a save.
+static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulation:
+	var sim := Simulation.new(p_content, 0)
+	sim._time_ms = reader.integer("time_ms")
+	var rng_state := reader.u32_list("rng", 4)
+	if rng_state == PackedInt64Array([0, 0, 0, 0]):
+		reader.fail("rng", "cannot be all zeros")
+	else:
+		sim._rng.set_state(rng_state)
+	sim._money = reader.big_number("money")
+	if sim._money.is_negative():
+		reader.fail("money", "cannot be negative")
+	sim._next_factory_id = reader.integer("next_factory_id", 1)
+	var ids := {}
+	for factory_reader in reader.objects("factories"):
+		var state := FactoryState.from_snapshot(factory_reader, p_content)
+		if ids.has(state.id):
+			factory_reader.fail("id", "is used by more than one factory")
+		elif state.id >= sim._next_factory_id:
+			factory_reader.fail("id", "must be less than next_factory_id (%d)" % sim._next_factory_id)
+		ids[state.id] = true
+		sim._factories.append(state)
+	return sim
+
+
 # --- Commands -----------------------------------------------------------------
 
 ## Builds a base factory of [param color]. On success, [member CommandResult.value]
