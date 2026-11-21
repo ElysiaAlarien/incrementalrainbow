@@ -16,6 +16,7 @@ const FactoryState := preload("res://src/core/state/factory_state.gd")
 var _content: Content
 var _rng: SimRng
 var _time_ms: int = 0
+var _money: BigNumber
 var _next_factory_id: int = 1
 var _factories: Array[FactoryState] = []
 
@@ -25,6 +26,7 @@ func _init(p_content: Content, p_seed: int) -> void:
 	assert(p_content.errors.is_empty(), "Simulation needs valid content: %s" % "; ".join(p_content.errors))
 	_content = p_content
 	_rng = SimRng.new(p_seed)
+	_money = _content.starting_money
 
 
 # --- Commands -----------------------------------------------------------------
@@ -44,6 +46,23 @@ func build_factory(color: StringName) -> CommandResult:
 	_next_factory_id += 1
 	_factories.append(state)
 	return CommandResult.success(state.id)
+
+
+## Adds one production line to the factory with [param factory_id], for money.
+## On success, [member CommandResult.value] is the new size of the factory.
+func add_production_line(factory_id: int) -> CommandResult:
+	var state := _factory_state(factory_id)
+	if state == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_FACTORY,
+			"There is no factory #%d." % factory_id)
+	var cost := _content.factory_balance.next_line_cost(state.size)
+	if _money.is_less_than(cost):
+		return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_MONEY,
+			"A new production line costs %s, but you have only %s." % [cost.format(), _money.format()])
+
+	_money = _money.sub(cost)
+	state.size += 1
+	return CommandResult.success(state.size)
 
 
 # --- Time ---------------------------------------------------------------------
@@ -66,6 +85,11 @@ func time_ms() -> int:
 	return _time_ms
 
 
+## The money the player has now.
+func money() -> BigNumber:
+	return _money
+
+
 ## The colors that [method build_factory] accepts now, in content order.
 func buildable_factory_colors() -> Array[StringName]:
 	var ids: Array[StringName] = []
@@ -85,10 +109,8 @@ func factories() -> Array[FactoryView]:
 
 ## The factory with [param id], or null.
 func factory(id: int) -> FactoryView:
-	for state in _factories:
-		if state.id == id:
-			return state.to_view(_content.factory_balance)
-	return null
+	var state := _factory_state(id)
+	return state.to_view(_content.factory_balance) if state != null else null
 
 
 ## The full state as plain data. Two simulations with equal snapshots behave
@@ -100,7 +122,16 @@ func snapshot() -> Dictionary:
 	return {
 		"time_ms": _time_ms,
 		"rng": _rng.get_state(),
+		"money": _money.to_data(),
 		"next_factory_id": _next_factory_id,
 		"factories": factory_dicts,
 	}
 
+
+# --- Internal -----------------------------------------------------------------
+
+func _factory_state(id: int) -> FactoryState:
+	for state in _factories:
+		if state.id == id:
+			return state
+	return null

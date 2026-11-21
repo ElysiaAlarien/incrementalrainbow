@@ -22,6 +22,42 @@ func test_adds_small_integers_exactly() -> void:
 	assert_true(BigNumber.from_int(3).add(BigNumber.ZERO).equals(BigNumber.from_int(3)))
 
 
+func test_subtracts_small_integers_exactly() -> void:
+	assert_true(BigNumber.from_int(100).sub(BigNumber.from_int(10)).equals(BigNumber.from_int(90)))
+	assert_true(BigNumber.from_int(10).sub(BigNumber.from_int(10)).is_zero())
+	assert_true(BigNumber.from_int(3).sub(BigNumber.from_int(5)).equals(BigNumber.from_int(-2)))
+
+
+func test_subtracts_values_past_float_range() -> void:
+	var difference := BigNumber.new(1.2, 401).sub(BigNumber.new(7.0, 400))
+	assert_true(difference.equals(BigNumber.new(5.0, 400)), "1.2e401 - 7e400 = 5e400, got %s" % difference)
+
+
+func test_subtracting_a_much_smaller_value_keeps_the_larger_value() -> void:
+	var big := BigNumber.new(1.0, 100)
+	assert_true(big.sub(BigNumber.from_int(1)).equals(big))
+
+
+func test_times_power_does_not_overflow() -> void:
+	assert_almost_eq(BigNumber.from_int(10).times_power(2.0, 3).to_float(), 80.0, 1e-9)
+	assert_true(BigNumber.from_int(7).times_power(1.5, 0).equals(BigNumber.from_int(7)))
+	# 1.15^100000 is about 10^6069.
+	assert_eq(BigNumber.from_int(10).times_power(1.15, 100_000).exponent, 6070)
+
+
+func test_ceiled_rounds_up_to_a_whole_number() -> void:
+	assert_eq(BigNumber.from_float(13.225).ceiled().to_float(), 14.0)
+	assert_eq(BigNumber.from_float(20.000000000000004).ceiled().to_float(), 20.0)
+	assert_eq(BigNumber.from_float(-2.5).ceiled().to_float(), -2.0)
+	var big := BigNumber.new(1.5, 300)
+	assert_true(big.ceiled().equals(big))
+
+
+func test_round_trips_through_plain_data() -> void:
+	var value := BigNumber.new(-4.25, 1234)
+	assert_true(BigNumber.from_data(value.to_data()).equals(value))
+
+
 func test_multiplies_past_64_bit_limits() -> void:
 	var max_int := BigNumber.from_int(INT64_MAX)
 	var product := max_int.mul(max_int)

@@ -12,6 +12,10 @@ enum Reason {
 	UNKNOWN_COLOR,
 	## The color has a recipe, so a base factory cannot make it.
 	NOT_A_BASE_COLOR,
+	## No factory has the given id.
+	UNKNOWN_FACTORY,
+	## The player has less money than the command costs.
+	NOT_ENOUGH_MONEY,
 }
 
 var ok: bool

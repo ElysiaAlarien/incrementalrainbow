@@ -8,7 +8,7 @@ extends RefCounted
 ## digits, which is enough for an incremental game. See ADR-0005.
 ##
 ## GDScript has no operator overloading, so use the methods: [method add],
-## [method mul], [method compare], and [method format].
+## [method sub], [method mul], [method times_power], [method compare], and [method format].
 
 ## Above this exponent difference, the smaller value has no effect on a sum.
 const _MAX_EXPONENT_GAP := 17
@@ -39,7 +39,9 @@ func _init(p_mantissa: float = 0.0, p_exponent: int = 0) -> void:
 		_exponent = 0
 		return
 	var shift := floori(log(absf(p_mantissa)) / log(10.0))
-	var m := p_mantissa / pow(10.0, shift)
+	# Multiply by an exact power of ten when the shift is negative, because
+	# dividing by an inexact one (0.1) gives 0.9 / 0.1 = 9.000000000000002.
+	var m := p_mantissa * pow(10.0, -shift) if shift < 0 else p_mantissa / pow(10.0, shift)
 	var e := p_exponent + shift
 	# log() can be off by one near powers of ten.
 	if absf(m) >= 10.0:
@@ -81,6 +83,33 @@ func add(other: BigNumber) -> BigNumber:
 	return BigNumber.new(larger._mantissa + smaller._mantissa / pow(10.0, gap), larger._exponent)
 
 
+func sub(other: BigNumber) -> BigNumber:
+	return add(BigNumber.new(-other._mantissa, other._exponent))
+
+
+## This number times [param factor]^[param power], for a positive
+## [param factor] and a [param power] of 0 or more. It does not overflow for
+## large powers.
+func times_power(factor: float, power: int) -> BigNumber:
+	assert(factor > 0.0 and power >= 0, "times_power needs factor > 0 and power >= 0")
+	var log10_value := float(power) * log(factor) / log(10.0)
+	var whole := floori(log10_value)
+	return mul(BigNumber.new(pow(10.0, log10_value - whole), whole))
+
+
+## The smallest whole number that is not less than this number. A value within
+## float error of a whole number rounds to it, so 20.000000000000004 gives 20.
+## Values of 10^15 and up are already whole at this precision.
+func ceiled() -> BigNumber:
+	if _exponent >= 15:
+		return self
+	var value := to_float()
+	var nearest := roundf(value)
+	if absf(value - nearest) <= 1e-9 * maxf(1.0, absf(value)):
+		return BigNumber.from_float(nearest)
+	return BigNumber.from_float(ceilf(value))
+
+
 func mul(other: BigNumber) -> BigNumber:
 	if is_zero() or other.is_zero():
 		return ZERO
@@ -113,6 +142,16 @@ func is_greater_than(other: BigNumber) -> bool:
 
 func is_less_than(other: BigNumber) -> bool:
 	return compare(other) < 0
+
+
+## The value as plain data, [code][mantissa, exponent][/code], for snapshots and saves.
+func to_data() -> Array:
+	return [_mantissa, _exponent]
+
+
+## Reads the plain data that [method to_data] gives.
+static func from_data(data: Array) -> BigNumber:
+	return BigNumber.new(float(data[0]), int(data[1]))
 
 
 ## Returns the value as a float, or +/-INF when it is too large for a float.

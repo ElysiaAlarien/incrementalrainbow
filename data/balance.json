@@ -1,8 +1,13 @@
 {
-	"_about": "PLACEHOLDER balance values. No balance numbers exist yet (spec gap); playtests will set them. Every value in this file is a placeholder until this note is removed.",
+	"_about": "PLACEHOLDER balance values. No balance numbers exist yet (spec gap); playtests will set them. Every value in this file is a placeholder until this note is removed. run.starting_money: money at the start of a run. factory.production_line_cost: cost of a factory's second line; each later line costs production_line_cost_growth times the one before it.",
 	"placeholder": true,
+	"run": {
+		"starting_money": 100
+	},
 	"factory": {
 		"widget_time_ms": 1000,
-		"output_bay_capacity": 10
+		"output_bay_capacity": 10,
+		"production_line_cost": 10,
+		"production_line_cost_growth": 1.15
 	}
 }

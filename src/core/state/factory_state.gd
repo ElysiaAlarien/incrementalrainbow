@@ -4,8 +4,12 @@ extends RefCounted
 
 var id: int
 var color: StringName
+## How many production lines the factory has. Each line makes one widget per
+## [member FactoryBalance.widget_time_ms].
+var size: int = 1
 var output_bay_count: int = 0
-## Time worked on the next widget.
+## Work done on the next widgets, in line-milliseconds: one line working for
+## one millisecond adds 1.
 var progress_ms: int = 0
 
 
@@ -23,21 +27,28 @@ func advance(duration_ms: int, balance: FactoryBalance) -> void:
 	if space <= 0:
 		progress_ms = 0
 		return
-	progress_ms += duration_ms
+	# Compare durations, not work, so that a long tick on a large factory
+	# cannot overflow.
+	var work_to_fill := space * balance.widget_time_ms - progress_ms
 	@warning_ignore("integer_division")
-	var made := progress_ms / balance.widget_time_ms
-	if made >= space:
+	var time_to_fill := (work_to_fill + size - 1) / size
+	if duration_ms >= time_to_fill:
 		output_bay_count = balance.output_bay_capacity
 		progress_ms = 0
-	else:
-		output_bay_count += made
-		progress_ms -= made * balance.widget_time_ms
+		return
+	progress_ms += duration_ms * size
+	@warning_ignore("integer_division")
+	var made := progress_ms / balance.widget_time_ms
+	output_bay_count += made
+	progress_ms -= made * balance.widget_time_ms
 
 
 func to_view(balance: FactoryBalance) -> FactoryView:
 	var view := FactoryView.new()
 	view.id = id
 	view.color = color
+	view.size = size
+	view.next_line_cost = balance.next_line_cost(size)
 	view.output_bay_count = output_bay_count
 	view.output_bay_capacity = balance.output_bay_capacity
 	view.status = FactoryView.Status.OUTPUT_BAY_FULL \
@@ -49,6 +60,7 @@ func to_dict() -> Dictionary:
 	return {
 		"id": id,
 		"color": color,
+		"size": size,
 		"output_bay_count": output_bay_count,
 		"progress_ms": progress_ms,
 	}

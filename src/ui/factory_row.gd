@@ -1,7 +1,10 @@
 class_name FactoryRow
 extends PanelContainer
-## One factory on the screen: its color and symbol, its output bay count, and
-## whether it has stopped.
+## One factory on the screen: its color and symbol, its size, its output bay
+## count, and whether it has stopped. It has a button to add a production line.
+
+## Emits when the player asks to add a production line to this factory.
+signal add_line_requested(factory_id: int)
 
 const STOPPED_COLOR := Color(1.0, 0.55, 0.45)
 const RUNNING_COLOR := Color(0.6, 0.85, 0.6)
@@ -16,6 +19,8 @@ var factory_id: int
 
 var _symbol := ColorSymbol.new()
 var _name_label := Label.new()
+var _size_label := Label.new()
+var _add_line_button := Button.new()
 var _bay_label := Label.new()
 var _bay_bar := ProgressBar.new()
 var _status_label := Label.new()
@@ -36,6 +41,9 @@ func _init(id: int, color: ColorDef) -> void:
 	_name_label.custom_minimum_size.x = 220
 	row.add_child(_name_label)
 
+	_size_label.custom_minimum_size.x = 100
+	row.add_child(_size_label)
+
 	_bay_label.custom_minimum_size.x = 230
 	row.add_child(_bay_label)
 
@@ -49,8 +57,17 @@ func _init(id: int, color: ColorDef) -> void:
 	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_status_label)
 
+	_add_line_button.name = "AddLine"
+	# Wide enough for most costs, so the columns of each row stay aligned.
+	_add_line_button.custom_minimum_size.x = 180
+	_add_line_button.pressed.connect(func() -> void: add_line_requested.emit(factory_id))
+	row.add_child(_add_line_button)
+
 
 func show_state(view: FactoryView) -> void:
+	_size_label.text = "%s %s" % [BigNumber.from_int(view.size).format(),
+		"line" if view.size == 1 else "lines"]
+	_add_line_button.text = "Add line: %s" % view.next_line_cost.format()
 	_bay_label.text = "Output bay: %s / %s" % [
 		BigNumber.from_int(view.output_bay_count).format(),
 		BigNumber.from_int(view.output_bay_capacity).format()]
@@ -74,3 +91,11 @@ func status_text() -> String:
 
 func bay_text() -> String:
 	return _bay_label.text
+
+
+func size_text() -> String:
+	return _size_label.text
+
+
+func add_line_button() -> Button:
+	return _add_line_button

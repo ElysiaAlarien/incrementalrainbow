@@ -23,9 +23,14 @@ var errors: PackedStringArray:
 var factory_balance: FactoryBalance:
 	get:
 		return _factory_balance
+## The money the player has at the start of a run.
+var starting_money: BigNumber:
+	get:
+		return _starting_money
 
 var _errors: PackedStringArray = []
-var _factory_balance := FactoryBalance.new(0, 0)
+var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0)
+var _starting_money := BigNumber.ZERO
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}
 
@@ -118,13 +123,20 @@ func _parse_recipe(color_id: StringName, data: Variant) -> Dictionary[StringName
 
 
 func _parse_balance(data: Dictionary) -> void:
+	var run: Variant = data.get("run", {})
+	if run is Dictionary:
+		_starting_money = BigNumber.from_float(_read_number(run, "starting_money", "run", 0.0))
+	else:
+		_errors.append("balance.json: \"run\" must be an object")
 	var factory: Variant = data.get("factory", {})
 	if not factory is Dictionary:
 		_errors.append("balance.json: \"factory\" must be an object")
 		return
 	_factory_balance = FactoryBalance.new(
 		_read_positive_int(factory, "widget_time_ms", "factory"),
-		_read_positive_int(factory, "output_bay_capacity", "factory"))
+		_read_positive_int(factory, "output_bay_capacity", "factory"),
+		BigNumber.from_float(_read_number(factory, "production_line_cost", "factory", 0.0)),
+		_read_number(factory, "production_line_cost_growth", "factory", 1.0))
 
 
 func _read_positive_int(section: Dictionary, key: String, section_name: String) -> int:
@@ -133,6 +145,16 @@ func _read_positive_int(section: Dictionary, key: String, section_name: String) 
 		_errors.append("%s.%s must be a positive integer" % [section_name, key])
 		return 0
 	return int(value)
+
+
+## Reads a finite number that is at least [param minimum]. On an error, returns
+## [param minimum].
+func _read_number(section: Dictionary, key: String, section_name: String, minimum: float) -> float:
+	var value: Variant = section.get(key)
+	if (value is int or value is float) and is_finite(float(value)) and float(value) >= minimum:
+		return float(value)
+	_errors.append("%s.%s must be a number of at least %s" % [section_name, key, String.num(minimum)])
+	return minimum
 
 
 ## JSON numbers load as floats, so accept a float that holds a whole number.
