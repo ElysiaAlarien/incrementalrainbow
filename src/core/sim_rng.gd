@@ -18,9 +18,9 @@ var _s2: int
 var _s3: int
 
 
-func _init(seed: int = 0) -> void:
-	var lo := seed & _MASK32
-	var hi := (seed >> 32) & _MASK32
+func _init(p_seed: int = 0) -> void:
+	var lo := p_seed & _MASK32
+	var hi := (p_seed >> 32) & _MASK32
 	var x := lo
 	x = _splitmix32_advance(x)
 	_s0 = _splitmix32_mix(x)

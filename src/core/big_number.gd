@@ -137,6 +137,7 @@ func format() -> String:
 		e += 1
 	if e >= _LONG_EXPONENT:
 		return sign_text + "e" + BigNumber.from_int(e)._format_scientific()
+	@warning_ignore("integer_division")
 	var group := e / 3
 	if group <= _SUFFIXES.size():
 		var digits_before_point := e % 3

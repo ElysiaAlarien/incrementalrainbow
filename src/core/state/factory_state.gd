@@ -24,6 +24,7 @@ func advance(duration_ms: int, balance: FactoryBalance) -> void:
 		progress_ms = 0
 		return
 	progress_ms += duration_ms
+	@warning_ignore("integer_division")
 	var made := progress_ms / balance.widget_time_ms
 	if made >= space:
 		output_bay_count = balance.output_bay_capacity

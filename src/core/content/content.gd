@@ -93,14 +93,14 @@ func _parse_colors(data: Dictionary) -> void:
 			display_color = Color.html(display)
 		else:
 			_errors.append("%s: bad display color %s" % [id, display])
-		var color := ColorDef.new(id, color_name, symbol, display_color, _parse_recipe(id, entry.get("recipe", {})))
-		_colors.append(color)
-		_colors_by_id[id] = color
+		var def := ColorDef.new(id, color_name, symbol, display_color, _parse_recipe(id, entry.get("recipe", {})))
+		_colors.append(def)
+		_colors_by_id[id] = def
 	# Inputs can name colors later in the file, so check them after all are read.
-	for color in _colors:
-		for input in color.recipe:
+	for def in _colors:
+		for input in def.recipe:
 			if not _colors_by_id.has(input):
-				_errors.append("%s: recipe input %s is not a color" % [color.id, input])
+				_errors.append("%s: recipe input %s is not a color" % [def.id, input])
 
 
 func _parse_recipe(color_id: StringName, data: Variant) -> Dictionary[StringName, int]:

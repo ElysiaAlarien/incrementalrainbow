@@ -20,11 +20,11 @@ var _next_factory_id: int = 1
 var _factories: Array[FactoryState] = []
 
 
-## [param content] must be valid (no [member Content.errors]).
-func _init(content: Content, seed: int) -> void:
-	assert(content.errors.is_empty(), "Simulation needs valid content: %s" % "; ".join(content.errors))
-	_content = content
-	_rng = SimRng.new(seed)
+## [param p_content] must be valid (no [member Content.errors]).
+func _init(p_content: Content, p_seed: int) -> void:
+	assert(p_content.errors.is_empty(), "Simulation needs valid content: %s" % "; ".join(p_content.errors))
+	_content = p_content
+	_rng = SimRng.new(p_seed)
 
 
 # --- Commands -----------------------------------------------------------------
@@ -40,10 +40,10 @@ func build_factory(color: StringName) -> CommandResult:
 		return CommandResult.failure(CommandResult.Reason.NOT_A_BASE_COLOR,
 			"%s needs inputs, so it cannot have a base factory." % color_def.name)
 
-	var factory := FactoryState.new(_next_factory_id, color)
+	var state := FactoryState.new(_next_factory_id, color)
 	_next_factory_id += 1
-	_factories.append(factory)
-	return CommandResult.success(factory.id)
+	_factories.append(state)
+	return CommandResult.success(state.id)
 
 
 # --- Time ---------------------------------------------------------------------
@@ -54,17 +54,12 @@ func tick(duration_ms: int) -> void:
 	assert(duration_ms >= 0, "tick duration cannot be negative")
 	if duration_ms <= 0:
 		return
-	for factory in _factories:
-		factory.advance(duration_ms, _content.factory_balance)
+	for state in _factories:
+		state.advance(duration_ms, _content.factory_balance)
 	_time_ms += duration_ms
 
 
 # --- Queries ------------------------------------------------------------------
-
-## The content this simulation runs on. Content is read-only.
-func content() -> Content:
-	return _content
-
 
 ## Total simulated time.
 func time_ms() -> int:
@@ -74,17 +69,17 @@ func time_ms() -> int:
 ## The colors that [method build_factory] accepts now, in content order.
 func buildable_factory_colors() -> Array[StringName]:
 	var ids: Array[StringName] = []
-	for color in _content.colors():
-		if color.is_base():
-			ids.append(color.id)
+	for def in _content.colors():
+		if def.is_base():
+			ids.append(def.id)
 	return ids
 
 
 ## All factories, in build order.
 func factories() -> Array[FactoryView]:
 	var views: Array[FactoryView] = []
-	for factory in _factories:
-		views.append(factory.to_view(_content.factory_balance))
+	for state in _factories:
+		views.append(state.to_view(_content.factory_balance))
 	return views
 
 

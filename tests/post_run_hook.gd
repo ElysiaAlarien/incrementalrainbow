@@ -14,8 +14,13 @@ func run() -> void:
 	for script in gut.get_test_collector().scripts:
 		collected[script.path] = true
 
+	# With -gselect, GUT loads only the files whose path contains the selected
+	# name (see GutMain.add_directory). GUT has no public getter for it.
+	var selected: Variant = gut.get("_script_name")
 	var problems: PackedStringArray = []
 	for path in _find_test_files(TEST_ROOT):
+		if selected is String and not selected.is_empty() and path.findn(selected) == -1:
+			continue
 		if not collected.has(path):
 			problems.append("Test script was not loaded (parse error?): %s" % path)
 	if gut.get_test_count() == 0:

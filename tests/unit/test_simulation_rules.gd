@@ -33,8 +33,8 @@ func test_a_color_with_a_recipe_cannot_be_built_as_a_base_factory() -> void:
 	assert_false(sim.buildable_factory_colors().has(&"green"))
 
 
-func _play(seed: int) -> Simulation:
-	var sim := Simulation.new(ContentFixture.make(700, 6), seed)
+func _play(rng_seed: int) -> Simulation:
+	var sim := Simulation.new(ContentFixture.make(700, 6), rng_seed)
 	sim.build_factory(&"red")
 	sim.tick(1234)
 	sim.build_factory(&"blue")
