@@ -1,8 +1,8 @@
 class_name LoadResult
 extends RefCounted
-## The result of [method SaveCodec.decode]: a new [Simulation], or the reason
-## the save cannot load. A failed load makes no simulation, so it cannot change
-## the current game.
+## The result of [method SaveCodec.decode] and [method ExportCode.decode]: a
+## new [Simulation], or the reason the save cannot load. A failed load makes no
+## simulation, so it cannot change the current game.
 
 enum Reason {
 	NONE,
@@ -17,6 +17,12 @@ enum Reason {
 	## The core state in the save is missing a value or has a value that is
 	## not allowed.
 	DAMAGED_STATE,
+	## The text is not an export code, or the code is damaged in a way that
+	## its checksum does not find.
+	NOT_A_CODE,
+	## The checksum of the export code does not match, for example a code that
+	## was cut off or has a typo.
+	BAD_CHECKSUM,
 }
 
 var ok: bool
