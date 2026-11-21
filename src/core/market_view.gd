@@ -37,6 +37,14 @@ var period_ends_in_ms: int
 var population_investment_cost: BigNumber
 ## The money that the next community investment for income costs.
 var income_investment_cost: BigNumber
+## How hard the market is to reach.
+var remoteness: int
+## The id of the lowest transport tier that reaches the market, or &"" when
+## no tier reaches it.
+var needed_tier: StringName
+## True when the player's transport tier reaches the market, so that a new
+## link can go to it.
+var is_open: bool
 ## Color id to the demand of that color now. 1 is normal demand. Drift moves it
 ## up and down, and the player's recent sales of the color here lower it.
 var demands: Dictionary[StringName, float] = {}

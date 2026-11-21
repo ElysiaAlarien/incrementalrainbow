@@ -24,21 +24,28 @@ var start_population: int:
 var start_income: int:
 	get:
 		return _start_income
+## How hard the market is to reach. The market is open only when the
+## player's transport tier reaches it (see [method TransportTier.reaches]).
+var remoteness: int:
+	get:
+		return _remoteness
 
 var _id: StringName
 var _name: String
 var _prices: Dictionary[StringName, BigNumber]
 var _start_population: int
 var _start_income: int
+var _remoteness: int
 
 
 func _init(p_id: StringName, p_name: String, p_prices: Dictionary[StringName, BigNumber],
-		p_start_population: int, p_start_income: int) -> void:
+		p_start_population: int, p_start_income: int, p_remoteness: int) -> void:
 	_id = p_id
 	_name = p_name
 	_prices = p_prices.duplicate()
 	_start_population = p_start_population
 	_start_income = p_start_income
+	_remoteness = p_remoteness
 
 
 ## The base price of one widget of [param color], or null for a color that is

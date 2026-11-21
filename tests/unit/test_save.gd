@@ -56,15 +56,26 @@ func _rich_game() -> Simulation:
 	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.POPULATION).ok)
 	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.INCOME).ok)
 	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.INCOME).ok)
+	# Trucks, with link 1 (to millbrook) and link 5 (to the warehouse) moved
+	# onto them while link 1 has shipments in transit, and a new link to a
+	# market that only trucks reach. Link 2 keeps its cart.
+	assert_true(sim.buy_transport_tier().ok)
+	assert_true(sim.upgrade_vehicle(1).ok)
+	assert_true(sim.upgrade_vehicle(5).ok)
+	assert_true(sim.make_link(1, &"farpoint").ok)
 	return sim
 
 
-## The content of the rich game, with the mixed colors, drift, saturation, and
-## demand events. An event starts each 5 to 10 s, so a save of an old version
-## that a test ticks for less than 5 s after its load has no event yet.
+## The content of the rich game, with the mixed colors, drift, saturation,
+## demand events, a second market that only trucks reach, and money for all of
+## it. An event starts each 5 to 10 s, so a save of an old version that a test
+## ticks for less than 5 s after its load has no event yet.
 func _content() -> Content:
-	return ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data(),
-		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides()), null,
+	var colors := ContentFixture.mixed_colors_data()
+	return ContentFixture.from_data(ContentFixture.data(colors,
+		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides().merged({"starting_money": 1000})),
+		ContentFixture.markets_data(ContentFixture.PRICE, colors, ["millbrook", "farpoint"],
+			ContentFixture.POPULATION, ContentFixture.INCOME, [0, 2]),
 		ContentFixture.transport_data(), ContentFixture.demand_events_data()))
 
 
@@ -101,6 +112,10 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_gt(warehouse.inflow_per_minute, 0, "widgets started to the warehouse")
 	assert_eq(sim.link(5).destination_kind, LinkView.Destination.WAREHOUSE)
 	assert_eq(sim.link(6).source_kind, LinkView.Source.WAREHOUSE)
+	assert_eq(sim.transport_tier().id, &"truck")
+	assert_eq([sim.link(1).vehicle, sim.link(2).vehicle, sim.link(5).vehicle, sim.link(7).vehicle],
+		[&"truck", &"cart", &"truck", &"truck"])
+	assert_eq(sim.link(7).destination_market_id, &"farpoint")
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -123,7 +138,7 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.status, want.status)
 		assert_eq(got.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]),
 			want.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]))
-	assert_eq(loaded.links().size(), 6)
+	assert_eq(loaded.links().size(), 7)
 	var want_warehouse := sim.warehouse(1)
 	var got_warehouse := loaded.warehouse(1)
 	assert_eq([got_warehouse.color, got_warehouse.count, got_warehouse.in_transit,
@@ -133,6 +148,12 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_eq([loaded.link(6).source_kind, loaded.link(6).source_warehouse_id], [LinkView.Source.WAREHOUSE, 1])
 	assert_eq([loaded.link(5).destination_kind, loaded.link(5).destination_warehouse_id],
 		[LinkView.Destination.WAREHOUSE, 1])
+	assert_eq(loaded.transport_tier().id, &"truck")
+	for view in sim.links():
+		var got := loaded.link(view.id)
+		assert_eq([got.vehicle, got.transit_time_ms], [view.vehicle, view.transit_time_ms], "link %d" % view.id)
+		assert_true(got.shipment_cost.equals(view.shipment_cost))
+	assert_true(loaded.market(&"farpoint").is_open, "trucks reach farpoint")
 	assert_eq([loaded.link(3).destination_kind, loaded.link(3).destination_factory_id],
 		[LinkView.Destination.FACTORY, 4])
 	var shipments := loaded.link(1).shipments_in_transit
@@ -367,8 +388,8 @@ func test_two_links_on_the_same_factory_and_market_fail() -> void:
 
 
 func test_a_link_id_that_is_not_below_the_next_id_fails() -> void:
-	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 7,
-		"state.links[0].id: must be less than next_link_id (7)")
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 8,
+		"state.links[0].id: must be less than next_link_id (8)")
 
 
 func test_two_shipments_with_the_same_id_fail() -> void:
@@ -517,7 +538,7 @@ func test_an_unknown_market_fails() -> void:
 
 func test_a_market_twice_fails() -> void:
 	_assert_market_change_fails(func(markets: Array) -> void: markets.append(markets[0].duplicate()),
-		"state.markets[1].id: market millbrook is in the save more than once")
+		"state.markets[2].id: market millbrook is in the save more than once")
 
 
 func test_capacity_used_over_the_capacity_fails() -> void:
@@ -629,7 +650,7 @@ func test_two_links_from_one_warehouse_to_one_market_fail() -> void:
 			copy.shipments = []
 			state.next_link_id += 1
 			state.links.append(copy),
-		"state.links[6].destination_market_id: warehouse #1 has more than one link to millbrook")
+		"state.links[7].destination_market_id: warehouse #1 has more than one link to millbrook")
 
 
 ## [param change] gets the link from the yellow factory to the green factory.
@@ -694,6 +715,20 @@ func test_an_input_bay_over_its_capacity_fails() -> void:
 func test_an_input_bay_that_would_overflow_when_its_shipments_arrive_fails() -> void:
 	_assert_input_bay_change_fails(func(bays: Array) -> void: bays[1].count = ContentFixture.INPUT_BAY_CAPACITY,
 		"state.factories[3].input_bays: 16 blue widgets are in the bay and on the way, but the bay holds 10")
+
+
+func test_an_unknown_transport_tier_fails() -> void:
+	var data := _save_data()
+	data.state.transport_tier = "rocket"
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.transport_tier: there is no transport tier \"rocket\"")
+
+
+func test_a_vehicle_above_the_transport_tier_fails() -> void:
+	var data := _save_data()
+	data.state.transport_tier = "cart"
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.links[0].vehicle: truck is a higher tier than the transport tier (cart)")
 
 
 func test_a_random_number_state_of_all_zeros_fails() -> void:
@@ -1067,3 +1102,35 @@ func test_a_version_6_save_has_no_demand_events_after_migration_and_schedules_on
 	assert_eq(sim.snapshot().next_demand_event_ms, -1, "the migration does not draw a start")
 	sim.tick(ContentFixture.EVENT_INTERVAL_MAX_MS + 1)
 	assert_gt(sim.demand_events().size(), 0, "the first tick after the load set the next start")
+
+
+func test_a_version_9_save_has_carts_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v9.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.transport_tier().id, &"cart")
+	assert_eq(sim.links().map(func(v: LinkView) -> StringName: return v.vehicle), [&"cart", &"cart"])
+	assert_true(sim.buy_transport_tier().ok, "the next tier is trucks")
+	assert_eq(sim.transport_tier().id, &"truck")
+
+
+## A save of version 10 (#11: transport tiers and vehicles), as the game wrote
+## it: trucks, with link 1 (to the warehouse) still on a cart and link 2 (from
+## the warehouse to millbrook) on a truck.
+func test_a_version_10_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v10.json")
+
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.transport_tier().id, &"truck")
+	assert_eq([sim.link(1).vehicle, sim.link(2).vehicle], [&"cart", &"truck"])
+	assert_eq(sim.link(2).source_kind, LinkView.Source.WAREHOUSE)
+	assert_eq(sim.link(2).transit_time_ms, ContentFixture.TRUCK_TRANSIT_TIME_MS)
+	assert_eq(sim.money().format(), "17")
+	assert_eq(sim.upgrade_vehicle(2).reason, CommandResult.Reason.VEHICLE_IS_CURRENT)
+	assert_true(sim.upgrade_vehicle(1).ok)
+	assert_eq(sim.link(1).vehicle, &"truck")

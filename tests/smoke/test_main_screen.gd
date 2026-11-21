@@ -767,3 +767,94 @@ func test_a_link_from_a_warehouse_to_a_warehouse_shows_why_it_cannot_be_made() -
 	assert_true(message.visible)
 	assert_string_contains(message.text, "cannot link to another warehouse")
 	assert_eq(sim.links().size(), 0)
+
+
+# --- Transport tiers -----------------------------------------------------------
+
+## Opens the screen on a save of a game with [param money] and a red factory
+## linked to millbrook by cart.
+func _main_with_money(money: int) -> Control:
+	var game := Simulation.new(Content.load_dir(Content.DEFAULT_DIR), 5)
+	game.build_factory(&"red")
+	game.make_link(1, &"millbrook")
+	var save: Dictionary = JSON.parse_string(SaveCodec.encode(game))
+	save.state.money = BigNumber.from_int(money).to_data()
+	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	file.store_string(JSON.stringify(save))
+	file.close()
+	return await _open_main()
+
+
+func test_the_screen_shows_each_market_remoteness_and_the_tier_it_needs() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+
+	for row: MarketRow in main.find_children("Market_*", "MarketRow", true, false):
+		var view := sim.market(row.market_id)
+		var text := row.reach_label_text()
+		assert_string_contains(text, "Remoteness %d" % view.remoteness)
+		assert_string_contains(text, "%s %s" % ["open to" if view.is_open else "needs",
+			content.transport_tier(view.needed_tier).plural_name.to_lower()])
+	assert_eq((main.find_child("Market_millbrook", true, false) as MarketRow).reach_label_text(),
+		"Remoteness 0, open to carts")
+	var destinations: OptionButton = main.find_child("NewLinkDestination", true, false)
+	var far := range(destinations.item_count).filter(func(i: int) -> bool:
+		return destinations.get_item_metadata(i) == [&"market", &"brightwater"])
+	assert_eq(destinations.get_item_text(far[0]), "Brightwater (needs trucks)")
+	assert_true(destinations.is_item_disabled(far[0]), "a closed market cannot be picked")
+
+
+func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
+	var main := await _main_with_money(10_000)
+	var sim: Simulation = main.simulation()
+	var button: Button = main.find_child("BuyTransportTier", true, false)
+	var label: Label = main.find_child("TransportLabel", true, false)
+	assert_eq(label.text, "Transport tier: Cart, reaches remoteness 0")
+	assert_eq(button.text, "Buy trucks (%s)" % sim.next_transport_tier().price.format())
+
+	button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(sim.transport_tier().id, &"truck")
+	assert_eq(label.text, "Transport tier: Truck, reaches remoteness 2")
+	var brightwater: MarketRow = main.find_child("Market_brightwater", true, false)
+	assert_eq(brightwater.reach_label_text(), "Remoteness 2, open to trucks")
+	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
+	assert_string_contains(row.text(), "Vehicle: Cart")
+	var truck := sim.transport_tier()
+	assert_eq(row.upgrade_text(), "Trucks are ready for this link: transit %s, cost %s" % [
+		LinkRow.format_seconds(truck.transit_time_ms), truck.shipment_cost.format()])
+	assert_true(row.upgrade_button().is_visible_in_tree())
+	assert_eq(row.upgrade_button().text, "Upgrade (%s)" % truck.vehicle_upgrade_cost.format())
+	assert_lte(row.get_global_rect().end.x, main.get_viewport_rect().size.x, "the link row fits the screen")
+
+
+func test_upgrading_a_vehicle_shows_the_new_vehicle() -> void:
+	var main := await _main_with_money(10_000)
+	var sim: Simulation = main.simulation()
+	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
+	assert_false(row.upgrade_button().is_visible_in_tree(), "carts are the newest vehicle at the start")
+	assert_eq(row.upgrade_text(), "")
+	main.find_child("BuyTransportTier", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	row.upgrade_button().pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(sim.link(row.link_id).vehicle, &"truck")
+	assert_string_contains(row.text(), "Vehicle: Truck")
+	assert_string_contains(row.text(), "Transit: %s" % LinkRow.format_seconds(sim.link(row.link_id).transit_time_ms))
+	assert_false(row.upgrade_button().is_visible_in_tree(), "the link has the newest vehicle")
+
+
+func test_buying_a_transport_tier_with_too_little_money_shows_the_reason() -> void:
+	var main := await _open_main()
+
+	main.find_child("BuyTransportTier", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "The truck tier costs")

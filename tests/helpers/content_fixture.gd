@@ -25,6 +25,16 @@ const POPULATION_STEP := 100
 const INCOME_STEP := 50
 const WAREHOUSE_COST := 30
 const WAREHOUSE_SPACE := 20
+## The tiers after carts in [method transport_data]: trucks reach remoteness
+## 2 and trains reach 4. Carts reach only remoteness 0.
+const TRUCK_PRICE := 30
+const TRUCK_UPGRADE_COST := 5
+const TRUCK_TRANSIT_TIME_MS := 2000
+const TRUCK_SHIPMENT_COST := 3
+const TRAIN_PRICE := 60
+const TRAIN_UPGRADE_COST := 10
+const TRAIN_TRANSIT_TIME_MS := 1000
+const TRAIN_SHIPMENT_COST := 4
 
 
 static func colors_data() -> Dictionary:
@@ -117,25 +127,40 @@ static func demand_overrides() -> Dictionary:
 
 ## Markets, one for each of [param ids] (by default only "millbrook"), that
 ## each pay a base price of [param price] for each color in [param colors], and
-## each start with [param population] and [param income].
+## each start with [param population] and [param income]. Market [code]i[/code]
+## has the remoteness [code]remoteness[i][/code], or 0.
 static func markets_data(price: float = PRICE, colors: Dictionary = colors_data(),
 		ids: PackedStringArray = ["millbrook"], population: int = POPULATION,
-		income: int = INCOME) -> Dictionary:
+		income: int = INCOME, remoteness: PackedInt32Array = []) -> Dictionary:
 	var prices := {}
 	for color: Dictionary in colors.colors:
 		prices[color.id] = price
 	var markets := []
-	for id in ids:
-		markets.append({"id": id, "name": id.capitalize(), "population": population,
-			"income": income, "prices": prices})
+	for i in ids.size():
+		markets.append({"id": ids[i], "name": ids[i].capitalize(), "population": population,
+			"income": income, "prices": prices, "remoteness": remoteness[i] if i < remoteness.size() else 0})
 	return {"markets": markets}
 
 
-## One transport tier, carts, and automatic transport for [param automatic_cost].
+## Three markets for transport tier tests: millbrook (remoteness 0, carts reach
+## it), farpoint (2, trucks), and lastport (4, trains).
+static func remote_markets_data(colors: Dictionary = colors_data()) -> Dictionary:
+	return markets_data(PRICE, colors, ["millbrook", "farpoint", "lastport"], POPULATION, INCOME, [0, 2, 4])
+
+
+## Three transport tiers: carts (reach remoteness 0), with [param transit_time_ms]
+## and [param shipment_cost]; then trucks (reach 2) and trains (reach 4), with
+## the TRUCK_ and TRAIN_ constants. Automatic transport costs
+## [param automatic_cost].
 static func transport_data(transit_time_ms: int = TRANSIT_TIME_MS,
 		shipment_cost: float = SHIPMENT_COST, automatic_cost: float = AUTOMATIC_COST) -> Dictionary:
 	return {"automatic_transport_cost": automatic_cost, "tiers": [
-		{"id": "cart", "name": "Cart", "transit_time_ms": transit_time_ms, "shipment_cost": shipment_cost},
+		{"id": "cart", "name": "Cart", "plural_name": "Carts", "max_remoteness": 0, "transit_time_ms": transit_time_ms,
+			"shipment_cost": shipment_cost},
+		{"id": "truck", "name": "Truck", "plural_name": "Trucks", "max_remoteness": 2, "transit_time_ms": TRUCK_TRANSIT_TIME_MS,
+			"shipment_cost": TRUCK_SHIPMENT_COST, "price": TRUCK_PRICE, "vehicle_upgrade_cost": TRUCK_UPGRADE_COST},
+		{"id": "train", "name": "Train", "plural_name": "Trains", "max_remoteness": 4, "transit_time_ms": TRAIN_TRANSIT_TIME_MS,
+			"shipment_cost": TRAIN_SHIPMENT_COST, "price": TRAIN_PRICE, "vehicle_upgrade_cost": TRAIN_UPGRADE_COST},
 	]}
 
 

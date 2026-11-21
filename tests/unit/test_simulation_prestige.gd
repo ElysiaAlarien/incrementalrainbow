@@ -25,6 +25,7 @@ const PREVIEW_NAME_OF_KEY := {
 	"markets": "Community investments and capacity used in each market",
 	"next_warehouse_id": "Warehouses and the widgets in them",
 	"warehouses": "Warehouses and the widgets in them",
+	"transport_tier": "Transport tier",
 }
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.
@@ -40,8 +41,8 @@ func _content() -> Content:
 
 
 ## A run with factories, links to a market and to a mixed factory, shipments
-## on their way, automatic transport, sales that saturate a color, and two
-## prisms.
+## on their way, automatic transport, sales that saturate a color, two
+## prisms, community investments, and trucks with link 1 on a truck.
 func _played_run() -> Simulation:
 	var sim := Simulation.new(_content(), SEED)
 	assert_true(sim.build_factory(&"red").ok)
@@ -58,6 +59,8 @@ func _played_run() -> Simulation:
 	assert_true(sim.buy_prism().ok)
 	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.POPULATION).ok)
 	assert_true(sim.make_community_investment(&"millbrook", MarketView.Investment.INCOME).ok)
+	assert_true(sim.buy_transport_tier().ok)
+	assert_true(sim.upgrade_vehicle(1).ok)
 	return sim
 
 
@@ -262,7 +265,7 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 	assert_eq(view.clears, PackedStringArray(["Money", "Factories",
 		"Links, with their vehicles and shipments", "Demand and saturation",
 		"Community investments and capacity used in each market",
-		"Warehouses and the widgets in them"]))
+		"Warehouses and the widgets in them", "Transport tier"]))
 
 
 func test_the_preview_with_no_prisms_gives_the_reason() -> void:

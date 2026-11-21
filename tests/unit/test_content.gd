@@ -127,6 +127,7 @@ func test_reads_the_economy_values() -> void:
 
 func test_reads_markets_with_a_price_for_each_color() -> void:
 	var markets := {"markets": [{"id": "millbrook", "name": "Millbrook", "population": 500, "income": 80,
+		"remoteness": 0,
 		"prices": {"red": 4, "yellow": 2.5, "blue": 6}}]}
 	var content := Content.from_data(ContentFixture.data(
 		ContentFixture.colors_data(), ContentFixture.balance_data(), markets))
@@ -134,6 +135,7 @@ func test_reads_markets_with_a_price_for_each_color() -> void:
 	assert_eq(content.markets().size(), 1)
 	var market := content.market(&"millbrook")
 	assert_eq(market.name, "Millbrook")
+	assert_eq(market.remoteness, 0)
 	assert_true(market.price(&"red").equals(BigNumber.from_int(4)))
 	assert_true(market.price(&"yellow").equals(BigNumber.from_float(2.5)))
 	assert_eq([market.start_population, market.start_income], [500, 80])
@@ -194,8 +196,9 @@ func test_a_market_balance_with_no_capacity_per_person_is_an_error() -> void:
 
 func test_reads_transport_tiers_in_order() -> void:
 	var transport := {"automatic_transport_cost": 12.5, "tiers": [
-		{"id": "cart", "name": "Cart", "transit_time_ms": 8000, "shipment_cost": 3},
-		{"id": "truck", "name": "Truck", "transit_time_ms": 2000, "shipment_cost": 1.5},
+		{"id": "cart", "name": "Cart", "plural_name": "Carts", "max_remoteness": 0, "transit_time_ms": 8000, "shipment_cost": 3},
+		{"id": "truck", "name": "Truck", "plural_name": "Trucks", "max_remoteness": 3, "transit_time_ms": 2000, "shipment_cost": 1.5,
+			"price": 400, "vehicle_upgrade_cost": 25},
 	]}
 	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
 		ContentFixture.balance_data(), ContentFixture.markets_data(), transport))
@@ -206,14 +209,38 @@ func test_reads_transport_tiers_in_order() -> void:
 	assert_eq(tiers[0].name, "Cart")
 	assert_eq(tiers[0].transit_time_ms, 8000)
 	assert_true(tiers[0].shipment_cost.equals(BigNumber.from_int(3)))
-	assert_eq(content.transport_tier(&"truck").transit_time_ms, 2000)
+	assert_eq([tiers[0].rank, tiers[0].max_remoteness], [0, 0])
+	assert_true(tiers[0].price.equals(BigNumber.ZERO), "a run starts with the first tier")
+	var truck := content.transport_tier(&"truck")
+	assert_eq(truck.transit_time_ms, 2000)
+	assert_eq(truck.plural_name, "Trucks")
+	assert_eq([truck.rank, truck.max_remoteness], [1, 3])
+	assert_true(truck.price.equals(BigNumber.from_int(400)))
+	assert_true(truck.vehicle_upgrade_cost.equals(BigNumber.from_int(25)))
 	assert_eq(content.automatic_transport_cost.format(), "12.5")
 
 
 func test_the_game_data_has_a_first_market_and_carts() -> void:
 	var content := Content.load_dir(Content.DEFAULT_DIR)
-	assert_eq(content.markets().size(), 1, "a run starts with one market")
-	assert_eq(content.transport_tiers()[0].id, &"cart")
+	var tiers := content.transport_tiers()
+	assert_eq(tiers[0].id, &"cart")
+	var open := content.markets().filter(func(m: MarketDef) -> bool: return tiers[0].reaches(m.remoteness))
+	assert_eq(open.map(func(m: MarketDef) -> StringName: return m.id), [&"millbrook"],
+		"a run starts with one market")
+
+
+func test_the_game_data_has_10_to_15_hand_made_markets_that_tiers_reach() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	assert_eq(content.errors, PackedStringArray())
+	assert_between(content.markets().size(), 10, 15)
+	assert_eq(content.transport_tiers().map(func(t: TransportTier) -> StringName: return t.id),
+		[&"cart", &"truck", &"train", &"ship", &"plane"])
+	# Each tier after carts opens at least one more market.
+	var tiers := content.transport_tiers()
+	for i in range(1, tiers.size()):
+		var opened := content.markets().filter(func(m: MarketDef) -> bool:
+			return content.tier_for_remoteness(m.remoteness) == tiers[i])
+		assert_gt(opened.size(), 0, "%s opens a market" % tiers[i].id)
 
 
 func test_the_game_data_has_a_recipe_for_each_mixed_color() -> void:
@@ -270,7 +297,7 @@ func test_reports_bad_data() -> void:
 		{"id": "millbrook", "name": "Again", "population": 10, "income": 10, "prices": {}},
 	]}
 	var transport := {"automatic_transport_cost": -3,
-		"tiers": [{"id": "cart", "name": "", "transit_time_ms": 0, "shipment_cost": -1}]}
+		"tiers": [{"id": "cart", "name": "", "transit_time_ms": 0, "shipment_cost": -1}, {"id": "jet", "name": "Jet"}]}
 	var content := Content.from_data(ContentFixture.data(colors,
 		{"factory": {"widget_time_ms": 0, "input_bay_capacity": 2}, "run": {"starting_money": -5}}, markets, transport))
 	var text := "\n".join(content.errors)
@@ -290,8 +317,65 @@ func test_reports_bad_data() -> void:
 			"millbrook: no price for teal", "duplicate market id millbrook",
 			"cart: name is missing", "cart.transit_time_ms must be a positive integer",
 			"cart.shipment_cost must be a number of at least 0",
+			"millbrook.remoteness must be a whole number of at least 0",
+			"cart.max_remoteness must be a whole number of at least 0",
+			"jet.price must be a number of at least 0",
+			"jet: plural_name is missing",
+			"jet.vehicle_upgrade_cost must be a number of at least 0",
 			"transport.automatic_transport_cost must be a number of at least 0"]:
 		assert_string_contains(text, expected)
+
+
+## Transport data with carts that reach [param cart_reach], then trucks that
+## reach [param truck_reach]. [param cart_extra] adds keys to the carts.
+func _two_tiers(cart_reach: int, truck_reach: int, cart_extra: Dictionary = {}) -> Dictionary:
+	var cart := {"id": "cart", "name": "Cart", "plural_name": "Carts", "max_remoteness": cart_reach, "transit_time_ms": 1000,
+		"shipment_cost": 1}
+	cart.merge(cart_extra)
+	return {"automatic_transport_cost": 1, "tiers": [cart,
+		{"id": "truck", "name": "Truck", "plural_name": "Trucks", "max_remoteness": truck_reach, "transit_time_ms": 500,
+			"shipment_cost": 2, "price": 10, "vehicle_upgrade_cost": 1}]}
+
+
+func _transport_errors(markets: Dictionary, transport: Dictionary) -> String:
+	return "\n".join(Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(), markets, transport)).errors)
+
+
+func test_reports_a_tier_that_reaches_less_than_the_tier_before_it() -> void:
+	assert_string_contains(_transport_errors(ContentFixture.markets_data(), _two_tiers(3, 2)),
+		"truck: max_remoteness cannot be less than that of cart, the tier before it")
+
+
+func test_reports_a_price_on_the_first_tier() -> void:
+	var text := _transport_errors(ContentFixture.markets_data(),
+		_two_tiers(0, 2, {"price": 5, "vehicle_upgrade_cost": 1}))
+	assert_string_contains(text, "cart: the first tier cannot have a price")
+	assert_string_contains(text, "cart: the first tier cannot have a vehicle_upgrade_cost")
+
+
+func test_reports_a_market_that_no_tier_reaches() -> void:
+	var markets := ContentFixture.markets_data(ContentFixture.PRICE, ContentFixture.colors_data(),
+		["millbrook", "atlantis"], ContentFixture.POPULATION, ContentFixture.INCOME, [0, 9])
+	assert_string_contains(_transport_errors(markets, _two_tiers(0, 2)),
+		"atlantis: remoteness 9 is more than any transport tier reaches (truck reaches 2)")
+
+
+func test_reports_when_the_first_tier_reaches_no_market() -> void:
+	var markets := ContentFixture.markets_data(ContentFixture.PRICE, ContentFixture.colors_data(),
+		["farpoint"], ContentFixture.POPULATION, ContentFixture.INCOME, [1])
+	assert_string_contains(_transport_errors(markets, _two_tiers(0, 2)),
+		"the first transport tier (cart) reaches no market")
+
+
+func test_the_lowest_tier_that_reaches_a_remoteness() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(), ContentFixture.remote_markets_data()))
+	assert_eq(content.tier_for_remoteness(0).id, &"cart")
+	assert_eq(content.tier_for_remoteness(1).id, &"truck")
+	assert_eq(content.tier_for_remoteness(2).id, &"truck")
+	assert_eq(content.tier_for_remoteness(4).id, &"train")
+	assert_null(content.tier_for_remoteness(5))
 
 
 func test_reports_empty_market_and_transport_lists() -> void:
