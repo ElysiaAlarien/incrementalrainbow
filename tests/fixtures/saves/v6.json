@@ -1,0 +1,113 @@
+{
+	"format": "incremental-rainbow-save",
+	"state": {
+		"drift_key": 3088717543,
+		"factories": [
+			{
+				"color": "yellow",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			},
+			{
+				"color": "blue",
+				"id": 2,
+				"input_bays": [],
+				"output_bay_count": 1,
+				"progress_ms": 300,
+				"size": 1
+			},
+			{
+				"color": "green",
+				"id": 3,
+				"input_bays": [
+					{
+						"color": "yellow",
+						"count": 3
+					},
+					{
+						"color": "blue",
+						"count": 0
+					}
+				],
+				"output_bay_count": 0,
+				"progress_ms": 0,
+				"size": 1
+			}
+		],
+		"links": [
+			{
+				"automatic_status": "manual",
+				"color": "yellow",
+				"destination_factory_id": 3,
+				"destination_kind": "factory",
+				"id": 1,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 3,
+						"started_at_ms": 2100
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 1,
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "blue",
+				"destination_factory_id": 3,
+				"destination_kind": "factory",
+				"id": 2,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 6,
+						"started_at_ms": 7100
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 12100,
+						"count": 6,
+						"id": 2
+					}
+				],
+				"source_factory_id": 2,
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "green",
+				"destination_kind": "market",
+				"destination_market_id": "millbrook",
+				"id": 3,
+				"next_automatic_ms": 0,
+				"recent_starts": [],
+				"shipments": [],
+				"source_factory_id": 3,
+				"vehicle": "cart"
+			}
+		],
+		"money": [
+			6.6,
+			1
+		],
+		"next_factory_id": 4,
+		"next_link_id": 4,
+		"next_shipment_id": 3,
+		"prisms": 0,
+		"prisms_bought": 0,
+		"rng": [
+			2564227571,
+			2159894252,
+			2794779794,
+			3069772714
+		],
+		"saturation": [],
+		"time_ms": 8100
+	},
+	"version": 6
+}

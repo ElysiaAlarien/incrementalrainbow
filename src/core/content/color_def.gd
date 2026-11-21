@@ -2,6 +2,20 @@ class_name ColorDef
 extends RefCounted
 ## One color from the content data. Read-only.
 
+## What makes the color available in a run.
+enum Unlock {
+	## Available from the start of each run.
+	START,
+	## Research in a run unlocks it.
+	RESEARCH,
+}
+
+## The [enum Unlock] value for each name in colors.json.
+const UNLOCK_NAMES: Dictionary[String, Unlock] = {
+	"start": Unlock.START,
+	"research": Unlock.RESEARCH,
+}
+
 var id: StringName:
 	get:
 		return _id
@@ -22,20 +36,29 @@ var recipe: Dictionary[StringName, int]:
 	get:
 		return _recipe.duplicate()
 
+## What makes the color available in a run. The simulation decides whether it
+## is available now.
+var unlock: Unlock:
+	get:
+		return _unlock
+
 var _id: StringName
 var _name: String
 var _symbol: StringName
 var _display_color: Color
 var _recipe: Dictionary[StringName, int]
+var _unlock: Unlock
 
 
 func _init(p_id: StringName, p_name: String, p_symbol: StringName,
-		p_display_color: Color, p_recipe: Dictionary[StringName, int]) -> void:
+		p_display_color: Color, p_recipe: Dictionary[StringName, int],
+		p_unlock: Unlock = Unlock.START) -> void:
 	_id = p_id
 	_name = p_name
 	_symbol = p_symbol
 	_display_color = p_display_color
 	_recipe = p_recipe.duplicate()
+	_unlock = p_unlock
 
 
 func is_base() -> bool:

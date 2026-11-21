@@ -1,6 +1,7 @@
 extends Control
-## The first screen: money, prisms, base factories with their production
-## lines and output bays, links from factories to markets with manual
+## The first screen: money, prisms, each color with its recipe and a button to
+## build it, factories with their production lines, output bays, and input
+## bays, links from factories to markets and to mixed factories, with manual
 ## shipments, automatic transport, and throughput, and markets with the price
 ## and demand of each color.
 ##
@@ -15,11 +16,11 @@ const AUTOSAVE_INTERVAL_S := 30.0
 ## Where the game keeps its save. Set it before the screen enters the tree.
 var save_path := SaveFile.DEFAULT_PATH
 
-@onready var _build_buttons: HBoxContainer = %BuildButtons
+@onready var _color_cards: HFlowContainer = %ColorCards
 @onready var _factory_list: VBoxContainer = %FactoryList
 @onready var _empty_label: Label = %EmptyLabel
 @onready var _new_link_factory: OptionButton = %NewLinkFactory
-@onready var _new_link_market: OptionButton = %NewLinkMarket
+@onready var _new_link_destination: OptionButton = %NewLinkDestination
 @onready var _make_link_button: Button = %MakeLink
 @onready var _link_list: VBoxContainer = %LinkList
 @onready var _links_empty_label: Label = %LinksEmptyLabel
@@ -39,8 +40,11 @@ var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
-var _build_button_by_color: Dictionary[StringName, Button] = {}
 var _export_code_dialog: ExportCodeDialog
+var _cards: Array[ColorCard] = []
+## The metadata of each item in [member _new_link_destination], in order, as
+## from [method _link_destination_keys].
+var _destination_keys: Array = []
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
 
@@ -59,7 +63,8 @@ func _ready() -> void:
 	autosave.timeout.connect(write_save)
 	add_child(autosave)
 	autosave.start()
-	_add_build_buttons()
+	for color in _content.colors():
+		_add_color_card(color)
 	_make_link_button.pressed.connect(_on_make_link_pressed)
 	_export_code_dialog = ExportCodeDialog.new(_content)
 	_export_code_dialog.import_confirmed.connect(_replace_game)
@@ -132,30 +137,18 @@ func _replace_game(simulation: Simulation) -> void:
 	_rows.clear()
 	_link_rows.clear()
 	_new_link_factory.clear()
-	_new_link_market.clear()
-	for button in _build_button_by_color.values():
-		_build_buttons.remove_child(button)
-		button.queue_free()
-	_build_button_by_color.clear()
-	_add_build_buttons()
+	_new_link_destination.clear()
+	_destination_keys = []
 	_show_message("")
 	write_save()
 	_refresh()
 
 
-func _add_build_buttons() -> void:
-	for color_id in _sim.buildable_factory_colors():
-		_add_build_button(_content.color(color_id))
-
-
-func _add_build_button(color: ColorDef) -> void:
-	var button := Button.new()
-	button.name = "Build_%s" % color.id
-	button.text = "Build %s factory" % color.name
-	button.icon = _symbol_icon(color)
-	button.pressed.connect(_on_build_pressed.bind(color.id))
-	_build_buttons.add_child(button)
-	_build_button_by_color[color.id] = button
+func _add_color_card(color: ColorDef) -> void:
+	var card := ColorCard.new(color, _content)
+	card.build_pressed.connect(_on_build_pressed)
+	_color_cards.add_child(card)
+	_cards.append(card)
 
 
 func _on_build_pressed(color_id: StringName) -> void:
@@ -164,12 +157,16 @@ func _on_build_pressed(color_id: StringName) -> void:
 
 func _on_make_link_pressed() -> void:
 	var factory_index := _new_link_factory.selected
-	var market_index := _new_link_market.selected
-	if factory_index < 0 or market_index < 0:
+	var destination_index := _new_link_destination.selected
+	if factory_index < 0 or destination_index < 0:
 		_show_message("Build a factory first.")
 		return
-	_show_result(_sim.make_link(_new_link_factory.get_item_id(factory_index),
-		_new_link_market.get_item_metadata(market_index)))
+	var source_id := _new_link_factory.get_item_id(factory_index)
+	var destination: Variant = _new_link_destination.get_item_metadata(destination_index)
+	if destination is int:
+		_show_result(_sim.make_factory_link(source_id, destination))
+	else:
+		_show_result(_sim.make_link(source_id, destination))
 
 
 func _on_buy_prism_pressed() -> void:
@@ -198,9 +195,9 @@ func _refresh() -> void:
 	var prisms := _sim.prisms()
 	_prism_label.text = "Prisms: %s" % BigNumber.from_int(prisms.owned).format()
 	_buy_prism_button.text = "Buy prism (%s)" % prisms.next_price.format()
-	var cost := _sim.factory_build_cost().format()
-	for color_id in _build_button_by_color:
-		_build_button_by_color[color_id].text = "Build %s factory (%s)" % [_content.color(color_id).name, cost]
+	var cost := _sim.factory_build_cost()
+	for card in _cards:
+		card.show_state(_sim.is_color_unlocked(card.color_id), cost)
 
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)
@@ -228,29 +225,67 @@ func _refresh() -> void:
 
 
 func _add_factory_row(view: FactoryView) -> FactoryRow:
-	var row := FactoryRow.new(view.id, _content.color(view.color))
+	var row := FactoryRow.new(view.id, _content.color(view.color), _content)
 	row.add_line_requested.connect(_on_add_line_requested)
 	_rows[view.id] = row
 	_factory_list.add_child(row)
 	return row
 
 
-## Keeps the factory and market choices for a new link in step with the
-## simulation. Items are added, never removed, so the selection stays.
+## Keeps the factory and destination choices for a new link in step with the
+## simulation. Factories are added, never removed, so the selection stays. The
+## destinations are the markets, then the mixed factories. When they change,
+## the list is made again with the same destination selected.
 func _refresh_new_link_choices() -> void:
 	var factories := _sim.factories()
 	for i in range(_new_link_factory.item_count, factories.size()):
 		var view := factories[i]
 		var color := _content.color(view.color)
-		_new_link_factory.add_icon_item(_symbol_icon(color), "%s factory #%d" % [color.name, view.id], view.id)
-	var markets := _sim.markets()
-	for i in range(_new_link_market.item_count, markets.size()):
-		_new_link_market.add_item(markets[i].name)
-		_new_link_market.set_item_metadata(i, markets[i].id)
+		_new_link_factory.add_icon_item(_symbol_icon(color), _factory_name(view), view.id)
+	var keys := _link_destination_keys(factories)
+	if keys == _destination_keys:
+		return
+	var selected: Variant = null
+	if _new_link_destination.selected >= 0:
+		selected = _new_link_destination.get_item_metadata(_new_link_destination.selected)
+	_new_link_destination.clear()
+	for i in keys.size():
+		var key: Variant = keys[i]
+		if key is int:
+			var view := _sim.factory(key)
+			_new_link_destination.add_icon_item(_symbol_icon(_content.color(view.color)), _factory_name(view))
+		else:
+			_new_link_destination.add_item(_sim.market(key).name)
+		_new_link_destination.set_item_metadata(i, key)
+	_destination_keys = keys
+	var keep := keys.find(selected)
+	_new_link_destination.select(keep if keep >= 0 else 0)
+
+
+## The places a new link can go: each market (its key is the market id), then
+## each mixed factory (its key is the factory id).
+func _link_destination_keys(factories: Array[FactoryView]) -> Array:
+	var keys: Array = []
+	for market in _sim.markets():
+		keys.append(market.id)
+	for view in factories:
+		if not view.input_bays.is_empty():
+			keys.append(view.id)
+	return keys
+
+
+## Such as "Green factory #4".
+func _factory_name(view: FactoryView) -> String:
+	return "%s factory #%d" % [_content.color(view.color).name, view.id]
 
 
 func _add_link_row(view: LinkView) -> LinkRow:
-	var row := LinkRow.new(view, _content.color(view.color), _sim.market(view.destination_market_id).name,
+	var destination_name := ""
+	if view.destination_kind == LinkView.Destination.FACTORY:
+		destination_name = _factory_name(_sim.factory(view.destination_factory_id))
+	else:
+		destination_name = _sim.market(view.destination_market_id).name
+	var row := LinkRow.new(view, _content.color(view.color), destination_name,
 		_content.transport_tier(view.vehicle).name)
 	row.ship_pressed.connect(_on_ship_pressed)
 	row.automate_pressed.connect(_on_automate_pressed)

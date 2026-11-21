@@ -1,8 +1,18 @@
 {
-	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, and recipe (input color id to count; empty for a base color).",
+	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, recipe (input color id to the count consumed to make one widget; empty for a base color), and unlock (\"start\": available from the start of each run, the default; \"research\": research in a run unlocks it).",
 	"colors": [
 		{"id": "red", "name": "Red", "symbol": "square", "display": "#d64545", "recipe": {}},
 		{"id": "yellow", "name": "Yellow", "symbol": "triangle", "display": "#f2c230", "recipe": {}},
-		{"id": "blue", "name": "Blue", "symbol": "circle", "display": "#3a6fd8", "recipe": {}}
+		{"id": "blue", "name": "Blue", "symbol": "circle", "display": "#3a6fd8", "recipe": {}},
+		{"id": "green", "name": "Green", "symbol": "diamond", "display": "#3fa34d", "recipe": {"yellow": 1, "blue": 1}},
+		{"id": "orange", "name": "Orange", "symbol": "pentagon", "display": "#ee8a2a", "recipe": {"red": 1, "yellow": 1}},
+		{"id": "purple", "name": "Purple", "symbol": "hexagon", "display": "#8a4fc4", "recipe": {"red": 1, "blue": 1}},
+		{"id": "red_orange", "name": "Red-orange", "symbol": "triangle_down", "display": "#e2603a", "recipe": {"red": 1, "orange": 1}, "unlock": "research"},
+		{"id": "yellow_orange", "name": "Yellow-orange", "symbol": "trapezoid", "display": "#f4a62a", "recipe": {"yellow": 1, "orange": 1}, "unlock": "research"},
+		{"id": "yellow_green", "name": "Yellow-green", "symbol": "cross", "display": "#9cc63a", "recipe": {"yellow": 1, "green": 1}, "unlock": "research"},
+		{"id": "blue_green", "name": "Blue-green", "symbol": "arrow", "display": "#2a9c94", "recipe": {"blue": 1, "green": 1}, "unlock": "research"},
+		{"id": "blue_purple", "name": "Blue-purple", "symbol": "crescent", "display": "#5a55cc", "recipe": {"blue": 1, "purple": 1}, "unlock": "research"},
+		{"id": "red_purple", "name": "Red-purple", "symbol": "heart", "display": "#b8418a", "recipe": {"red": 1, "purple": 1}, "unlock": "research"},
+		{"id": "brown", "name": "Brown", "symbol": "star", "display": "#8b5a33", "recipe": {"red": 1, "yellow": 1, "blue": 1}, "unlock": "research"}
 	]
 }

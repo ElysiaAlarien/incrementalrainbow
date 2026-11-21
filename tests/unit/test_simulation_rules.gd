@@ -17,20 +17,19 @@ func test_an_unknown_color_fails_with_a_reason_and_changes_nothing() -> void:
 	assert_eq(sim.snapshot(), before)
 
 
-func test_a_color_with_a_recipe_cannot_be_built_as_a_base_factory() -> void:
-	var colors := ContentFixture.colors_data()
-	colors.colors.append({"id": "green", "name": "Green", "symbol": "diamond",
-		"display": "#3a9a4a", "recipe": {"yellow": 1, "blue": 1}})
-	var content := Content.from_data(ContentFixture.data(colors))
-	var sim := Simulation.new(content, 1)
+func test_a_color_that_needs_research_fails_with_a_reason_and_changes_nothing() -> void:
+	var sim := Simulation.new(ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data())), 1)
 	var before := sim.snapshot()
 
-	var result := sim.build_factory(&"green")
+	for color in [&"blue_green", &"brown"]:
+		var result := sim.build_factory(color)
 
-	assert_false(result.ok)
-	assert_eq(result.reason, CommandResult.Reason.NOT_A_BASE_COLOR)
-	assert_eq(sim.snapshot(), before)
-	assert_false(sim.buildable_factory_colors().has(&"green"))
+		assert_false(result.ok, "%s is locked" % color)
+		assert_eq(result.reason, CommandResult.Reason.COLOR_LOCKED)
+		assert_string_contains(result.message, "research")
+		assert_eq(sim.snapshot(), before)
+		assert_false(sim.is_color_unlocked(color))
+		assert_false(sim.buildable_factory_colors().has(color))
 
 
 func _play(rng_seed: int) -> Simulation:

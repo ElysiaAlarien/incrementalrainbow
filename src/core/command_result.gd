@@ -10,16 +10,18 @@ enum Reason {
 	NONE,
 	## The color id is not in the content.
 	UNKNOWN_COLOR,
-	## The color has a recipe, so a base factory cannot make it.
-	NOT_A_BASE_COLOR,
+	## The color is not unlocked yet, for example because it needs research.
+	COLOR_LOCKED,
 	## No factory has the given id.
 	UNKNOWN_FACTORY,
 	## The player has less money than the command costs.
 	NOT_ENOUGH_MONEY,
 	## There is no market with that id.
 	UNKNOWN_MARKET,
-	## A link from that factory to that market already exists.
+	## A link from that factory to that destination already exists.
 	LINK_EXISTS,
+	## The destination factory's recipe does not use the link's color.
+	NOT_A_RECIPE_INPUT,
 	## There is no link with that id.
 	UNKNOWN_LINK,
 	## The shipment would carry no widgets: the source has none, or the

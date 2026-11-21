@@ -8,6 +8,7 @@ const TRANSIT_TIME_MS := 5000
 const SHIPMENT_COST := 2
 const AUTOMATIC_COST := 20
 const FIRST_PRISM_PRICE := 20
+const INPUT_BAY_CAPACITY := 10
 
 
 static func colors_data() -> Dictionary:
@@ -18,7 +19,27 @@ static func colors_data() -> Dictionary:
 	]}
 
 
-## Balance data: 100 starting money, factories that cost 10, a flat
+## The three primary colors, plus green (1 yellow and 1 blue), purple (2 red
+## and 1 blue, to test counts above 1), a tertiary color that research
+## unlocks (blue-green: 1 blue and 1 green), and brown (red, yellow, and blue),
+## which research unlocks too.
+static func mixed_colors_data() -> Dictionary:
+	var data := colors_data()
+	data.colors.append_array([
+		{"id": "green", "name": "Green", "symbol": "diamond", "display": "#3fa34d",
+			"recipe": {"yellow": 1, "blue": 1}},
+		{"id": "purple", "name": "Purple", "symbol": "hexagon", "display": "#8a4fc4",
+			"recipe": {"red": 2, "blue": 1}},
+		{"id": "blue_green", "name": "Blue-green", "symbol": "arrow", "display": "#2a9c94",
+			"recipe": {"blue": 1, "green": 1}, "unlock": "research"},
+		{"id": "brown", "name": "Brown", "symbol": "star", "display": "#8b5a33",
+			"recipe": {"red": 1, "yellow": 1, "blue": 1}, "unlock": "research"},
+	])
+	return data
+
+
+## Balance data: 100 starting money, factories that cost 10, input bays
+## of 10, a flat
 ## production line cost of 10, prisms that cost 20, then 40, 80, and so on, and
 ## demand that stays at 1 (no drift and no saturation), so that prices stay at
 ## the base price.
@@ -32,6 +53,7 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 	var factory := {
 		"widget_time_ms": widget_time_ms,
 		"output_bay_capacity": output_bay_capacity,
+		"input_bay_capacity": INPUT_BAY_CAPACITY,
 		"build_cost": FACTORY_COST,
 		"production_line_cost": 10,
 		"production_line_cost_growth": 1.0,
@@ -95,6 +117,12 @@ static func data(colors: Dictionary = colors_data(), balance: Dictionary = balan
 ## production line cost of 10.
 static func make(widget_time_ms: int = 1000, output_bay_capacity: int = 10) -> Content:
 	return make_with_balance(balance_data(widget_time_ms, output_bay_capacity))
+
+
+## Like [method make], with the colors of [method mixed_colors_data]. The save
+## fixtures in tests/fixtures/saves/ load with this content.
+static func make_mixed(widget_time_ms: int = 1000, output_bay_capacity: int = 10) -> Content:
+	return from_data(data(mixed_colors_data(), balance_data(widget_time_ms, output_bay_capacity)))
 
 
 ## Content with the test colors and [param balance] from [method balance_data].

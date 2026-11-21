@@ -25,27 +25,54 @@ func _rich_game() -> Simulation:
 	# Link 2 is automatic and has shipped.
 	sim.tick(3500)
 	sim.start_shipment(1)
+	# A mixed factory, with yellow widgets in its input bay and blue widgets on
+	# their way, and its own progress.
+	# The blue factory #2 ships to the market by itself, so a second blue
+	# factory feeds the green factory.
+	assert_true(sim.build_factory(&"green").ok)
+	assert_true(sim.build_factory(&"blue").ok)
+	sim.make_factory_link(3, 4)
+	sim.make_factory_link(5, 4)
+	sim.add_production_line(4)
+	sim.start_shipment(3)
+	sim.tick(ContentFixture.TRANSIT_TIME_MS)
+	sim.start_shipment(4)
+	sim.start_shipment(1)
+	sim.tick(1400)
+	sim.start_shipment(1)
 	# The sales saturate red and blue in millbrook.
 	sim.buy_prism()
 	sim.buy_prism()
 	return sim
 
 
-## The content of the rich game, with drift and saturation.
+## The content of the rich game, with the mixed colors, drift, and saturation.
 func _content() -> Content:
-	return ContentFixture.make_with_balance(ContentFixture.balance_data(700, 6,
-		ContentFixture.demand_overrides()))
+	return ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data(),
+		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides())))
 
 
 ## Content with demand that stays at 1, for the saves of old versions, whose
 ## tests check money from sales at the base price.
 func _flat_content() -> Content:
-	return ContentFixture.make(700, 6)
+	return ContentFixture.make_mixed(700, 6)
 
 
 func _load(text: String, steps: Array[Callable] = SaveCodec.migrations(),
 		content: Content = _content()) -> LoadResult:
 	return SaveCodec.decode(content, text, steps)
+
+
+func test_the_rich_game_has_every_kind_of_state() -> void:
+	# The round-trip tests below cover only what the rich game has.
+	var sim := _rich_game()
+	var green := sim.factory(4)
+	assert_eq(green.color, &"green")
+	assert_gt(green.input_bays[0].count, 0, "yellow widgets in the green input bay")
+	assert_gt(green.input_bays[1].in_transit, 0, "blue widgets on their way to the green factory")
+	assert_eq(sim.link(3).destination_kind, LinkView.Destination.FACTORY)
+	assert_eq(sim.link(1).destination_kind, LinkView.Destination.MARKET)
+	assert_eq(sim.link(1).shipments_in_transit.size(), 2, "two shipments to a market")
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -57,7 +84,7 @@ func test_save_then_load_gives_the_same_state() -> void:
 	var loaded := result.simulation
 	assert_eq(loaded.time_ms(), sim.time_ms())
 	assert_true(loaded.money().equals(sim.money()), "money %s" % loaded.money())
-	assert_eq(loaded.factories().size(), 3)
+	assert_eq(loaded.factories().size(), 5)
 	for i in sim.factories().size():
 		var want := sim.factories()[i]
 		var got := loaded.factories()[i]
@@ -66,9 +93,13 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.size, want.size)
 		assert_eq(got.output_bay_count, want.output_bay_count)
 		assert_eq(got.status, want.status)
-	assert_eq(loaded.links().size(), 2)
+		assert_eq(got.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]),
+			want.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]))
+	assert_eq(loaded.links().size(), 4)
+	assert_eq([loaded.link(3).destination_kind, loaded.link(3).destination_factory_id],
+		[LinkView.Destination.FACTORY, 4])
 	var shipments := loaded.link(1).shipments_in_transit
-	assert_eq(shipments.size(), 2, "shipments in transit are kept")
+	assert_eq(shipments.size(), sim.link(1).shipments_in_transit.size(), "shipments in transit are kept")
 	assert_eq(shipments.map(func(v: ShipmentView) -> int: return v.remaining_ms),
 		sim.link(1).shipments_in_transit.map(func(v: ShipmentView) -> int: return v.remaining_ms))
 	assert_eq(loaded.link(2).automatic, LinkView.Automatic.SHIPPED)
@@ -268,8 +299,8 @@ func test_two_links_on_the_same_factory_and_market_fail() -> void:
 
 
 func test_a_link_id_that_is_not_below_the_next_id_fails() -> void:
-	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 3,
-		"state.links[0].id: must be less than next_link_id (3)")
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 5,
+		"state.links[0].id: must be less than next_link_id (5)")
 
 
 func test_two_shipments_with_the_same_id_fail() -> void:
@@ -363,6 +394,75 @@ func test_negative_prisms_fail() -> void:
 	var data := _save_data()
 	data.state.prisms_bought = -1
 	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "state.prisms_bought: must be from 0")
+
+
+func test_a_link_of_an_unknown_kind_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.destination_kind = "warehouse",
+		"state.links[0].destination_kind: must be one of market, factory, but it is \"warehouse\"")
+
+
+## [param change] gets the link from the yellow factory to the green factory.
+func _assert_factory_link_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state.links[2])
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_a_link_to_a_missing_factory_fails() -> void:
+	_assert_factory_link_change_fails(func(link: Dictionary) -> void: link.destination_factory_id = 9,
+		"state.links[2].destination_factory_id: there is no factory #9")
+
+
+func test_a_link_to_a_factory_whose_recipe_does_not_use_its_color_fails() -> void:
+	_assert_factory_link_change_fails(func(link: Dictionary) -> void: link.destination_factory_id = 1,
+		"state.links[2].destination_factory_id: the recipe of factory #1 (red) does not use yellow")
+
+
+func test_two_links_between_the_same_factories_fail() -> void:
+	var data := _save_data()
+	data.state.links[3].source_factory_id = 3
+	data.state.links[3].color = "yellow"
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.links[3].destination_factory_id: factory #3 has more than one link to factory #4")
+
+
+## [param change] gets the input bays of the green factory: yellow, then blue.
+func _assert_input_bay_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state.factories[3].input_bays)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_an_input_bay_for_a_color_that_is_not_in_the_recipe_fails() -> void:
+	_assert_input_bay_change_fails(func(bays: Array) -> void: bays[1].color = "red",
+		"state.factories[3].input_bays[1].color: red is not an input of green")
+
+
+func test_two_input_bays_for_one_color_fail() -> void:
+	_assert_input_bay_change_fails(func(bays: Array) -> void: bays.append(bays[0].duplicate()),
+		"state.factories[3].input_bays[2].color: yellow has more than one input bay")
+
+
+func test_a_missing_input_bay_fails() -> void:
+	_assert_input_bay_change_fails(func(bays: Array) -> void: bays.remove_at(1),
+		"state.factories[3].input_bays: there is no input bay for blue")
+
+
+func test_an_input_bay_on_a_base_factory_fails() -> void:
+	var data := _save_data()
+	data.state.factories[0].input_bays = [{"color": "blue", "count": 1}]
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.factories[0].input_bays[0].color: blue is not an input of red")
+
+
+func test_an_input_bay_over_its_capacity_fails() -> void:
+	_assert_input_bay_change_fails(func(bays: Array) -> void: bays[0].count = ContentFixture.INPUT_BAY_CAPACITY + 1,
+		"state.factories[3].input_bays[0].count: must be from 0 to %d" % ContentFixture.INPUT_BAY_CAPACITY)
+
+
+func test_an_input_bay_that_would_overflow_when_its_shipments_arrive_fails() -> void:
+	_assert_input_bay_change_fails(func(bays: Array) -> void: bays[1].count = ContentFixture.INPUT_BAY_CAPACITY,
+		"state.factories[3].input_bays: 16 blue widgets are in the bay and on the way, but the bay holds 10")
 
 
 func test_a_random_number_state_of_all_zeros_fails() -> void:
@@ -518,6 +618,8 @@ func test_a_version_2_save_still_loads() -> void:
 	assert_eq([link.shipments_in_transit[0].count, link.shipments_in_transit[0].remaining_ms], [4, 4000])
 	sim.tick(4000)
 	assert_eq(sim.money().format(), "98", "the shipment of 4 red widgets sold for 5 each")
+	assert_eq(link.destination_kind, LinkView.Destination.MARKET, "a version 2 link goes to a market")
+	assert_eq(sim.factory(1).input_bays.size(), 0, "a version 2 factory is a base factory")
 
 
 func test_a_version_2_save_has_manual_links_after_migration() -> void:
@@ -550,6 +652,7 @@ func test_a_version_3_save_still_loads() -> void:
 	sim.tick(4001)
 	assert_eq(sim.money().format(), "81", "the 3 widgets sold for 5 each, then the full bay of 6 shipped for 2")
 	assert_eq(sim.link(1).widgets_per_minute, 9)
+	assert_eq(sim.link(1).destination_kind, LinkView.Destination.MARKET, "a version 3 link goes to a market")
 
 
 ## A save of version 4 (#8: drift and saturation), as the game wrote it. The
@@ -601,6 +704,30 @@ func test_a_version_5_save_still_loads() -> void:
 	assert_eq(sim.prisms().total_bought, 2)
 	assert_eq(sim.prisms().next_price.format(), "80")
 	assert_eq(sim.money().format(), "30")
+
+
+## A save of version 6 (#6: mixed factories, input bays, and links between
+## factories), as the game wrote it.
+func test_a_version_6_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v6.json")
+
+	var result := _load(text, SaveCodec.migrations(), _flat_content())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 8100)
+	assert_eq(sim.money().format(), "66")
+	var green := sim.factory(3)
+	assert_eq(green.color, &"green")
+	assert_eq(green.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]),
+		[[&"yellow", 3, 0], [&"blue", 0, 6]])
+	assert_eq(green.missing_inputs(), [&"blue"] as Array[StringName])
+	var link := sim.link(2)
+	assert_eq([link.destination_kind, link.destination_factory_id], [LinkView.Destination.FACTORY, 3])
+	assert_eq(sim.link(3).destination_market_id, &"millbrook")
+	sim.tick(4000 + 2100)
+	assert_eq(sim.factory(3).output_bay_count, 3, "the blue widgets arrived and made green widgets")
+	assert_eq(sim.factory(3).input_bays.map(func(b: InputBayView) -> int: return b.count), [0, 3])
 
 
 func test_a_version_4_save_has_no_prisms_after_migration() -> void:

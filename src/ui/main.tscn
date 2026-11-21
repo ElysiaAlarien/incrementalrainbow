@@ -78,11 +78,6 @@ layout_mode = 2
 size_flags_vertical = 4
 text = "Export or import"
 
-[node name="BuildButtons" type="HBoxContainer" parent="Margin/Layout"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 12
-
 [node name="MessageLabel" type="Label" parent="Margin/Layout"]
 unique_name_in_owner = true
 visible = false
@@ -100,6 +95,17 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 16
 
+[node name="ColorsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Colors and recipes"
+
+[node name="ColorCards" type="HFlowContainer" parent="Margin/Layout/Scroll/Sections"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+
 [node name="FactoriesHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
@@ -114,7 +120,7 @@ theme_override_constants/separation = 8
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
-text = "No factories yet. Build one above."
+text = "No factories yet. Build one from a color above."
 
 [node name="LinksHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
 layout_mode = 2
@@ -138,9 +144,9 @@ layout_mode = 2
 layout_mode = 2
 text = "to"
 
-[node name="NewLinkMarket" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewLink"]
+[node name="NewLinkDestination" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewLink"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 0)
+custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 
 [node name="MakeLink" type="Button" parent="Margin/Layout/Scroll/Sections/NewLink"]
@@ -157,7 +163,7 @@ theme_override_constants/separation = 8
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
-text = "No links yet. Link a factory to a market to sell its widgets."
+text = "No links yet. Link a factory to a market to sell its widgets, or to a mixed factory to feed it."
 
 [node name="MarketsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
 layout_mode = 2
