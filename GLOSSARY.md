@@ -183,6 +183,10 @@ Production, logistics, and sales that happen while the game is closed, applied w
 The versioned, serialized form of the core state that the game keeps on the device. The export code and each platform's cloud save hold the same save.
 _Avoid_: Save file, save game, profile
 
+**Export code**:
+The save as text that the player copies to another device and imports there, with the save version and a checksum. See ADR-0010.
+_Avoid_: Save string, save key, backup code
+
 **Migration**:
 One step that turns a save of one version into a save of the next version, so that old saves still load.
 _Avoid_: Upgrade, conversion
