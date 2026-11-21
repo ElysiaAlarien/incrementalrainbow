@@ -44,7 +44,7 @@ func _init(view: LinkView, color: ColorDef, source_name: String, destination_nam
 	_ends_label.text = "%s to %s" % [source_name, destination_name]
 	_ends_label.tooltip_text = _ends_label.text
 	# A fixed width keeps the columns of all rows in line. Trim a long name.
-	_ends_label.custom_minimum_size.x = 400
+	_ends_label.custom_minimum_size.x = 440
 	_ends_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top.add_child(_ends_label)
 
