@@ -17,6 +17,7 @@ const ShipmentState := preload("res://src/core/state/shipment_state.gd")
 const DemandState := preload("res://src/core/state/demand_state.gd")
 const WarehouseState := preload("res://src/core/state/warehouse_state.gd")
 const MarketState := preload("res://src/core/state/market_state.gd")
+const ResearchState := preload("res://src/core/state/research_state.gd")
 
 ## The prestige keep set, in one place (see ADR-0012). A prestige makes a
 ## fresh run with [method Simulation.new], the same path as a new game, and
@@ -40,6 +41,8 @@ const _PRESTIGE_CLEARS: PackedStringArray = [
 	"Community investments and capacity used in each market",
 	"Warehouses and the widgets in them",
 	"Transport tier",
+	"Labs",
+	"Research, its progress, and the lab stock",
 ]
 
 var _content: Content
@@ -63,6 +66,13 @@ var _transport_tier: TransportTier
 ## clears neither.
 var _prisms: int = 0
 var _prisms_bought: int = 0
+var _next_lab_id: int = 1
+## Lab ids, in build order. A lab has no state of its own: the widgets it
+## consumes pay for [member _research].
+var _labs: Array[int] = []
+## All research state of the run. A prestige clears it with the other state of
+## the run.
+var _research := ResearchState.new()
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -105,6 +115,8 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		sim._factories.append(state)
 	sim._read_warehouses(reader)
 	sim._read_transport_tier(reader)
+	sim._read_labs(reader)
+	sim._research = ResearchState.from_snapshot(reader, p_content)
 	sim._read_links(reader)
 	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms)
 	sim._read_markets(reader)
@@ -143,6 +155,18 @@ func _check_warehouse_space(reader: SnapshotReader) -> void:
 				"%d widgets are in the warehouse and on the way, but it holds %d" % [total, space])
 
 
+## Reads the lab ids for [method from_snapshot].
+func _read_labs(reader: SnapshotReader) -> void:
+	_next_lab_id = reader.integer("next_lab_id", 1)
+	for lab_reader in reader.objects("labs"):
+		var id := lab_reader.integer("id", 1)
+		if _labs.has(id):
+			lab_reader.fail("id", "is used by more than one lab")
+		elif id >= _next_lab_id:
+			lab_reader.fail("id", "must be less than next_lab_id (%d)" % _next_lab_id)
+		_labs.append(id)
+
+
 ## Reads the transport tier for [method from_snapshot].
 func _read_transport_tier(reader: SnapshotReader) -> void:
 	var id := reader.text_id("transport_tier")
@@ -154,8 +178,8 @@ func _read_transport_tier(reader: SnapshotReader) -> void:
 
 
 ## Reads the links and their shipments for [method from_snapshot], and checks
-## them against the factories, the time, and the transport tier, which it has
-## read first.
+## them against the factories, the warehouses, the labs, the time, and the
+## transport tier, which it has read first.
 func _read_links(reader: SnapshotReader) -> void:
 	_next_link_id = reader.integer("next_link_id", 1)
 	_next_shipment_id = reader.integer("next_shipment_id", 1)
@@ -198,6 +222,11 @@ func _read_links(reader: SnapshotReader) -> void:
 						target.id, target.color, state.color])
 				elif state.source_kind == LinkView.Source.WAREHOUSE:
 					link_reader.fail(destination_key, "a link cannot go from a warehouse to a warehouse")
+			LinkView.Destination.LAB:
+				destination_key = "destination_lab_id"
+				destination_text = "lab #%d" % state.destination_lab_id
+				if not _labs.has(state.destination_lab_id):
+					link_reader.fail(destination_key, "there is no lab #%d" % state.destination_lab_id)
 		var ends := [state.source_key(), state.destination_key()]
 		if routes.has(ends):
 			link_reader.fail(destination_key, "%s has more than one link to %s" % [source_text, destination_text])
@@ -271,7 +300,7 @@ func build_factory(color: StringName) -> CommandResult:
 			"There is no color \"%s\"." % color)
 	if not is_color_unlocked(color):
 		return CommandResult.failure(CommandResult.Reason.COLOR_LOCKED,
-			"%s needs research first." % color_def.name)
+			"%s needs research first: %s." % [color_def.name, _research_names(color)])
 	var cost := factory_build_cost()
 	if _money.is_less_than(cost):
 		return _not_enough_money("A factory", cost)
@@ -425,6 +454,75 @@ func link_warehouse_to_factory(warehouse_id: int, factory_id: int) -> CommandRes
 		_transport_tier.id).from_warehouse(warehouse_id))
 
 
+## Builds a lab for [method lab_build_cost]. Links bring widgets to it, and
+## it consumes them to pay for the selected research. On success,
+## [member CommandResult.value] is the new lab id.
+func build_lab() -> CommandResult:
+	var cost := lab_build_cost()
+	if _money.is_less_than(cost):
+		return _not_enough_money("A lab", cost)
+
+	_money = _money.sub(cost)
+	_labs.append(_next_lab_id)
+	_next_lab_id += 1
+	return CommandResult.success(_labs[-1])
+
+
+## Makes a link from the factory [param source_id] to the lab
+## [param lab_id]. The link carries the factory's color. Like other links, its
+## vehicle is the transport tier the player has now and it is free. Labs have
+## no remoteness, so every tier reaches them. A shipment carries only what the
+## selected research still needs (see [method _accepted_count]). On success,
+## [member CommandResult.value] is the new link id.
+func make_lab_link(source_id: int, lab_id: int) -> CommandResult:
+	var source := _factory_state(source_id)
+	if source == null:
+		return _unknown_factory(source_id)
+	if not _labs.has(lab_id):
+		return _unknown_lab(lab_id)
+	return _add_new_link(LinkState.to_lab(_next_link_id, source.color, source_id, lab_id,
+		_transport_tier.id))
+
+
+## Makes a link from the warehouse [param warehouse_id] to the lab
+## [param lab_id], as for [method make_lab_link]. The link carries the
+## warehouse's color. On success, [member CommandResult.value] is the new link
+## id.
+func link_warehouse_to_lab(warehouse_id: int, lab_id: int) -> CommandResult:
+	var source := _warehouse_state(warehouse_id)
+	if source == null:
+		return _unknown_warehouse(warehouse_id)
+	if not _labs.has(lab_id):
+		return _unknown_lab(lab_id)
+	return _add_new_link(LinkState.to_lab(_next_link_id, source.color, 0, lab_id,
+		_transport_tier.id).from_warehouse(warehouse_id))
+
+
+## Selects the research [param research_id], so that labs consume widgets to
+## pay for it. Research keeps what was paid for it when the player selects
+## other research. Widgets in the lab stock pay for it at once, which can
+## complete it. When research is complete, its unlocks are available and
+## nothing is selected.
+func select_research(research_id: StringName) -> CommandResult:
+	var def := _content.research_def(research_id)
+	if def == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_RESEARCH,
+			"There is no research \"%s\"." % research_id)
+	if _research.is_complete(research_id):
+		return CommandResult.failure(CommandResult.Reason.RESEARCH_COMPLETE,
+			"%s is complete already." % def.name)
+	if not _research.has_requirements(def):
+		var missing: Array[StringName] = []
+		for id in def.requires:
+			if not _research.is_complete(id):
+				missing.append(id)
+		return CommandResult.failure(CommandResult.Reason.RESEARCH_LOCKED,
+			"%s needs research first: %s." % [def.name, ", ".join(_content.research_names(missing))])
+
+	_research.select(research_id, _content)
+	return CommandResult.success()
+
+
 ## Adds [param state] if no link has the same source and destination yet.
 func _add_new_link(state: LinkState) -> CommandResult:
 	for other in _links:
@@ -442,6 +540,10 @@ func _too_remote(market: MarketDef) -> CommandResult:
 	return CommandResult.failure(CommandResult.Reason.MARKET_TOO_REMOTE,
 		"%s is too remote for %s: it needs %s." % [market.name, _transport_tier.plural_name.to_lower(),
 			_content.tier_for_remoteness(market.remoteness).plural_name.to_lower()])
+
+
+func _unknown_lab(id: int) -> CommandResult:
+	return CommandResult.failure(CommandResult.Reason.UNKNOWN_LAB, "There is no lab #%d." % id)
 
 
 func _unknown_warehouse(id: int) -> CommandResult:
@@ -629,6 +731,11 @@ func _accepts_nothing_text(state: LinkState) -> String:
 	if state.destination_kind == LinkView.Destination.WAREHOUSE:
 		return "%s is full, with the widgets on the way." % _warehouse_name(
 			_warehouse_state(state.destination_warehouse_id))
+	if state.destination_kind == LinkView.Destination.LAB:
+		if _research.selected == &"":
+			return "lab #%d has no research selected." % state.destination_lab_id
+		return "%s needs no more %s, with the widgets on the way and in the lab stock." % [
+			_content.research_def(_research.selected).name, _color_text(state.color)]
 	var market := _content.market(state.destination_market_id)
 	return "%s has no capacity left in this period, with the widgets on the way. Its capacity is %d widgets in each period." % [
 		market.name, _markets[market.id].capacity(_content.market_balance)]
@@ -759,6 +866,11 @@ func automatic_transport_cost() -> BigNumber:
 	return _content.automatic_transport_cost
 
 
+## The money that [method build_lab] costs now.
+func lab_build_cost() -> BigNumber:
+	return _content.lab_build_cost
+
+
 ## The money that [method build_warehouse] costs now.
 func warehouse_build_cost() -> BigNumber:
 	return _content.warehouse_balance.build_cost
@@ -795,12 +907,45 @@ func buildable_factory_colors() -> Array[StringName]:
 	return ids
 
 
-## True if the player can build factories of [param color] now. Research
-## unlocks some colors (see [enum ColorDef.Unlock]); the research ticket adds
-## the research that does it.
+## True if the player can build factories of [param color] now: it is
+## available from the start (see [enum ColorDef.Unlock]), or complete research
+## unlocks it.
 func is_color_unlocked(color: StringName) -> bool:
 	var def := _content.color(color)
-	return def != null and def.unlock == ColorDef.Unlock.START
+	if def == null:
+		return false
+	return def.unlock == ColorDef.Unlock.START or _research.unlocks_color(color, _content)
+
+
+## All labs, by id, in build order.
+func labs() -> Array[int]:
+	return _labs.duplicate()
+
+
+## All research, in content order, with its status and progress.
+func research() -> Array[ResearchView]:
+	var views: Array[ResearchView] = []
+	for def in _content.research():
+		views.append(_research_view(def))
+	return views
+
+
+## The research with [param id], or null.
+func research_item(id: StringName) -> ResearchView:
+	var def := _content.research_def(id)
+	return null if def == null else _research_view(def)
+
+
+## The research that labs pay for now, or &"" when there is none.
+func selected_research() -> StringName:
+	return _research.selected
+
+
+## Widgets that arrived at labs that no research needed when they arrived, as
+## color id to count, in content order. They pay for the next research that
+## needs them.
+func lab_stock() -> Dictionary[StringName, int]:
+	return _research.stock_counts(_content)
 
 
 ## All factories, in build order.
@@ -862,6 +1007,15 @@ func has_link(factory_id: int, market_id: StringName) -> bool:
 	return false
 
 
+## True if a link goes from the factory [param source_id] to the lab
+## [param lab_id].
+func has_lab_link(source_id: int, lab_id: int) -> bool:
+	for state in _links:
+		if state.comes_from_factory(source_id) and state.goes_to_lab(lab_id):
+			return true
+	return false
+
+
 ## True if a link goes from the factory [param source_id] to the factory
 ## [param destination_id].
 func has_factory_link(source_id: int, destination_id: int) -> bool:
@@ -895,7 +1049,9 @@ func snapshot() -> Dictionary:
 		"prisms_bought": _prisms_bought,
 		"markets": _markets_to_dicts(),
 		"transport_tier": _transport_tier.id,
-	}.merged(_demand.to_dict())
+		"next_lab_id": _next_lab_id,
+		"labs": _labs.map(func(id: int) -> Dictionary: return {"id": id}),
+	}.merged(_demand.to_dict()).merged(_research.to_dict(_content))
 
 
 ## The markets for [method snapshot], in content order.
@@ -918,7 +1074,10 @@ func _markets_to_dicts() -> Array[Dictionary]:
 ## and the widgets on their way to it. So a market never gets more widgets
 ## than its capacity, and there is no overflow rule. Widgets on their way
 ## count against the capacity of each period until they arrive, and a sale
-## counts against the period in which it arrives.
+## counts against the period in which it arrives. A lab accepts what the
+## selected research still needs of the link's color, less the widgets already
+## on their way to labs and in the lab stock, so that labs get no more than the
+## research needs.
 func _accepted_count(state: LinkState, available: int) -> int:
 	var free := 0
 	if state.destination_kind == LinkView.Destination.FACTORY:
@@ -930,6 +1089,9 @@ func _accepted_count(state: LinkState, available: int) -> int:
 		free = _content.warehouse_balance.space \
 			- _warehouse_state(state.destination_warehouse_id).count \
 			- _widgets_in_transit_to_warehouse(state.destination_warehouse_id)
+	elif state.destination_kind == LinkView.Destination.LAB:
+		free = _research.needs(state.color, _content) - _widgets_in_transit_to_labs(state.color) \
+			- _research.stock(state.color)
 	else:
 		free = _capacity_left(_markets[state.destination_market_id])
 	return clampi(free, 0, available)
@@ -971,6 +1133,15 @@ func _widgets_in_transit_to_warehouse(warehouse_id: int) -> int:
 	return count
 
 
+## Widgets of [param color] in shipments on their way to any lab.
+func _widgets_in_transit_to_labs(color: StringName) -> int:
+	var count := 0
+	for state in _links:
+		if state.color == color and state.destination_kind == LinkView.Destination.LAB:
+			count += state.widgets_in_transit()
+	return count
+
+
 ## Widgets that the source of [param state] has to ship now.
 func _source_count(state: LinkState) -> int:
 	if state.source_kind == LinkView.Source.WAREHOUSE:
@@ -979,7 +1150,8 @@ func _source_count(state: LinkState) -> int:
 
 
 ## Delivers every shipment that has arrived by now: a market sells it, a mixed
-## factory puts it into the input bay of its color, and a warehouse holds it. Arrivals happen in
+## factory puts it into the input bay of its color, a warehouse holds it, and a
+## lab consumes it to pay for the selected research. Arrivals happen in
 ## arrival order (then start order), so one long tick adds money in the same
 ## order as many short ticks. BigNumber sums are float sums, so the order
 ## matters.
@@ -1004,6 +1176,8 @@ func _deliver_arrived_shipments() -> void:
 			LinkView.Destination.WAREHOUSE:
 				_warehouse_state(state.destination_warehouse_id).deliver(entry.shipment.count,
 					_content.warehouse_balance.space)
+			LinkView.Destination.LAB:
+				_research.deliver(state.color, entry.shipment.count, _content)
 			_:
 				_sell(state, entry.shipment)
 
@@ -1067,6 +1241,22 @@ func _factory_view(state: FactoryState) -> FactoryView:
 	return view
 
 
+## The names of the research that unlocks [param color], such as
+## "Warm tertiaries".
+func _research_names(color: StringName) -> String:
+	var ids: Array[StringName] = []
+	for def in _content.research_unlocking(color):
+		ids.append(def.id)
+	return " or ".join(_content.research_names(ids))
+
+
+func _research_view(def: ResearchDef) -> ResearchView:
+	var in_transit: Dictionary[StringName, int] = {}
+	for color in def.cost:
+		in_transit[color] = _widgets_in_transit_to_labs(color)
+	return _research.to_view(def, in_transit)
+
+
 ## Such as "Green factory #4".
 func _factory_name(state: FactoryState) -> String:
 	return "%s factory #%d" % [_content.color(state.color).name, state.id]
@@ -1096,6 +1286,8 @@ func _destination_name(state: LinkState) -> String:
 			return _factory_name(_factory_state(state.destination_factory_id))
 		LinkView.Destination.WAREHOUSE:
 			return _warehouse_name(_warehouse_state(state.destination_warehouse_id))
+		LinkView.Destination.LAB:
+			return "Lab #%d" % state.destination_lab_id
 	return _content.market(state.destination_market_id).name
 
 

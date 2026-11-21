@@ -115,6 +115,13 @@ _Avoid_: Tech, upgrades
 A building that consumes widgets delivered by link to pay for research.
 _Avoid_: Research center, library
 
+**Selected research**:
+The one research that labs pay for now. The player selects it. Research keeps what was paid for it when the player selects other research.
+
+**Lab stock**:
+Widgets that arrived at a lab when the selected research did not need them. They pay for the next selected research that needs them, so no widget is lost.
+_Avoid_: Research buffer, lab inventory
+
 ## Market
 
 **Money**:

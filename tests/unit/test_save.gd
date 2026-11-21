@@ -63,20 +63,75 @@ func _rich_game() -> Simulation:
 	assert_true(sim.upgrade_vehicle(1).ok)
 	assert_true(sim.upgrade_vehicle(5).ok)
 	assert_true(sim.make_link(1, &"farpoint").ok)
+	_add_research(sim)
+	# Again blue widgets on their way to the green factory, red widgets on
+	# their way to the warehouse, two shipments on link 1 to millbrook, and
+	# green widgets on their way to the lab.
+	sim.tick(1400)
+	assert_true(sim.start_shipment(1).ok)
+	# That shipment sells, so red is saturated again.
+	sim.tick(ContentFixture.TRUCK_TRANSIT_TIME_MS)
+	assert_true(sim.start_shipment(1).ok)
+	sim.tick(700)
+	var to_warehouse := sim.start_shipment(5)
+	assert_true(to_warehouse.ok, to_warehouse.message)
+	sim.tick(700)
+	assert_true(sim.start_shipment(1).ok)
+	var blue := sim.start_shipment(4)
+	assert_true(blue.ok, blue.message)
+	var green := sim.start_shipment(11)
+	assert_true(green.ok, green.message)
 	return sim
 
 
+## A lab with links from four factories (links 8 to 11, by trucks), complete
+## research (earth_tones), progress on research that is not selected
+## (warm_mixes), the selected research (cool_mixes), and yellow widgets in the
+## lab stock.
+func _add_research(sim: Simulation) -> void:
+	var lab: int = sim.build_lab().value
+	var links: Array[int] = []
+	for factory_id in [1, 3, 5, 4]:
+		var result := sim.make_lab_link(factory_id, lab)
+		assert_true(result.ok, result.message)
+		links.append(result.value)
+	# The factories make widgets for the lab, and yellow widgets go to the
+	# green factory, where they wait for blue.
+	var yellow_to_green := sim.start_shipment(3)
+	assert_true(yellow_to_green.ok, yellow_to_green.message)
+	sim.tick(2100)
+	assert_true(sim.select_research(&"earth_tones").ok)
+	for link in links.slice(0, 3):
+		var result := sim.start_shipment(link)
+		assert_true(result.ok, result.message)
+	sim.tick(ContentFixture.TRUCK_TRANSIT_TIME_MS)
+	assert_eq(sim.research_item(&"earth_tones").status, ResearchView.Status.COMPLETE)
+	assert_true(sim.select_research(&"warm_mixes").ok)
+	var red := sim.start_shipment(links[0])
+	assert_true(red.ok, red.message)
+	sim.tick(ContentFixture.TRUCK_TRANSIT_TIME_MS)
+	var yellow := sim.start_shipment(links[1])
+	assert_true(yellow.ok, yellow.message)
+	assert_true(sim.select_research(&"cool_mixes").ok)
+	sim.tick(ContentFixture.TRUCK_TRANSIT_TIME_MS)
+
+
 ## The content of the rich game, with the mixed colors, drift, saturation,
-## demand events, a second market that only trucks reach, and money for all of
-## it. An event starts each 5 to 10 s, so a save of an old version that a test
-## ticks for less than 5 s after its load has no event yet.
+## demand events, a second market that only trucks reach, money for all of
+## it, and the research of [method ContentFixture.research_data] and
+## warm_mixes (2 red and 1 yellow; unlocks brown). An event starts each 5 to
+## 10 s, so a save of an old version that a test ticks for less than 5 s after
+## its load has no event yet.
 func _content() -> Content:
 	var colors := ContentFixture.mixed_colors_data()
+	var research := ContentFixture.research_data(colors)
+	research.research.append({"id": "warm_mixes", "name": "Warm mixes",
+		"cost": {"red": 2, "yellow": 1}, "unlocks": {"colors": ["brown"]}})
 	return ContentFixture.from_data(ContentFixture.data(colors,
 		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides().merged({"starting_money": 1000})),
 		ContentFixture.markets_data(ContentFixture.PRICE, colors, ["millbrook", "farpoint"],
 			ContentFixture.POPULATION, ContentFixture.INCOME, [0, 2]),
-		ContentFixture.transport_data(), ContentFixture.demand_events_data()))
+		ContentFixture.transport_data(), ContentFixture.demand_events_data(), research))
 
 
 ## Content with demand that stays at 1, for the saves of old versions, whose
@@ -116,6 +171,14 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_eq([sim.link(1).vehicle, sim.link(2).vehicle, sim.link(5).vehicle, sim.link(7).vehicle],
 		[&"truck", &"cart", &"truck", &"truck"])
 	assert_eq(sim.link(7).destination_market_id, &"farpoint")
+	assert_eq(sim.labs(), [1] as Array[int])
+	assert_eq([sim.link(11).destination_kind, sim.link(11).vehicle], [LinkView.Destination.LAB, &"truck"])
+	assert_gt(sim.link(11).shipments_in_transit.size(), 0, "green widgets on their way to the lab")
+	assert_eq(sim.research_item(&"earth_tones").status, ResearchView.Status.COMPLETE)
+	assert_eq(sim.research_item(&"warm_mixes").paid, {&"red": 2, &"yellow": 0} as Dictionary[StringName, int],
+		"progress on research that is not selected")
+	assert_eq(sim.selected_research(), &"cool_mixes")
+	assert_eq(sim.lab_stock(), {&"yellow": 1} as Dictionary[StringName, int])
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -138,7 +201,7 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.status, want.status)
 		assert_eq(got.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]),
 			want.input_bays.map(func(b: InputBayView) -> Array: return [b.color, b.count, b.in_transit]))
-	assert_eq(loaded.links().size(), 7)
+	assert_eq(loaded.links().size(), 11)
 	var want_warehouse := sim.warehouse(1)
 	var got_warehouse := loaded.warehouse(1)
 	assert_eq([got_warehouse.color, got_warehouse.count, got_warehouse.in_transit,
@@ -180,6 +243,15 @@ func test_save_then_load_gives_the_same_state() -> void:
 	var event_fields := func(v: DemandEventView) -> Array: return [v.id, v.started_at_ms, v.remaining_ms]
 	assert_eq(loaded.demand_events().map(event_fields), sim.demand_events().map(event_fields),
 		"active demand events are kept")
+	assert_eq(loaded.labs(), sim.labs())
+	assert_eq([loaded.link(8).destination_kind, loaded.link(8).destination_lab_id], [LinkView.Destination.LAB, 1])
+	for want in sim.research():
+		var got := loaded.research_item(want.id)
+		assert_eq([got.status, got.paid, got.in_transit], [want.status, want.paid, want.in_transit],
+			"research %s" % want.id)
+	assert_eq(loaded.selected_research(), &"cool_mixes")
+	assert_eq(loaded.lab_stock(), sim.lab_stock())
+	assert_true(loaded.is_color_unlocked(&"brown"), "complete research keeps its unlocks")
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -194,6 +266,9 @@ func test_the_loaded_game_plays_on_the_same_as_the_saved_game() -> void:
 		game.start_shipment(1)
 		game.start_shipment(4)
 		game.start_shipment(6)
+		game.start_shipment(11)
+		game.select_research(&"warm_mixes")
+		game.start_shipment(8)
 		game.tick(7000)
 
 	assert_eq(loaded.snapshot(), sim.snapshot())
@@ -212,6 +287,10 @@ func test_save_then_load_after_a_prestige_gives_the_same_state() -> void:
 	assert_eq(loaded.prisms().owned, 2)
 	assert_eq(loaded.prisms().total_bought, 2)
 	assert_eq(loaded.factories().size(), 1)
+	assert_eq(loaded.labs(), [] as Array[int], "a prestige clears the labs")
+	assert_eq(loaded.selected_research(), &"")
+	assert_eq(loaded.lab_stock(), {} as Dictionary[StringName, int])
+	assert_false(loaded.is_color_unlocked(&"brown"), "a prestige clears complete research")
 	assert_eq(loaded.snapshot(), sim.snapshot())
 	for game in [sim, loaded]:
 		game.make_link(1, &"millbrook")
@@ -388,8 +467,8 @@ func test_two_links_on_the_same_factory_and_market_fail() -> void:
 
 
 func test_a_link_id_that_is_not_below_the_next_id_fails() -> void:
-	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 8,
-		"state.links[0].id: must be less than next_link_id (8)")
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 12,
+		"state.links[0].id: must be less than next_link_id (12)")
 
 
 func test_two_shipments_with_the_same_id_fail() -> void:
@@ -566,7 +645,7 @@ func test_a_market_that_is_not_in_the_save_starts_as_at_the_start_of_a_run() -> 
 
 func test_a_link_of_an_unknown_kind_fails() -> void:
 	_assert_link_change_fails(func(link: Dictionary) -> void: link.destination_kind = "moon",
-		"state.links[0].destination_kind: must be one of market, factory, warehouse, but it is \"moon\"")
+		"state.links[0].destination_kind: must be one of market, factory, warehouse, lab, but it is \"moon\"")
 
 
 func test_a_link_from_an_unknown_kind_of_place_fails() -> void:
@@ -650,7 +729,7 @@ func test_two_links_from_one_warehouse_to_one_market_fail() -> void:
 			copy.shipments = []
 			state.next_link_id += 1
 			state.links.append(copy),
-		"state.links[7].destination_market_id: warehouse #1 has more than one link to millbrook")
+		"state.links[11].destination_market_id: warehouse #1 has more than one link to millbrook")
 
 
 ## [param change] gets the link from the yellow factory to the green factory.
@@ -676,6 +755,95 @@ func test_two_links_between_the_same_factories_fail() -> void:
 	data.state.links[3].color = "yellow"
 	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
 		"state.links[3].destination_factory_id: factory #3 has more than one link to factory #4")
+
+
+# --- Damaged labs and research ---------------------------------------------------
+
+## Changes the save of the rich game with [param change], which gets its
+## state, and checks that the load fails with [param message_part].
+func _assert_state_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_a_link_to_a_missing_lab_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.links[7].destination_lab_id = 9,
+		"state.links[7].destination_lab_id: there is no lab #9")
+
+
+func test_two_links_between_the_same_factory_and_lab_fail() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void:
+		state.links[8].source_factory_id = 1
+		state.links[8].color = "red",
+		"state.links[8].destination_lab_id: factory #1 has more than one link to lab #1")
+
+
+func test_two_labs_with_the_same_id_fail() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.labs.append({"id": 1}),
+		"state.labs[1].id: is used by more than one lab")
+
+
+func test_a_lab_id_that_is_not_below_the_next_id_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.next_lab_id = 1,
+		"state.labs[0].id: must be less than next_lab_id (1)")
+
+
+func test_unknown_selected_research_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.selected_research = "alchemy",
+		"state.selected_research: there is no research \"alchemy\"")
+
+
+func test_selected_research_that_is_complete_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.selected_research = "earth_tones",
+		"state.selected_research: earth_tones is complete")
+
+
+func test_unknown_complete_research_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.completed_research.append("alchemy"),
+		"state.completed_research: there is no research \"alchemy\"")
+
+
+func test_complete_research_before_the_research_it_requires_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void:
+		state.completed_research = ["cool_mixes", "earth_tones"]
+		state.selected_research = "",
+		"state.completed_research: cool_mixes comes before research that it requires")
+
+
+func test_progress_on_unknown_research_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.research_progress[0].research = "alchemy",
+		"state.research_progress[0].research: there is no research \"alchemy\"")
+
+
+func test_progress_on_complete_research_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.research_progress[0].research = "earth_tones",
+		"state.research_progress[0].research: earth_tones is complete")
+
+
+func test_progress_over_the_cost_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.research_progress[0].paid[0].count = 3,
+		"state.research_progress[0].paid[0].count: must be from 0 to 2")
+
+
+func test_progress_with_the_full_cost_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.research_progress[0].paid[1].count = 1,
+		"state.research_progress[0].paid: warm_mixes has its full cost, so it must be complete")
+
+
+func test_progress_with_a_color_missing_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.research_progress[0].paid.pop_back(),
+		"state.research_progress[0].paid: there is no entry for yellow")
+
+
+func test_stock_of_an_unknown_color_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.lab_stock[0].color = "teal",
+		"state.lab_stock[0].color: there is no color \"teal\"")
+
+
+func test_stock_that_the_selected_research_needs_fails() -> void:
+	_assert_state_change_fails(func(state: Dictionary) -> void: state.lab_stock[0].color = "green",
+		"state.lab_stock: green is in the stock, but cool_mixes still needs it")
 
 
 ## [param change] gets the input bays of the green factory: yellow, then blue.
@@ -1134,3 +1302,40 @@ func test_a_version_10_save_still_loads() -> void:
 	assert_eq(sim.upgrade_vehicle(2).reason, CommandResult.Reason.VEHICLE_IS_CURRENT)
 	assert_true(sim.upgrade_vehicle(1).ok)
 	assert_eq(sim.link(1).vehicle, &"truck")
+
+
+## A save of version 11 (#16: labs and research), as the game wrote it: earth
+## tones is complete, a brown factory, cool mixes selected, and one green
+## widget on its way to the lab.
+func test_a_version_11_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v11.json")
+
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 10_700)
+	assert_eq(sim.labs(), [1] as Array[int])
+	assert_eq(sim.research_item(&"earth_tones").status, ResearchView.Status.COMPLETE)
+	assert_eq(sim.factory(5).color, &"brown")
+	assert_eq(sim.selected_research(), &"cool_mixes")
+	assert_eq(sim.research_item(&"cool_mixes").in_transit, {&"green": 1} as Dictionary[StringName, int])
+	assert_eq(sim.link(6).destination_lab_id, 1)
+	sim.tick(5000)
+	assert_eq(sim.research_item(&"cool_mixes").paid, {&"green": 1} as Dictionary[StringName, int],
+		"the green widget arrived and paid")
+
+
+func test_a_version_10_save_has_no_labs_or_research_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v10.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.labs(), [] as Array[int])
+	assert_eq(sim.selected_research(), &"")
+	for view in sim.research():
+		assert_ne(view.status, ResearchView.Status.COMPLETE)
+		assert_eq(view.total_paid(), 0)
+	assert_eq(sim.lab_stock(), {} as Dictionary[StringName, int])
+	assert_false(sim.is_color_unlocked(&"brown"))

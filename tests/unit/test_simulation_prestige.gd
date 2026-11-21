@@ -26,6 +26,12 @@ const PREVIEW_NAME_OF_KEY := {
 	"next_warehouse_id": "Warehouses and the widgets in them",
 	"warehouses": "Warehouses and the widgets in them",
 	"transport_tier": "Transport tier",
+	"next_lab_id": "Labs",
+	"labs": "Labs",
+	"selected_research": "Research, its progress, and the lab stock",
+	"research_progress": "Research, its progress, and the lab stock",
+	"completed_research": "Research, its progress, and the lab stock",
+	"lab_stock": "Research, its progress, and the lab stock",
 }
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.
@@ -265,7 +271,8 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 	assert_eq(view.clears, PackedStringArray(["Money", "Factories",
 		"Links, with their vehicles and shipments", "Demand and saturation",
 		"Community investments and capacity used in each market",
-		"Warehouses and the widgets in them", "Transport tier"]))
+		"Warehouses and the widgets in them", "Transport tier", "Labs",
+		"Research, its progress, and the lab stock"]))
 
 
 func test_the_preview_with_no_prisms_gives_the_reason() -> void:

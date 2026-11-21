@@ -1,7 +1,7 @@
 class_name LinkRow
 extends PanelContainer
 ## One link on the screen. The first line has its source (a factory or a
-## warehouse) and destination (a market, a mixed factory, or a warehouse),
+## warehouse) and destination (a market, a mixed factory, a warehouse, or a lab),
 ## vehicle, shipment cost, transit time, a button to start a shipment, and a
 ## button to buy automatic transport. The second line has its transport
 ## (manual, or what automatic transport did last), its throughput, and its

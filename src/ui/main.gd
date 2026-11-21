@@ -3,8 +3,9 @@ extends Control
 ## build it, factories with their production lines, output bays, and input
 ## bays, warehouses with their widgets and throughput, the transport tier with
 ## a button to buy the next one, links from factories and warehouses to
-## markets, mixed factories, and warehouses, with their vehicles, manual
-## shipments, automatic transport, and throughput, the active demand events,
+## markets, mixed factories, warehouses, and labs, with their vehicles, manual
+## shipments, automatic transport, and throughput, labs and research with its
+## progress and unlocks, the active demand events,
 ## and markets with their remoteness, population, income, capacity, community
 ## investment, and the price and demand of each color.
 ##
@@ -36,6 +37,10 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _make_link_button: Button = %MakeLink
 @onready var _link_list: VBoxContainer = %LinkList
 @onready var _links_empty_label: Label = %LinksEmptyLabel
+@onready var _build_lab_button: Button = %BuildLab
+@onready var _labs_label: Label = %LabsLabel
+@onready var _lab_stock_label: Label = %LabStockLabel
+@onready var _research_list: VBoxContainer = %ResearchList
 @onready var _demand_event_list: VBoxContainer = %DemandEventList
 @onready var _demand_events_empty_label: Label = %DemandEventsEmptyLabel
 @onready var _market_list: VBoxContainer = %MarketList
@@ -56,6 +61,8 @@ var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _warehouse_rows: Dictionary[int, WarehouseRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
+## One row for each research in the content. A new run shows them again.
+var _research_rows: Dictionary[StringName, ResearchRow] = {}
 ## The rows of the active demand events, by [member DemandEventRow.key].
 ## Events start in order, so the rows are in start order.
 var _demand_event_rows: Dictionary[String, DemandEventRow] = {}
@@ -108,6 +115,12 @@ func _ready() -> void:
 	add_child(_prestige_confirm)
 	_prestige_button.pressed.connect(_on_prestige_pressed)
 	_buy_transport_tier_button.pressed.connect(func() -> void: _show_result(_sim.buy_transport_tier()))
+	_build_lab_button.pressed.connect(func() -> void: _show_result(_sim.build_lab()))
+	for view in _sim.research():
+		var row := ResearchRow.new(view, _content)
+		row.select_pressed.connect(func(id: StringName) -> void: _show_result(_sim.select_research(id)))
+		_research_rows[view.id] = row
+		_research_list.add_child(row)
 	_refresh()
 
 
@@ -226,8 +239,12 @@ func _on_make_link_pressed() -> void:
 			_show_result(_sim.link_warehouse_to_market(source[1], destination[1]))
 		[&"warehouse", &"factory"]:
 			_show_result(_sim.link_warehouse_to_factory(source[1], destination[1]))
+		[&"factory", &"lab"]:
+			_show_result(_sim.make_lab_link(source[1], destination[1]))
+		[&"warehouse", &"lab"]:
+			_show_result(_sim.link_warehouse_to_lab(source[1], destination[1]))
 		_:
-			_show_message("A warehouse cannot link to another warehouse. Link it to a market or a mixed factory.")
+			_show_message("A warehouse cannot link to another warehouse. Link it to a market, a mixed factory, or a lab.")
 
 
 func _on_buy_prism_pressed() -> void:
@@ -310,6 +327,7 @@ func _refresh() -> void:
 			link_row = _add_link_row(view)
 		link_row.show_state(view, automatic_cost, _content.transport_tier(view.vehicle), tier)
 	_links_empty_label.visible = _link_rows.is_empty()
+	_refresh_research()
 
 	_refresh_demand_events()
 
@@ -321,6 +339,20 @@ func _refresh() -> void:
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
 		market_row.show_state(view, _content.transport_tier(view.needed_tier).plural_name)
+
+
+func _refresh_research() -> void:
+	_build_lab_button.text = "Build lab (%s)" % _sim.lab_build_cost().format()
+	var labs := _sim.labs()
+	_labs_label.text = "Labs: %s" % ("none" if labs.is_empty() else BigNumber.from_int(labs.size()).format())
+	var stock := _sim.lab_stock()
+	var parts := PackedStringArray()
+	for color in stock:
+		parts.append("%s %s" % [_content.color(color).name, BigNumber.from_int(stock[color]).format()])
+	_lab_stock_label.text = "Lab stock: %s" % ("empty" if parts.is_empty() else ", ".join(parts))
+	_lab_stock_label.tooltip_text = "Widgets that arrived at a lab when the selected research did not need them. They pay for the next research that needs them."
+	for view in _sim.research():
+		_research_rows[view.id].show_state(view)
 
 
 func _refresh_transport() -> void:
@@ -384,9 +416,9 @@ func _add_factory_row(view: FactoryView) -> FactoryRow:
 
 ## Keeps the source and destination choices for a new link in step with the
 ## simulation. Each choice has a key: [code][kind, id][/code], where the kind
-## is &"factory", &"warehouse", or &"market". The sources are the factories,
-## then the warehouses. The destinations are the markets, then the mixed
-## factories, then the warehouses. When a list changes, it is made again with
+## is &"factory", &"warehouse", &"market", or &"lab". The sources are the
+## factories, then the warehouses. The destinations are the markets, then the
+## mixed factories, then the warehouses, then the labs. When a list changes, it is made again with
 ## the same place selected.
 func _refresh_new_link_choices() -> void:
 	var factories := _sim.factories()
@@ -420,6 +452,8 @@ func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Arra
 			&"warehouse":
 				var view := _sim.warehouse(key[1])
 				choice.add_icon_item(_symbol_icon(_content.color(view.color)), _warehouse_name(view))
+			&"lab":
+				choice.add_item(_lab_name(key[1]))
 			_:
 				var market := _sim.market(key[1])
 				if market.is_open:
@@ -445,7 +479,7 @@ func _link_source_keys(factories: Array[FactoryView], warehouses: Array[Warehous
 
 
 ## The places a new link can go: each market, then each mixed factory, then
-## each warehouse.
+## each warehouse, then each lab.
 func _link_destination_keys(factories: Array[FactoryView], warehouses: Array[WarehouseView]) -> Array:
 	var keys: Array = []
 	for market in _sim.markets():
@@ -455,7 +489,14 @@ func _link_destination_keys(factories: Array[FactoryView], warehouses: Array[War
 			keys.append([&"factory", view.id])
 	for view in warehouses:
 		keys.append([&"warehouse", view.id])
+	for lab_id in _sim.labs():
+		keys.append([&"lab", lab_id])
 	return keys
+
+
+## Such as "Lab #1".
+static func _lab_name(id: int) -> String:
+	return "Lab #%d" % id
 
 
 ## Such as "Green factory #4".
@@ -477,6 +518,8 @@ func _add_link_row(view: LinkView) -> LinkRow:
 			destination_name = _factory_name(_sim.factory(view.destination_factory_id))
 		LinkView.Destination.WAREHOUSE:
 			destination_name = _warehouse_name(_sim.warehouse(view.destination_warehouse_id))
+		LinkView.Destination.LAB:
+			destination_name = _lab_name(view.destination_lab_id)
 		_:
 			destination_name = _sim.market(view.destination_market_id).name
 	var row := LinkRow.new(view, _content.color(view.color), source_name, destination_name)

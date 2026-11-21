@@ -1,0 +1,11 @@
+{
+	"_about": "Research, in order. A lab consumes widgets to pay for the selected research. Each research: id, name, cost (color id to the count of widgets that labs consume to complete it), requires (optional: ids of research that must be complete first, each earlier in this file), and unlocks (an object; \"colors\" lists the colors, and with them their recipes, that it unlocks; each must have unlock \"research\" in colors.json). lab_build_cost: the money that one lab costs. PLACEHOLDER costs until playtests set them.",
+	"lab_build_cost": 30,
+	"placeholder": true,
+	"research": [
+		{"id": "earth_tones", "name": "Earth tones", "cost": {"red": 10, "yellow": 10, "blue": 10}, "unlocks": {"colors": ["brown"]}},
+		{"id": "warm_tertiaries", "name": "Warm tertiaries", "cost": {"orange": 15}, "unlocks": {"colors": ["red_orange", "yellow_orange"]}},
+		{"id": "fresh_tertiaries", "name": "Fresh tertiaries", "cost": {"green": 15}, "unlocks": {"colors": ["yellow_green", "blue_green"]}},
+		{"id": "deep_tertiaries", "name": "Deep tertiaries", "cost": {"purple": 15}, "unlocks": {"colors": ["blue_purple", "red_purple"]}}
+	]
+}
