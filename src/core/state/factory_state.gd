@@ -2,6 +2,8 @@ extends RefCounted
 ## Internal to the core. The mutable state of one factory and its production
 ## rules. Code outside src/core reads factories through FactoryView.
 
+const FactoryState := preload("res://src/core/state/factory_state.gd")
+
 var id: int
 var color: StringName
 ## How many production lines the factory has. Each line makes one widget per
@@ -41,6 +43,19 @@ func advance(duration_ms: int, balance: FactoryBalance) -> void:
 	var made := progress_ms / balance.widget_time_ms
 	output_bay_count += made
 	progress_ms -= made * balance.widget_time_ms
+
+
+## The inverse of [method to_dict]. Records problems in [param reader].
+static func from_snapshot(reader: SnapshotReader, content: Content) -> FactoryState:
+	var state := FactoryState.new(reader.integer("id", 1), reader.id("color"))
+	var color_def := content.color(state.color)
+	if state.color != &"" and color_def == null:
+		reader.fail("color", "there is no color \"%s\"" % state.color)
+	elif color_def != null and not color_def.is_base():
+		reader.fail("color", "%s is not a base color" % color_def.name)
+	state.output_bay_count = reader.integer("output_bay_count")
+	state.progress_ms = reader.integer("progress_ms")
+	return state
 
 
 func to_view(balance: FactoryBalance) -> FactoryView:

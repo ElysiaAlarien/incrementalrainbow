@@ -3,7 +3,14 @@ extends Control
 ## watch their output bays.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
-## each frame, and shows what the queries return.
+## each frame, and shows what the queries return. It loads the save on start,
+## and saves at intervals and when the game exits or goes to the background.
+
+## Seconds between saves while the game runs.
+const AUTOSAVE_INTERVAL_S := 30.0
+
+## Where the game keeps its save. Set it before the screen enters the tree.
+var save_path := SaveFile.DEFAULT_PATH
 
 @onready var _build_buttons: HBoxContainer = %BuildButtons
 @onready var _factory_list: VBoxContainer = %FactoryList
@@ -12,6 +19,7 @@ extends Control
 @onready var _money_label: Label = %MoneyLabel
 
 var _sim: Simulation
+var _save_file: SaveFile
 var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 ## Frame time that is not yet a whole millisecond.
@@ -24,8 +32,14 @@ func _ready() -> void:
 		_show_message("The game data has errors:\n" + "\n".join(_content.errors))
 		set_process(false)
 		return
-	# Saves (a later ticket) will keep the seed; a new game takes a fresh one.
-	_sim = Simulation.new(_content, randi())
+	_save_file = SaveFile.new(save_path)
+	_sim = _load_or_start_game()
+	var autosave := Timer.new()
+	autosave.name = "Autosave"
+	autosave.wait_time = AUTOSAVE_INTERVAL_S
+	autosave.timeout.connect(save_game)
+	add_child(autosave)
+	autosave.start()
 	for color_id in _sim.buildable_factory_colors():
 		_add_build_button(_content.color(color_id))
 	_refresh()
@@ -39,9 +53,46 @@ func _process(delta: float) -> void:
 	_refresh()
 
 
+func _exit_tree() -> void:
+	# The scene tree removes this screen when the game quits by any path.
+	save_game()
+
+
+func _notification(what: int) -> void:
+	# A mobile OS can stop a game in the background with no other notice.
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		save_game()
+
+
+## Writes the current game to the save file.
+func save_game() -> void:
+	if _sim == null:
+		return
+	var error := _save_file.write(SaveCodec.encode(_sim))
+	if error != OK:
+		push_error("Could not save the game to %s: %s" % [_save_file.path, error_string(error)])
+		_show_message("The game could not save: %s." % error_string(error))
+
+
 ## The simulation behind this screen. For smoke tests.
 func simulation() -> Simulation:
 	return _sim
+
+
+## Loads the save, or starts a new game when there is no save. A save that
+## cannot load is kept in a separate file, so that the next save does not
+## destroy it.
+func _load_or_start_game() -> Simulation:
+	if _save_file.exists():
+		var result := SaveCodec.decode(_content, _save_file.read())
+		if result.ok:
+			return result.simulation
+		var kept_path := _save_file.keep_damaged()
+		var kept_text := "A copy of it is at %s." % ProjectSettings.globalize_path(kept_path) \
+			if not kept_path.is_empty() else "The game could not keep a copy of it."
+		push_warning("The save did not load: %s" % result.message)
+		_show_message("Your save could not load, so a new game started. %s\n%s" % [kept_text, result.message])
+	return Simulation.new(_content, randi())
 
 
 func _add_build_button(color: ColorDef) -> void:
