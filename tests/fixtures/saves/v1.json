@@ -6,20 +6,27 @@
 				"color": "red",
 				"id": 1,
 				"output_bay_count": 6,
-				"progress_ms": 0
+				"progress_ms": 0,
+				"size": 1
 			},
 			{
 				"color": "blue",
 				"id": 2,
 				"output_bay_count": 6,
-				"progress_ms": 0
+				"progress_ms": 0,
+				"size": 2
 			},
 			{
 				"color": "yellow",
 				"id": 3,
 				"output_bay_count": 0,
-				"progress_ms": 333
+				"progress_ms": 333,
+				"size": 1
 			}
+		],
+		"money": [
+			9.0,
+			1
 		],
 		"next_factory_id": 4,
 		"rng": [

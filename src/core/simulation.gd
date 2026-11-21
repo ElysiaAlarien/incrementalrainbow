@@ -40,6 +40,9 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		reader.fail("rng", "cannot be all zeros")
 	else:
 		sim._rng.set_state(rng_state)
+	sim._money = reader.big_number("money")
+	if sim._money.is_negative():
+		reader.fail("money", "cannot be negative")
 	sim._next_factory_id = reader.integer("next_factory_id", 1)
 	var ids := {}
 	for factory_reader in reader.objects("factories"):

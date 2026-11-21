@@ -71,6 +71,26 @@ func u32_list(key: String, count: int) -> PackedInt64Array:
 	return numbers
 
 
+## A [BigNumber] in the form of [method BigNumber.to_data]:
+## [code][mantissa, exponent][/code], with a mantissa of 0 or with a size in
+## [1, 10).
+func big_number(key: String) -> BigNumber:
+	if not _has(key):
+		return BigNumber.ZERO
+	var value: Variant = _data[key]
+	if not value is Array or value.size() != 2:
+		fail(key, "must be a list of a mantissa and an exponent, but it is %s" % _describe(value))
+		return BigNumber.ZERO
+	var path := _key_path(key)
+	var mantissa: Variant = value[0]
+	if not (mantissa is float or mantissa is int) or not is_finite(mantissa) \
+			or (mantissa != 0 and (absf(mantissa) < 1.0 or absf(mantissa) >= 10.0)):
+		_problem(path + "[0]", "must be a mantissa of 0 or from 1 to less than 10, but it is %s" % _describe(mantissa))
+		return BigNumber.ZERO
+	var exponent := _to_integer(value[1], path + "[1]", -MAX_EXACT_INT, MAX_EXACT_INT)
+	return BigNumber.new(float(mantissa), exponent)
+
+
 ## A list of objects, each read by its own reader.
 func objects(key: String) -> Array[SnapshotReader]:
 	var readers: Array[SnapshotReader] = []

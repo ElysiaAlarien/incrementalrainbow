@@ -96,7 +96,8 @@ func test_adding_a_line_with_too_little_money_shows_the_reason() -> void:
 func test_the_game_saves_on_exit_and_loads_on_start() -> void:
 	var first := await _open_main()
 	first.find_child("Build_red", true, false).pressed.emit()
-	first.simulation().tick(3_500)
+	first.simulation().add_production_line(1)
+	first.simulation().tick(1_750)
 	var saved_snapshot: Dictionary = first.simulation().snapshot()
 	remove_child(first)
 	first.free()
@@ -107,10 +108,12 @@ func test_the_game_saves_on_exit_and_loads_on_start() -> void:
 	var second := await _open_main()
 
 	assert_eq(second.simulation().factories()[0].id, 1)
-	assert_gte(second.simulation().time_ms(), 3_500)
+	assert_gte(second.simulation().time_ms(), 1_750)
 	var rows := _rows(second)
 	assert_eq(rows.size(), 1)
 	assert_eq((rows[0] as FactoryRow).bay_text(), "Output bay: 3 / 10")
+	assert_eq((rows[0] as FactoryRow).size_text(), "2 lines")
+	assert_true(second.simulation().money().equals(saved.simulation.money()))
 
 
 func test_the_game_saves_at_intervals() -> void:

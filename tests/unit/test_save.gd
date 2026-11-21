@@ -10,6 +10,7 @@ func _rich_game() -> Simulation:
 	sim.build_factory(&"red")
 	sim.tick(1234)
 	sim.build_factory(&"blue")
+	sim.add_production_line(2)
 	sim.tick(5000)
 	sim.build_factory(&"yellow")
 	sim.tick(333)
@@ -28,12 +29,14 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_true(result.ok, result.message)
 	var loaded := result.simulation
 	assert_eq(loaded.time_ms(), sim.time_ms())
+	assert_true(loaded.money().equals(sim.money()), "money %s" % loaded.money())
 	assert_eq(loaded.factories().size(), 3)
 	for i in sim.factories().size():
 		var want := sim.factories()[i]
 		var got := loaded.factories()[i]
 		assert_eq(got.id, want.id)
 		assert_eq(got.color, want.color)
+		assert_eq(got.size, want.size)
 		assert_eq(got.output_bay_count, want.output_bay_count)
 		assert_eq(got.status, want.status)
 	assert_eq(loaded.snapshot(), sim.snapshot())
@@ -149,6 +152,36 @@ func test_a_factory_id_that_is_not_below_the_next_id_fails() -> void:
 	data.state.factories[2].id = data.state.next_factory_id
 	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
 		"state.factories[2].id: must be less than next_factory_id")
+
+
+func test_a_factory_with_no_production_lines_fails() -> void:
+	var data := _save_data()
+	data.state.factories[0].size = 0
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.factories[0].size: must be from 1")
+
+
+func test_negative_money_fails() -> void:
+	var data := _save_data()
+	data.state.money = [-5.0, 2]
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "state.money: cannot be negative")
+
+
+func test_money_with_a_mantissa_that_is_not_normalized_fails() -> void:
+	var data := _save_data()
+	data.state.money = [45.0, 1]
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.money[0]: must be a mantissa of 0 or from 1 to less than 10, but it is 45")
+
+
+func test_large_money_keeps_its_value() -> void:
+	var data := _save_data()
+	data.state.money = [1.2345678901234, 123_456_789]
+
+	var result := _load(JSON.stringify(data))
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.simulation.money().to_data(), [1.2345678901234, 123_456_789])
 
 
 func test_a_random_number_state_of_all_zeros_fails() -> void:
@@ -275,11 +308,12 @@ func test_a_version_1_save_still_loads() -> void:
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
 	assert_eq(sim.time_ms(), 6567)
+	assert_eq(sim.money().format(), "90")
 	var factories := sim.factories()
 	assert_eq(factories.size(), 3)
-	assert_eq([factories[0].id, factories[0].color, factories[0].output_bay_count], [1, &"red", 6])
-	assert_eq([factories[1].id, factories[1].color, factories[1].output_bay_count], [2, &"blue", 6])
-	assert_eq([factories[2].id, factories[2].color, factories[2].output_bay_count], [3, &"yellow", 0])
+	assert_eq([factories[0].id, factories[0].color, factories[0].size, factories[0].output_bay_count], [1, &"red", 1, 6])
+	assert_eq([factories[1].id, factories[1].color, factories[1].size, factories[1].output_bay_count], [2, &"blue", 2, 6])
+	assert_eq([factories[2].id, factories[2].color, factories[2].size, factories[2].output_bay_count], [3, &"yellow", 1, 0])
 	assert_true(factories[0].is_stopped())
 	assert_false(factories[2].is_stopped())
 	sim.tick(367)

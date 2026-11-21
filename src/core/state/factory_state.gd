@@ -53,6 +53,7 @@ static func from_snapshot(reader: SnapshotReader, content: Content) -> FactorySt
 		reader.fail("color", "there is no color \"%s\"" % state.color)
 	elif color_def != null and not color_def.is_base():
 		reader.fail("color", "%s is not a base color" % color_def.name)
+	state.size = reader.integer("size", 1)
 	state.output_bay_count = reader.integer("output_bay_count")
 	state.progress_ms = reader.integer("progress_ms")
 	return state
