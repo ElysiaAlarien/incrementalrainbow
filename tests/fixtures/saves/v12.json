@@ -1,6 +1,14 @@
 {
 	"format": "incremental-rainbow-save",
 	"state": {
+		"completed_research": [],
+		"demand_events": [
+			{
+				"ends_at_ms": 27427,
+				"event_id": "red_blue_spike",
+				"started_at_ms": 7427
+			}
+		],
 		"drift_key": 1946051765,
 		"factories": [
 			{
@@ -46,6 +54,8 @@
 				"size": 1
 			}
 		],
+		"lab_stock": [],
+		"labs": [],
 		"links": [
 			{
 				"automatic_status": "shipped",
@@ -68,6 +78,7 @@
 					}
 				],
 				"source_factory_id": 1,
+				"source_kind": "factory",
 				"split_percent": 75,
 				"split_shipped": 4,
 				"vehicle": "cart"
@@ -93,6 +104,7 @@
 					}
 				],
 				"source_factory_id": 1,
+				"source_kind": "factory",
 				"split_percent": 25,
 				"split_shipped": 1,
 				"vehicle": "cart"
@@ -107,28 +119,46 @@
 				"recent_starts": [],
 				"shipments": [],
 				"source_factory_id": 1,
+				"source_kind": "factory",
 				"split_percent": 0,
 				"split_shipped": 0,
 				"vehicle": "cart"
+			}
+		],
+		"markets": [
+			{
+				"capacity_used": 0,
+				"id": "millbrook",
+				"income": 100,
+				"income_investments": 0,
+				"population": 1000,
+				"population_investments": 0
 			}
 		],
 		"money": [
 			2.6,
 			1
 		],
+		"next_demand_event_ms": 15401,
 		"next_factory_id": 4,
+		"next_lab_id": 1,
 		"next_link_id": 4,
 		"next_shipment_id": 3,
+		"next_warehouse_id": 1,
 		"prisms": 0,
 		"prisms_bought": 0,
+		"research_progress": [],
 		"rng": [
-			153243357,
-			2698883992,
-			2550103500,
-			3492066454
+			706348839,
+			2967611476,
+			286749727,
+			3455046959
 		],
 		"saturation": [],
-		"time_ms": 9000
+		"selected_research": "",
+		"time_ms": 9000,
+		"transport_tier": "cart",
+		"warehouses": []
 	},
-	"version": 7
+	"version": 12
 }

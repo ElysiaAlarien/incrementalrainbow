@@ -81,11 +81,11 @@ func _rich_game() -> Simulation:
 	assert_true(blue.ok, blue.message)
 	var green := sim.start_shipment(11)
 	assert_true(green.ok, green.message)
-	# A split of blue factory #5 between the green factory (link 4) and the lab
-	# (link 10), and its first automatic starts.
-	assert_true(sim.buy_automatic_transport(4).ok)
-	assert_true(sim.buy_automatic_transport(10).ok)
-	var split := sim.set_split({4: 60, 10: 40})
+	# A split of yellow factory #3 between the green factory (link 3) and the
+	# lab (link 9), and its first automatic starts.
+	assert_true(sim.buy_automatic_transport(3).ok)
+	assert_true(sim.buy_automatic_transport(9).ok)
+	var split := sim.set_split({3: 60, 9: 40})
 	assert_true(split.ok, split.message)
 	sim.tick(1)
 	return sim
@@ -188,8 +188,8 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_eq(sim.lab_stock(), {&"yellow": 1} as Dictionary[StringName, int])
 	assert_eq(sim.splits().size(), 1, "a split")
 	var split := sim.splits()[0]
-	assert_eq(split.shares, {4: 60, 10: 40})
-	assert_gt(split.shipped[4] + split.shipped[10], 0, "the split counts shipped widgets")
+	assert_eq(split.shares, {3: 60, 9: 40})
+	assert_gt(split.shipped[3] + split.shipped[9], 0, "the split counts shipped widgets")
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -265,7 +265,7 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_true(loaded.is_color_unlocked(&"brown"), "complete research keeps its unlocks")
 	var split := loaded.splits()[0]
 	assert_eq([split.source_factory_id, split.color, split.shares, split.shipped],
-		[5, &"blue", sim.splits()[0].shares, sim.splits()[0].shipped])
+		[3, &"yellow", sim.splits()[0].shares, sim.splits()[0].shipped])
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -896,11 +896,11 @@ func test_an_input_bay_over_its_capacity_fails() -> void:
 
 func test_an_input_bay_that_would_overflow_when_its_shipments_arrive_fails() -> void:
 	_assert_input_bay_change_fails(func(bays: Array) -> void: bays[1].count = ContentFixture.INPUT_BAY_CAPACITY,
-		"state.factories[3].input_bays: 17 blue widgets are in the bay and on the way, but the bay holds 10")
+		"state.factories[3].input_bays: 16 blue widgets are in the bay and on the way, but the bay holds 10")
 
 
-## [param change] gets the links of the saved state. Links 4 and 10 (at
-## indexes 3 and 9) share the split of blue factory #5.
+## [param change] gets the links of the saved state. Links 3 and 9 (at
+## indexes 2 and 8) share the split of yellow factory #3.
 func _assert_split_change_fails(change: Callable, message_part: String) -> void:
 	var data := _save_data()
 	change.call(data.state.links)
@@ -908,20 +908,20 @@ func _assert_split_change_fails(change: Callable, message_part: String) -> void:
 
 
 func test_split_percentages_that_do_not_add_up_to_100_fail() -> void:
-	_assert_split_change_fails(func(links: Array) -> void: links[9].split_percent = 30,
-		"state.links[3].split_percent: the split percentages of the links from this source add up to 90, not 100")
+	_assert_split_change_fails(func(links: Array) -> void: links[8].split_percent = 30,
+		"state.links[2].split_percent: the split percentages of the links from this source add up to 90, not 100")
 
 
 func test_a_split_on_only_some_links_of_a_source_fails() -> void:
 	_assert_split_change_fails(func(links: Array) -> void:
-			links[9].split_percent = -1
-			links[9].split_shipped = 0,
-		"state.links[3].split_percent: the links from this source must all have a split percentage, or none")
+			links[8].split_percent = -1
+			links[8].split_shipped = 0,
+		"state.links[2].split_percent: the links from this source must all have a split percentage, or none")
 
 
 func test_a_split_percentage_over_100_fails() -> void:
-	_assert_split_change_fails(func(links: Array) -> void: links[3].split_percent = 101,
-		"state.links[3].split_percent: must be from -1 to 100")
+	_assert_split_change_fails(func(links: Array) -> void: links[2].split_percent = 101,
+		"state.links[2].split_percent: must be from -1 to 100")
 
 
 func test_shipped_widgets_on_a_link_with_no_split_fail() -> void:
