@@ -16,8 +16,8 @@ func _rich_game() -> Simulation:
 	return sim
 
 
-func _load(text: String, content: Content = ContentFixture.make(700, 6)) -> LoadResult:
-	return SaveCodec.decode(content, text)
+func _load(text: String, steps: Array[Callable] = SaveCodec.migrations()) -> LoadResult:
+	return SaveCodec.decode(ContentFixture.make(700, 6), text, steps)
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -162,10 +162,7 @@ func test_a_random_number_state_of_all_zeros_fails() -> void:
 func test_each_missing_value_fails_with_its_path() -> void:
 	for path in _value_paths(_save_data().state, []):
 		var data := _save_data()
-		var parent: Variant = data.state
-		for i in path.size() - 1:
-			parent = parent[path[i]]
-		parent.erase(path[-1])
+		_parent_of(data.state, path).erase(path[-1])
 		var result := _load(JSON.stringify(data))
 		assert_false(result.ok, "the load fails without %s" % [path])
 		assert_eq(result.reason, LoadResult.Reason.DAMAGED_STATE, "%s: %s" % [path, result.message])
@@ -176,10 +173,7 @@ func test_each_missing_value_fails_with_its_path() -> void:
 func test_each_value_of_the_wrong_kind_fails_with_its_path() -> void:
 	for path in _value_paths(_save_data().state, []):
 		var data := _save_data()
-		var parent: Variant = data.state
-		for i in path.size() - 1:
-			parent = parent[path[i]]
-		parent[path[-1]] = {"not": "a value"}
+		_parent_of(data.state, path)[path[-1]] = {"not": "a value"}
 		var result := _load(JSON.stringify(data))
 		assert_false(result.ok, "the load fails with an object at %s" % [path])
 		assert_eq(result.reason, LoadResult.Reason.DAMAGED_STATE, "%s: %s" % [path, result.message])
@@ -198,6 +192,14 @@ func _value_paths(data: Variant, prefix: Array) -> Array[Array]:
 		for i in data.size():
 			paths.append_array(_value_paths(data[i], prefix + [i]))
 	return paths
+
+
+## The object that holds the last key of [param path].
+func _parent_of(data: Dictionary, path: Array) -> Variant:
+	var parent: Variant = data
+	for i in path.size() - 1:
+		parent = parent[path[i]]
+	return parent
 
 
 func test_the_value_paths_cover_the_whole_state() -> void:
@@ -233,7 +235,7 @@ func test_a_save_of_an_older_version_migrates_to_the_current_version() -> void:
 	var steps: Array[Callable] = [_rename_clock, _drop_comment]
 	state.comment = "made by version 2"
 
-	var result := SaveCodec.decode(ContentFixture.make(700, 6), _old_save(1, state), steps)
+	var result := _load(_old_save(1, state), steps)
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.time_ms(), 6567)
@@ -245,7 +247,7 @@ func test_a_migration_starts_at_the_version_of_the_save() -> void:
 	state.comment = "made by version 2"
 	var steps: Array[Callable] = [_rename_clock, _drop_comment]
 
-	var result := SaveCodec.decode(ContentFixture.make(700, 6), _old_save(2, state), steps)
+	var result := _load(_old_save(2, state), steps)
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.snapshot(), _rich_game().snapshot())
@@ -255,7 +257,7 @@ func test_a_migration_that_gives_damaged_state_fails() -> void:
 	var state: Dictionary = _save_data().state
 	var steps: Array[Callable] = [_rename_clock]
 
-	var result := SaveCodec.decode(ContentFixture.make(700, 6), _old_save(1, state), steps)
+	var result := _load(_old_save(1, state), steps)
 
 	assert_false(result.ok)
 	assert_eq(result.reason, LoadResult.Reason.DAMAGED_STATE)
@@ -268,7 +270,7 @@ func test_a_migration_that_gives_damaged_state_fails() -> void:
 func test_a_version_1_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v1.json")
 
-	var result := SaveCodec.decode(ContentFixture.make(700, 6), text)
+	var result := _load(text)
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation

@@ -20,6 +20,9 @@ var save_path := SaveFile.DEFAULT_PATH
 
 var _sim: Simulation
 var _save_file: SaveFile
+## False when a save that could not load is still at the save path, so that a
+## save does not destroy it.
+var _can_save := true
 var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 ## Frame time that is not yet a whole millisecond.
@@ -37,7 +40,7 @@ func _ready() -> void:
 	var autosave := Timer.new()
 	autosave.name = "Autosave"
 	autosave.wait_time = AUTOSAVE_INTERVAL_S
-	autosave.timeout.connect(save_game)
+	autosave.timeout.connect(write_save)
 	add_child(autosave)
 	autosave.start()
 	for color_id in _sim.buildable_factory_colors():
@@ -55,18 +58,18 @@ func _process(delta: float) -> void:
 
 func _exit_tree() -> void:
 	# The scene tree removes this screen when the game quits by any path.
-	save_game()
+	write_save()
 
 
 func _notification(what: int) -> void:
 	# A mobile OS can stop a game in the background with no other notice.
 	if what == NOTIFICATION_APPLICATION_PAUSED:
-		save_game()
+		write_save()
 
 
-## Writes the current game to the save file.
-func save_game() -> void:
-	if _sim == null:
+## Writes the current game to the device.
+func write_save() -> void:
+	if _sim == null or not _can_save:
 		return
 	var error := _save_file.write(SaveCodec.encode(_sim))
 	if error != OK:
@@ -88,8 +91,11 @@ func _load_or_start_game() -> Simulation:
 		if result.ok:
 			return result.simulation
 		var kept_path := _save_file.keep_damaged()
-		var kept_text := "A copy of it is at %s." % ProjectSettings.globalize_path(kept_path) \
-			if not kept_path.is_empty() else "The game could not keep a copy of it."
+		var kept_text := "A copy of it is at %s." % ProjectSettings.globalize_path(kept_path)
+		if kept_path.is_empty():
+			_can_save = false
+			kept_text = "The game could not move it, so this game will not save. Your save stays at %s." % \
+				ProjectSettings.globalize_path(_save_file.path)
 		push_warning("The save did not load: %s" % result.message)
 		_show_message("Your save could not load, so a new game started. %s\n%s" % [kept_text, result.message])
 	return Simulation.new(_content, randi())

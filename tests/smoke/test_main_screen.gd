@@ -8,7 +8,7 @@ const SAVE_PATH := "user://test_saves/main_screen.json"
 
 
 func before_each() -> void:
-	for path in [SAVE_PATH, SAVE_PATH + ".damaged", SAVE_PATH + ".tmp"]:
+	for path in [SAVE_PATH, SAVE_PATH + SaveFile.DAMAGED_SUFFIX, SAVE_PATH + SaveFile.TEMP_SUFFIX]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 
@@ -23,6 +23,11 @@ func _open_main() -> Control:
 	add_child_autofree(main)
 	await wait_process_frames(1)
 	return main
+
+
+## The save that the screen wrote.
+func _read_save() -> LoadResult:
+	return SaveCodec.decode(Content.load_dir(Content.DEFAULT_DIR), FileAccess.get_file_as_string(SAVE_PATH))
 
 
 func _rows(main: Control) -> Array[Node]:
@@ -95,7 +100,7 @@ func test_the_game_saves_on_exit_and_loads_on_start() -> void:
 	var saved_snapshot: Dictionary = first.simulation().snapshot()
 	remove_child(first)
 	first.free()
-	var saved := SaveCodec.decode(Content.load_dir(Content.DEFAULT_DIR), FileAccess.get_file_as_string(SAVE_PATH))
+	var saved := _read_save()
 	assert_true(saved.ok, "the exit saved the game: %s" % saved.message)
 	assert_eq(saved.simulation.snapshot(), saved_snapshot)
 
@@ -119,7 +124,7 @@ func test_the_game_saves_at_intervals() -> void:
 	main.find_child("Build_blue", true, false).pressed.emit()
 	autosave.timeout.emit()
 
-	var result := SaveCodec.decode(Content.load_dir(Content.DEFAULT_DIR), FileAccess.get_file_as_string(SAVE_PATH))
+	var result := _read_save()
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.factories().size(), 1)
 
@@ -137,5 +142,25 @@ func test_a_damaged_save_starts_a_new_game_and_keeps_a_copy() -> void:
 	assert_true(message.visible)
 	assert_string_contains(message.text, "could not load")
 	assert_string_contains(message.text, "not valid JSON")
-	assert_eq(FileAccess.get_file_as_string(SAVE_PATH + ".damaged"),
+	assert_eq(FileAccess.get_file_as_string(SAVE_PATH + SaveFile.DAMAGED_SUFFIX),
 		"{\"format\": \"incremental-rainbow-save\", \"vers", "the damaged save is kept")
+
+
+func test_a_damaged_save_that_cannot_move_is_not_overwritten() -> void:
+	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	file.store_string("not a save")
+	file.close()
+	# A folder with a file in it at the copy's path makes the move fail.
+	var blocker := SAVE_PATH + SaveFile.DAMAGED_SUFFIX
+	DirAccess.make_dir_recursive_absolute(blocker)
+	FileAccess.open(blocker.path_join("keep"), FileAccess.WRITE).close()
+
+	var main := await _open_main()
+	main.write_save()
+	remove_child(main)
+	main.free()
+
+	assert_eq(FileAccess.get_file_as_string(SAVE_PATH), "not a save", "the damaged save is not overwritten")
+	DirAccess.remove_absolute(blocker.path_join("keep"))
+	DirAccess.remove_absolute(blocker)

@@ -17,7 +17,7 @@ const FORMAT := "incremental-rainbow-save"
 ## The migration steps, in order. Step [code]i[/code] turns the state of
 ## version [code]i + 1[/code] into the state of version [code]i + 2[/code]. A
 ## step gets the state as parsed JSON and returns the new state. It must not
-## fail hard on damaged data: the load checks the result.
+## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
 	return []
 

@@ -47,7 +47,7 @@ func advance(duration_ms: int, balance: FactoryBalance) -> void:
 
 ## The inverse of [method to_dict]. Records problems in [param reader].
 static func from_snapshot(reader: SnapshotReader, content: Content) -> FactoryState:
-	var state := FactoryState.new(reader.integer("id", 1), reader.id("color"))
+	var state := FactoryState.new(reader.integer("id", 1), reader.text_id("color"))
 	var color_def := content.color(state.color)
 	if state.color != &"" and color_def == null:
 		reader.fail("color", "there is no color \"%s\"" % state.color)

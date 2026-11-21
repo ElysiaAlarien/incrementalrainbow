@@ -7,8 +7,10 @@ extends RefCounted
 ## that stops during a write keeps the last good save.
 
 const DEFAULT_PATH := "user://save.json"
-const _TEMP_SUFFIX := ".tmp"
-const _DAMAGED_SUFFIX := ".damaged"
+## Added to the save path for the file that a write fills first.
+const TEMP_SUFFIX := ".tmp"
+## Added to the save path for a save that could not load.
+const DAMAGED_SUFFIX := ".damaged"
 
 var path: String:
 	get:
@@ -35,22 +37,23 @@ func write(text: String) -> Error:
 	var error := DirAccess.make_dir_recursive_absolute(_path.get_base_dir())
 	if error != OK:
 		return error
-	var temp_path := _path + _TEMP_SUFFIX
+	var temp_path := _path + TEMP_SUFFIX
 	var file := FileAccess.open(temp_path, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
-	file.store_string(text)
-	file.close()
+	var stored := file.store_string(text)
 	error = file.get_error()
-	if error != OK:
-		return error
+	file.close()
+	if not stored:
+		return error if error != OK else ERR_FILE_CANT_WRITE
 	return DirAccess.rename_absolute(temp_path, _path)
 
 
 ## Moves a save that cannot load out of the way, so that the next write does
-## not destroy it. Returns the path of the kept copy, or an empty text on failure.
+## not destroy it. It replaces an older kept copy. Returns the path of the kept
+## copy, or an empty text on failure.
 func keep_damaged() -> String:
-	var kept_path := _path + _DAMAGED_SUFFIX
+	var kept_path := _path + DAMAGED_SUFFIX
 	if DirAccess.rename_absolute(_path, kept_path) != OK:
 		return ""
 	return kept_path
