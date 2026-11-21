@@ -25,6 +25,8 @@ enum Reason {
 	## The shipment would carry no widgets: the source has none, or the
 	## destination accepts none.
 	NOTHING_TO_SHIP,
+	## The link already has automatic transport.
+	ALREADY_AUTOMATIC,
 }
 
 var ok: bool

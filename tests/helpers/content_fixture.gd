@@ -6,6 +6,7 @@ const FACTORY_COST := 10
 const PRICE := 5
 const TRANSIT_TIME_MS := 5000
 const SHIPMENT_COST := 2
+const AUTOMATIC_COST := 20
 
 
 static func colors_data() -> Dictionary:
@@ -46,10 +47,10 @@ static func markets_data(price: float = PRICE, colors: Dictionary = colors_data(
 	return {"markets": [{"id": "millbrook", "name": "Millbrook", "prices": prices}]}
 
 
-## One transport tier, carts.
+## One transport tier, carts, and automatic transport for [param automatic_cost].
 static func transport_data(transit_time_ms: int = TRANSIT_TIME_MS,
-		shipment_cost: float = SHIPMENT_COST) -> Dictionary:
-	return {"tiers": [
+		shipment_cost: float = SHIPMENT_COST, automatic_cost: float = AUTOMATIC_COST) -> Dictionary:
+	return {"automatic_cost": automatic_cost, "tiers": [
 		{"id": "cart", "name": "Cart", "transit_time_ms": transit_time_ms, "shipment_cost": shipment_cost},
 	]}
 

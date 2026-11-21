@@ -30,10 +30,15 @@ var factory_balance: FactoryBalance:
 var starting_money: BigNumber:
 	get:
 		return _starting_money
+## The money that automatic transport for one link costs.
+var automatic_transport_cost: BigNumber:
+	get:
+		return _automatic_transport_cost
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO)
 var _starting_money := BigNumber.ZERO
+var _automatic_transport_cost := BigNumber.ZERO
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}
 var _markets: Array[MarketDef] = []
@@ -198,6 +203,7 @@ func _parse_prices(market_id: StringName, data: Variant) -> Dictionary[StringNam
 
 
 func _parse_transport(data: Dictionary) -> void:
+	_automatic_transport_cost = _read_money(data, "automatic_cost", "transport")
 	for entry in _read_entries(data, "transport.json", "tiers", "transport tier"):
 		var id := StringName(entry.id)
 		var tier := TransportTier.new(id, entry.name,
