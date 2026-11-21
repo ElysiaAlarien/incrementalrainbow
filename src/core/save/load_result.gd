@@ -10,15 +10,14 @@ enum Reason {
 	NOT_JSON,
 	## The JSON is not a save of this game.
 	NOT_A_SAVE,
-	## The save has no valid version number.
+	## The save or the export code has no valid version number.
 	BAD_VERSION,
 	## A newer version of the game wrote the save, so this version cannot read it.
 	NEWER_VERSION,
 	## The core state in the save is missing a value or has a value that is
 	## not allowed.
 	DAMAGED_STATE,
-	## The text is not an export code, or the code is damaged in a way that
-	## its checksum does not find.
+	## The text is not an export code, or its save cannot be read.
 	NOT_A_CODE,
 	## The checksum of the export code does not match, for example a code that
 	## was cut off or has a typo.

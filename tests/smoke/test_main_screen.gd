@@ -227,15 +227,15 @@ func test_a_failed_command_shows_its_reason() -> void:
 # --- Export and import ----------------------------------------------------------
 
 ## Opens the export and import dialog of [param main].
-func _open_save_code_dialog(main: Control) -> SaveCodeDialog:
-	main.find_child("SaveCodeButton", true, false).pressed.emit()
+func _open_export_code_dialog(main: Control) -> ExportCodeDialog:
+	main.find_child("ExportCodeButton", true, false).pressed.emit()
 	await wait_process_frames(1)
-	var dialog: SaveCodeDialog = main.find_child("SaveCodeDialog", true, false)
+	var dialog: ExportCodeDialog = main.find_child("ExportCodeDialog", true, false)
 	assert_true(dialog.visible, "the dialog opens")
 	return dialog
 
 
-func _import_code(dialog: SaveCodeDialog, code: String) -> ConfirmationDialog:
+func _import_code(dialog: ExportCodeDialog, code: String) -> ConfirmationDialog:
 	(dialog.find_child("ImportCodeText", true, false) as TextEdit).text = code
 	dialog.find_child("ImportCode", true, false).pressed.emit()
 	await wait_process_frames(1)
@@ -245,7 +245,7 @@ func _import_code(dialog: SaveCodeDialog, code: String) -> ConfirmationDialog:
 func test_the_export_code_imports_after_the_player_confirms() -> void:
 	var main: Control = await _main_with_red_factory()
 	main.find_child("MakeLink", true, false).pressed.emit()
-	var dialog := await _open_save_code_dialog(main)
+	var dialog := await _open_export_code_dialog(main)
 	var code := (dialog.find_child("ExportCodeText", true, false) as TextEdit).text
 	var exported: Dictionary = ExportCode.decode(Content.load_dir(Content.DEFAULT_DIR), code).simulation.snapshot()
 	# The game goes on: a second factory that the code does not have.
@@ -272,7 +272,7 @@ func test_the_export_code_imports_after_the_player_confirms() -> void:
 
 func test_a_canceled_import_does_not_change_the_game() -> void:
 	var main: Control = await _main_with_red_factory()
-	var dialog := await _open_save_code_dialog(main)
+	var dialog := await _open_export_code_dialog(main)
 	var code := (dialog.find_child("ExportCodeText", true, false) as TextEdit).text
 	main.find_child("Build_blue", true, false).pressed.emit()
 
@@ -286,7 +286,7 @@ func test_a_canceled_import_does_not_change_the_game() -> void:
 
 func test_a_bad_code_shows_the_reason_and_does_not_change_the_game() -> void:
 	var main: Control = await _main_with_red_factory()
-	var dialog := await _open_save_code_dialog(main)
+	var dialog := await _open_export_code_dialog(main)
 	var before: Simulation = main.simulation()
 
 	var confirm := await _import_code(dialog, "IR2.abcd.00000000")

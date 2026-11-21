@@ -2,7 +2,7 @@
 
 The player moves a game between devices with an export code: text to copy on one device and paste on another. The code is `IR<version>.<payload>.<checksum>`:
 
-- The version is the save version (ADR-0009). It is outside the payload, so a code from a newer game fails with a clear message before the import reads the payload.
+- The version is the save version (ADR-0009). It is outside the payload, so a code from a newer game fails with a clear message before the import reads the payload. The import checks the checksum first, so a damaged code fails as damaged. A code from an older version uses the migrations of the save, and if they cannot read it, the message says that the code is old.
 - The payload is the save text of `SaveCodec.encode`, compressed with deflate and written in base64. It is the same save as on the device, not a second format, so an import uses the same migrations and the same strict load. Deflate makes the code much shorter, and base64 survives copy and paste in any text field.
 - The checksum is the first 8 hex digits of the SHA-256 of the text before it. A typo or a code that is cut off fails before the import reads the payload. The checksum is not a protection against a player who edits the save on purpose: the save is not secret, and the strict load checks each value.
 

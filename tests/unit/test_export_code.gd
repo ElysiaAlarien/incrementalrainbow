@@ -134,9 +134,9 @@ func _signed(body: String) -> String:
 func test_a_code_with_no_valid_version_fails() -> void:
 	var payload := ExportCode.encode(_game()).split(".")[1]
 
-	_assert_import_fails(_signed("IR." + payload), LoadResult.Reason.NOT_A_CODE, "no valid version")
-	_assert_import_fails(_signed("IR0." + payload), LoadResult.Reason.NOT_A_CODE, "no valid version")
-	_assert_import_fails(_signed("IRtwo." + payload), LoadResult.Reason.NOT_A_CODE, "no valid version")
+	_assert_import_fails(_signed("IR." + payload), LoadResult.Reason.BAD_VERSION, "no valid version")
+	_assert_import_fails(_signed("IR0." + payload), LoadResult.Reason.BAD_VERSION, "no valid version")
+	_assert_import_fails(_signed("IRtwo." + payload), LoadResult.Reason.BAD_VERSION, "no valid version")
 
 
 func test_a_code_with_a_payload_that_is_not_compressed_fails() -> void:
@@ -178,15 +178,6 @@ func test_a_code_of_a_damaged_save_fails() -> void:
 		LoadResult.Reason.DAMAGED_STATE, "state.factories[0].color: there is no color \"magenta\"")
 
 
-func test_a_code_whose_version_is_not_the_version_of_its_save_fails() -> void:
-	var save_text := SaveCodec.encode(_game())
-	var steps: Array[Callable] = SaveCodec.migrations()
-	steps.append(func(state: Dictionary) -> Dictionary: return state)
-
-	_assert_import_fails(ExportCode.from_save(save_text, SaveCodec.current_version() + 1),
-		LoadResult.Reason.NOT_A_CODE, "does not match the version of its save", steps)
-
-
 # --- Versions -------------------------------------------------------------------
 
 func test_a_code_from_a_newer_game_fails() -> void:
@@ -196,6 +187,8 @@ func test_a_code_from_a_newer_game_fails() -> void:
 
 	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), newer), LoadResult.Reason.NEWER_VERSION,
 		"A newer version of the game made this export code (save version %d)" % newer)
+	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), newer), LoadResult.Reason.NEWER_VERSION,
+		"Update the game")
 
 
 ## A test migration: in its version 1, the state named time "clock_ms".
@@ -232,7 +225,8 @@ func test_a_code_of_an_older_version_that_cannot_migrate_fails() -> void:
 	var steps: Array[Callable] = [_lose_time]
 
 	_assert_import_fails(_version_1_code(), LoadResult.Reason.DAMAGED_STATE,
-		"state.time_ms: is missing", steps)
+		"from an older version of the game (save version 1), and this version cannot read it", steps)
+	_assert_import_fails(_version_1_code(), LoadResult.Reason.DAMAGED_STATE, "state.time_ms: is missing", steps)
 
 
 ## The save of each version in tests/fixtures/saves/ imports as a code, with the

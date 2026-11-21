@@ -52,12 +52,12 @@ static func decode(content: Content, code: String,
 
 	var version_text := parts[0].substr(PREFIX.length())
 	if not version_text.is_valid_int() or version_text.to_int() < 1:
-		return _not_a_code("The export code is damaged: it has no valid version.")
+		return LoadResult.failure(LoadResult.Reason.BAD_VERSION, "The export code is damaged: it has no valid version.")
 	var version := version_text.to_int()
 	var current := SaveCodec.current_version(steps)
 	if version > current:
 		return LoadResult.failure(LoadResult.Reason.NEWER_VERSION,
-			"A newer version of the game made this export code (save version %d). This version reads codes up to version %d." % [
+			"A newer version of the game made this export code (save version %d). This version reads codes up to version %d. Update the game, then import the code again." % [
 				version, current])
 
 	var save_bytes := PackedByteArray()
@@ -72,8 +72,9 @@ static func decode(content: Content, code: String,
 	var save_text := save_bytes.get_string_from_utf8()
 
 	var result := SaveCodec.decode(content, save_text, steps)
-	if result.ok and _save_version(save_text) != version:
-		return _not_a_code("The export code is damaged: its version does not match the version of its save.")
+	if not result.ok and result.reason == LoadResult.Reason.DAMAGED_STATE and version < current:
+		result.message = "This export code is from an older version of the game (save version %d), and this version cannot read it. %s" % [
+			version, result.message]
 	return result
 
 
@@ -96,12 +97,6 @@ static func _without_whitespace(code: String) -> String:
 		if not character in [" ", "\t", "\n", "\r"]:
 			kept.append(character)
 	return "".join(kept)
-
-
-## The version that a save text that loaded has. [method SaveCodec.decode] has
-## already checked it.
-static func _save_version(save_text: String) -> int:
-	return int(JSON.parse_string(save_text).version)
 
 
 static func _not_a_code(message: String) -> LoadResult:

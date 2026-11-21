@@ -1,4 +1,4 @@
-class_name SaveCodeDialog
+class_name ExportCodeDialog
 extends AcceptDialog
 ## Moves the game between devices: it shows the export code of the game to
 ## copy, and imports a pasted code. It asks the player to confirm before an
@@ -27,7 +27,7 @@ var _pending: Simulation
 
 func _init(content: Content) -> void:
 	_content = content
-	name = "SaveCodeDialog"
+	name = "ExportCodeDialog"
 	title = "Move your game to another device"
 	ok_button_text = "Close"
 
