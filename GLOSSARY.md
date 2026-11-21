@@ -171,7 +171,7 @@ _Avoid_: Trend, craze
 One playthrough from a fresh start up to a prestige.
 
 **Prestige**:
-A voluntary reset of a run. The player can prestige only when they own at least one prism.
+A voluntary reset of a run. The player can prestige only when they own at least one prism. A prestige keeps prisms, prestige upgrades, their unlocks, and the prism price, and starts a fresh run with all else as in a new game. See ADR-0012.
 _Avoid_: Rebirth, ascension, reset
 
 **Prism**:

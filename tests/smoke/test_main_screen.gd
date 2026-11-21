@@ -418,6 +418,75 @@ func test_buying_a_prism_with_too_little_money_shows_the_reason() -> void:
 	assert_string_contains(message.text, "A prism costs")
 
 
+func test_a_prestige_with_no_prisms_shows_the_reason() -> void:
+	var main: Control = await _main_with_red_factory()
+
+	main.find_child("PrestigeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	var confirm: ConfirmationDialog = main.find_child("PrestigeConfirm", true, false)
+	assert_false(confirm.visible, "there is nothing to confirm")
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_eq(message.text, main.simulation().prestige_preview().message)
+	assert_eq(main.simulation().factories().size(), 1)
+
+
+## The main screen with one prism, a red factory, and a link from it.
+func _main_ready_to_prestige() -> Control:
+	var main := await _open_main()
+	main.find_child("BuyPrism", true, false).pressed.emit()
+	main.find_child("Build_red", true, false).pressed.emit()
+	await wait_process_frames(1)
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+	assert_eq(main.simulation().prisms().owned, 1)
+	assert_eq(_rows(main).size(), 1)
+	return main
+
+
+func test_a_prestige_shows_what_it_keeps_and_clears_before_the_player_confirms() -> void:
+	var main: Control = await _main_ready_to_prestige()
+
+	main.find_child("PrestigeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	var confirm: ConfirmationDialog = main.find_child("PrestigeConfirm", true, false)
+	assert_true(confirm.visible, "the prestige asks to confirm")
+	var preview: PrestigeView = main.simulation().prestige_preview()
+	for item in preview.keeps + preview.clears:
+		assert_string_contains(confirm.dialog_text, item)
+	assert_lt(confirm.dialog_text.find("Keeps"), confirm.dialog_text.find(preview.keeps[0]))
+	assert_lt(confirm.dialog_text.find("Clears"), confirm.dialog_text.find(preview.clears[0]))
+	assert_eq(main.simulation().factories().size(), 1, "the game does not change before the player confirms")
+	confirm.canceled.emit()
+	await wait_process_frames(1)
+	assert_eq(main.simulation().factories().size(), 1, "a canceled prestige changes nothing")
+
+
+func test_a_confirmed_prestige_starts_a_new_run_and_saves_it() -> void:
+	var main: Control = await _main_ready_to_prestige()
+	main.find_child("PrestigeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var confirm: ConfirmationDialog = main.find_child("PrestigeConfirm", true, false)
+
+	confirm.confirmed.emit()
+	await wait_process_frames(1)
+
+	var sim: Simulation = main.simulation()
+	assert_eq(sim.factories().size(), 0)
+	assert_eq(sim.prisms().owned, 1)
+	assert_eq(_rows(main).size(), 0, "the screen shows the new run")
+	assert_eq(main.find_children("Link*", "LinkRow", true, false).size(), 0)
+	assert_eq((main.find_child("NewLinkFactory", true, false) as OptionButton).item_count, 0)
+	assert_true(main.find_child("EmptyLabel", true, false).visible)
+	assert_eq((main.find_child("PrismLabel", true, false) as Label).text, "Prisms: 1")
+	var saved := _read_save()
+	assert_true(saved.ok, saved.message)
+	assert_eq(saved.simulation.factories().size(), 0, "the prestige is saved at once")
+	assert_eq(saved.simulation.prisms().owned, 1)
+
+
 func test_the_header_fits_the_screen_width() -> void:
 	var main := await _open_main()
 	var header: Control = main.find_child("Header", true, false)
