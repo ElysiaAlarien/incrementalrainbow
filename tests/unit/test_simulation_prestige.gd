@@ -3,8 +3,24 @@ extends GutTest
 ## prisms and the prism price, and clears the run (see ADR-0012).
 
 const SEED := 19
-## The snapshot keys that a prestige keeps.
-const KEPT_KEYS: Array[String] = ["prisms", "prisms_bought"]
+## Each snapshot key, and the name in the prestige preview that tells the
+## player about it. Null for a key that the player does not see. When a
+## feature adds a snapshot key, add it here with its name, and add the name to
+## the keeps or the clears of the core.
+const PREVIEW_NAME_OF_KEY := {
+	"time_ms": null,
+	"rng": null,
+	"money": "Money",
+	"next_factory_id": "Factories",
+	"factories": "Factories",
+	"next_link_id": "Links, with their vehicles and shipments",
+	"links": "Links, with their vehicles and shipments",
+	"next_shipment_id": "Links, with their vehicles and shipments",
+	"drift_key": "Demand and saturation",
+	"saturation": "Demand and saturation",
+	"prisms": "Prisms",
+	"prisms_bought": "Prism price",
+}
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.
 const RANDOM_KEYS: Array[String] = ["rng", "drift_key"]
@@ -36,6 +52,17 @@ func _played_run() -> Simulation:
 	assert_true(sim.buy_prism().ok)
 	assert_true(sim.buy_prism().ok)
 	return sim
+
+
+## The snapshot keys that a prestige keeps, from the names in the preview.
+func _kept_keys(sim: Simulation) -> Array[String]:
+	var keys: Array[String] = []
+	var keeps := sim.prestige_preview().keeps
+	for key: String in PREVIEW_NAME_OF_KEY:
+		var entry: Variant = PREVIEW_NAME_OF_KEY[key]
+		if entry != null and keeps.has(entry):
+			keys.append(key)
+	return keys
 
 
 ## [param snapshot] without the keys of [param keys].
@@ -141,8 +168,30 @@ func test_after_a_prestige_all_state_but_the_kept_set_is_as_in_a_new_game() -> v
 	sim.prestige()
 
 	var new_game := Simulation.new(_content(), SEED)
-	assert_eq(_without(sim.snapshot(), KEPT_KEYS + RANDOM_KEYS),
-		_without(new_game.snapshot(), KEPT_KEYS + RANDOM_KEYS))
+	var ignored := _kept_keys(sim) + RANDOM_KEYS
+	assert_eq(_kept_keys(sim), ["prisms", "prisms_bought"] as Array[String])
+	assert_eq(_without(sim.snapshot(), ignored), _without(new_game.snapshot(), ignored))
+
+
+func test_the_preview_names_each_part_of_the_state() -> void:
+	# A feature that adds state must also tell the player if a prestige keeps
+	# or clears it.
+	var sim := _played_run()
+	var preview := sim.prestige_preview()
+
+	var keys := sim.snapshot().keys()
+	keys.sort()
+	var named := PREVIEW_NAME_OF_KEY.keys()
+	named.sort()
+	assert_eq(keys, named, "each snapshot key has a name in PREVIEW_NAME_OF_KEY")
+	var entries := {}
+	for key: String in PREVIEW_NAME_OF_KEY:
+		var entry: Variant = PREVIEW_NAME_OF_KEY[key]
+		if entry != null:
+			entries[entry] = true
+			assert_true(preview.keeps.has(entry) or preview.clears.has(entry), "the preview names %s" % entry)
+	for entry in preview.keeps + preview.clears:
+		assert_true(entries.has(entry), "%s names state" % entry)
 
 
 func test_the_same_run_and_prestige_give_the_same_new_run() -> void:

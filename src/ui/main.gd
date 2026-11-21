@@ -141,12 +141,12 @@ func _load_or_start_game() -> Simulation:
 ## it at once.
 func _replace_game(simulation: Simulation) -> void:
 	_sim = simulation
-	_show_new_run()
+	_show_replaced_run()
 
 
-## Shows a game that has a new run: from an import, or after a prestige. It
-## removes the rows of the last run, and saves the game at once.
-func _show_new_run() -> void:
+## Shows the run of the game after an import or a prestige replaced the last
+## run. It removes the rows of the last run, and saves the game at once.
+func _show_replaced_run() -> void:
 	for row: Node in _rows.values() + _link_rows.values():
 		row.get_parent().remove_child(row)
 		row.queue_free()
@@ -204,7 +204,7 @@ func _on_prestige_pressed() -> void:
 func _on_prestige_confirmed() -> void:
 	var result := _sim.prestige()
 	if result.ok:
-		_show_new_run()
+		_show_replaced_run()
 	else:
 		_show_result(result)
 

@@ -29,6 +29,7 @@ const _PRESTIGE_KEEPS: Dictionary[String, Array] = {
 ## What a prestige clears, as names for the player. A prestige clears all
 ## state that [constant _PRESTIGE_KEEPS] does not name, so this list only
 ## tells the player. When a feature adds state to the run, add its name here.
+## A test fails for each snapshot key that neither list names.
 const _PRESTIGE_CLEARS: PackedStringArray = [
 	"Money",
 	"Factories",
@@ -325,13 +326,13 @@ func prestige() -> CommandResult:
 	if blocked != null:
 		return blocked
 
-	var fresh := Simulation.new(_content, (_rng.next_u32() << 32) | _rng.next_u32())
+	var kept := {}
 	for members: Array in _PRESTIGE_KEEPS.values():
 		for member: StringName in members:
-			assert(member in self, "_PRESTIGE_KEEPS names no member %s" % member)
-			fresh.set(member, get(member))
+			kept[member] = true
+	var fresh := Simulation.new(_content, (_rng.next_u32() << 32) | _rng.next_u32())
 	for property in get_property_list():
-		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and not kept.has(StringName(property.name)):
 			set(property.name, fresh.get(property.name))
 	return CommandResult.success()
 
