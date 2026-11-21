@@ -20,7 +20,7 @@ const FORMAT := "incremental-rainbow-save"
 ## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
 	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
-		_v5_add_mixed_factories]
+		_v5_add_mixed_factories, _v6_add_demand_events]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -76,6 +76,15 @@ static func _v5_add_mixed_factories(state: Dictionary) -> Dictionary:
 				item.input_bays = []
 			else:
 				item.destination_kind = "market"
+	return state
+
+
+## Version 7 (#9) adds demand events. A version 6 game had none, and its next
+## start is not set, so that this step does not draw from the random number
+## generator. The first tick after the load sets it.
+static func _v6_add_demand_events(state: Dictionary) -> Dictionary:
+	state.demand_events = []
+	state.next_demand_event_ms = -1
 	return state
 
 

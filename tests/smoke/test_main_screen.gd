@@ -384,6 +384,63 @@ func test_format_demand_shows_a_whole_percent() -> void:
 	assert_eq(MarketRow.format_demand(1.296), "130%")
 
 
+# --- Demand events -------------------------------------------------------------
+
+func _demand_event_rows(main: Control) -> Array[Node]:
+	return main.find_children("DemandEvent_*", "DemandEventRow", true, false)
+
+
+func test_the_screen_shows_the_name_and_colors_of_each_active_demand_event() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	var empty_label: Label = main.find_child("DemandEventsEmptyLabel", true, false)
+	assert_true(empty_label.visible, "no demand events at the start")
+
+	# Events start a few minutes apart in the game data.
+	for i in 60:
+		if not sim.demand_events().is_empty():
+			break
+		sim.tick(10_000)
+	assert_false(sim.demand_events().is_empty(), "a demand event started")
+	await wait_process_frames(1)
+
+	var views := sim.demand_events()
+	var rows := _demand_event_rows(main)
+	assert_eq(rows.size(), views.size())
+	assert_false(empty_label.visible)
+	var row: DemandEventRow = rows[0]
+	var view := views[0]
+	var color_names := view.colors.map(func(id: StringName) -> String: return content.color(id).name)
+	assert_eq(row.text(), "%s: %s: %s. Ends in %s" % [view.name, DemandEventRow.change_text(view).to_lower(),
+		", ".join(color_names), LinkRow.format_seconds(view.remaining_ms)])
+	for id in view.colors:
+		assert_not_null(row.find_child("Color_%s" % id, true, false), "the symbol of %s" % id)
+	assert_lte(row.get_global_rect().end.x, main.get_viewport_rect().size.x, "the row fits the screen")
+
+	# After the events end, their rows go away.
+	var longest := 0
+	for def in content.demand_events():
+		longest = maxi(longest, def.duration_ms)
+	var old_keys := rows.map(func(r: DemandEventRow) -> Array: return r.key)
+	sim.tick(longest)
+	await wait_process_frames(1)
+	var shown := _demand_event_rows(main).map(func(r: DemandEventRow) -> Array: return r.key)
+	for key: Array in old_keys:
+		assert_false(shown.has(key), "the row of the ended event %s is gone" % [key])
+	assert_eq(shown.size(), sim.demand_events().size())
+
+
+func test_change_text_shows_the_direction_and_size_as_a_percent() -> void:
+	var view := DemandEventView.new()
+	view.direction = DemandEventDef.Direction.SPIKE
+	view.size = 0.5
+	assert_eq(DemandEventRow.change_text(view), "Demand up 50%")
+	view.direction = DemandEventDef.Direction.CRASH
+	view.size = 0.4
+	assert_eq(DemandEventRow.change_text(view), "Demand down 40%")
+
+
 # --- Prisms --------------------------------------------------------------------
 
 func test_buying_a_prism_shows_the_prisms_and_the_next_price() -> void:

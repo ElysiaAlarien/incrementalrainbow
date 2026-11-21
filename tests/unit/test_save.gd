@@ -46,10 +46,13 @@ func _rich_game() -> Simulation:
 	return sim
 
 
-## The content of the rich game, with the mixed colors, drift, and saturation.
+## The content of the rich game, with the mixed colors, drift, saturation, and
+## demand events. An event starts each 5 to 10 s, so a save of an old version
+## that a test ticks for less than 5 s after its load has no event yet.
 func _content() -> Content:
 	return ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data(),
-		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides())))
+		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides()), null,
+		ContentFixture.transport_data(), ContentFixture.demand_events_data()))
 
 
 ## Content with demand that stays at 1, for the saves of old versions, whose
@@ -73,6 +76,7 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_eq(sim.link(3).destination_kind, LinkView.Destination.FACTORY)
 	assert_eq(sim.link(1).destination_kind, LinkView.Destination.MARKET)
 	assert_eq(sim.link(1).shipments_in_transit.size(), 2, "two shipments to a market")
+	assert_gt(sim.demand_events().size(), 0, "active demand events")
 
 
 func test_save_then_load_gives_the_same_state() -> void:
@@ -115,6 +119,9 @@ func test_save_then_load_gives_the_same_state() -> void:
 	assert_eq(loaded.prisms().owned, 2)
 	assert_eq(loaded.prisms().total_bought, 2)
 	assert_true(loaded.prisms().next_price.equals(sim.prisms().next_price))
+	var event_fields := func(v: DemandEventView) -> Array: return [v.id, v.started_at_ms, v.remaining_ms]
+	assert_eq(loaded.demand_events().map(event_fields), sim.demand_events().map(event_fields),
+		"active demand events are kept")
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -394,6 +401,46 @@ func test_negative_prisms_fail() -> void:
 	var data := _save_data()
 	data.state.prisms_bought = -1
 	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "state.prisms_bought: must be from 0")
+
+
+## [param change] gets the state, which has at least one active demand event.
+func _assert_demand_event_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_an_unknown_demand_event_fails() -> void:
+	_assert_demand_event_change_fails(func(state: Dictionary) -> void: state.demand_events[0].event_id = "flood",
+		"state.demand_events[0].event_id: there is no demand event \"flood\"")
+
+
+func test_a_demand_event_that_has_ended_fails() -> void:
+	_assert_demand_event_change_fails(
+		func(state: Dictionary) -> void: state.demand_events[0].ends_at_ms = state.time_ms,
+		"state.demand_events[0].ends_at_ms: must be after time_ms")
+
+
+func test_a_demand_event_that_starts_after_now_fails() -> void:
+	_assert_demand_event_change_fails(
+		func(state: Dictionary) -> void: state.demand_events[0].started_at_ms = state.time_ms + 1,
+		"state.demand_events[0].started_at_ms: must not be after time_ms")
+
+
+func test_demand_events_out_of_start_order_fail() -> void:
+	var data := _save_data()
+	var events: Array = data.state.demand_events
+	var event: Dictionary = events[-1].duplicate()
+	event.started_at_ms -= 1
+	events.append(event)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.demand_events[%d].started_at_ms: the events must be in start order" % (events.size() - 1))
+
+
+func test_a_next_demand_event_before_now_fails() -> void:
+	_assert_demand_event_change_fails(
+		func(state: Dictionary) -> void: state.next_demand_event_ms = state.time_ms - 1,
+		"state.next_demand_event_ms: must be -1 (no start set) or not before time_ms")
 
 
 func test_a_link_of_an_unknown_kind_fails() -> void:
@@ -737,3 +784,38 @@ func test_a_version_4_save_has_no_prisms_after_migration() -> void:
 	assert_eq(result.simulation.prisms().owned, 0)
 	assert_eq(result.simulation.prisms().total_bought, 0)
 	assert_eq(result.simulation.prisms().next_price.format(), str(ContentFixture.FIRST_PRISM_PRICE))
+
+
+## A save of version 7 (#9: demand events), as the game wrote it: a red and
+## blue spike started at 6.32 s and ends at 26.32 s, and the 5 red widgets that
+## sold at 9 s sold at 1.5 times the base price.
+func test_a_version_7_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v7.json")
+
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 12_000)
+	assert_almost_eq(sim.money().to_float(), 100.0 - 10 - 2 + 5 * 5 * 1.5, 1e-9)
+	var events := sim.demand_events()
+	assert_eq(events.map(func(v: DemandEventView) -> Array: return [v.id, v.started_at_ms, v.remaining_ms]),
+		[[&"red_blue_spike", 6320, 14_320]])
+	assert_eq(sim.market(&"millbrook").demand(&"red"), 1.5)
+	assert_eq(sim.market(&"millbrook").demand(&"yellow"), 1.0)
+	assert_eq(sim.snapshot().next_demand_event_ms, 14_686)
+	sim.tick(14_320)
+	assert_false(sim.demand_events().any(func(v: DemandEventView) -> bool: return v.started_at_ms == 6320),
+		"the spike ended")
+
+
+func test_a_version_6_save_has_no_demand_events_after_migration_and_schedules_one() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v6.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.demand_events().size(), 0)
+	assert_eq(sim.snapshot().next_demand_event_ms, -1, "the migration does not draw a start")
+	sim.tick(ContentFixture.EVENT_INTERVAL_MAX_MS + 1)
+	assert_gt(sim.demand_events().size(), 0, "the first tick after the load set the next start")

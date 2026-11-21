@@ -1,10 +1,11 @@
 extends RefCounted
-## Internal to the core. The demand of each color in each market, from drift
-## and saturation. Code outside src/core reads demand through MarketView.
-## See ADR-0011.
+## Internal to the core. The demand of each color in each market, from drift,
+## saturation, and demand events. Code outside src/core reads demand through
+## MarketView, and demand events through DemandEventView. See ADR-0011.
 ##
-## Demand is drift times saturation, and the price is the base price times
-## demand. 1 is normal demand.
+## Demand is drift times saturation times the factor of each active demand
+## event of the color, and the price is the base price times demand. 1 is
+## normal demand.
 ## [br]- Drift is a pure function of time. One draw from the simulation's
 ##   random number generator at the start of the game sets [member drift_key].
 ##   The key and the market and color ids seed one value for each drift knot,
@@ -15,18 +16,34 @@ extends RefCounted
 ##   Each sold widget moves that time later by
 ##   [member DemandBalance.saturation_ms_per_widget], and saturation recovers
 ##   at a constant rate. Integer time keeps it exact.
+## [br]- Demand events start at times that the simulation's random number
+##   generator sets. The state holds the time of the next start. When the
+##   tick reaches it, the generator chooses the event and the time of the
+##   start after it. The draws happen at those times in the tick's event
+##   order, so ticks of any length give the same events. An event changes its
+##   colors in every market, from its start up to its end.
 
 const DemandState := preload("res://src/core/state/demand_state.gd")
+const DemandEventState := preload("res://src/core/state/demand_event_state.gd")
 
 const _MASK32 := 0xFFFFFFFF
 const _FNV_OFFSET := 0x811C9DC5
 const _FNV_PRIME := 0x01000193
+
+## The value of [member next_event_ms] when no start is set: when the content
+## has no demand events, or after a load of a save from before demand events.
+const UNSCHEDULED := -1
 
 ## The u32 that seeds drift. It does not change during a game.
 var drift_key: int
 ## Market id to color id to the time when saturation of that color in that
 ## market has fully recovered. Only colors with saturation now are here.
 var _saturated_until_ms: Dictionary[StringName, Dictionary] = {}
+## The time when the next demand event starts, or [constant UNSCHEDULED].
+var next_event_ms: int = UNSCHEDULED
+## The demand events that have started and that a tick has not forgotten yet,
+## in start order.
+var _events: Array[DemandEventState] = []
 
 
 func _init(p_drift_key: int) -> void:
@@ -35,7 +52,53 @@ func _init(p_drift_key: int) -> void:
 
 ## The demand of [param color] in [param market_id] at [param at_ms].
 func demand(market_id: StringName, color: StringName, at_ms: int, balance: DemandBalance) -> float:
-	return drift(market_id, color, at_ms, balance) * saturation_factor(market_id, color, at_ms, balance)
+	return drift(market_id, color, at_ms, balance) * saturation_factor(market_id, color, at_ms, balance) \
+		* event_factor(color, at_ms)
+
+
+## The demand event part of demand: the product of the factors of the events
+## of [param color] that are active at [param at_ms], or 1 with none.
+func event_factor(color: StringName, at_ms: int) -> float:
+	var factor := 1.0
+	for event in _events:
+		if event.is_active_at(at_ms) and event.def.has_color(color):
+			factor *= event.def.factor()
+	return factor
+
+
+## Sets the time of the next demand event from [param now_ms] when none is
+## set and [param content] has demand events. When it has none, clears it.
+func schedule_events(now_ms: int, rng: SimRng, content: Content) -> void:
+	if content.demand_events().is_empty():
+		next_event_ms = UNSCHEDULED
+	elif next_event_ms == UNSCHEDULED:
+		next_event_ms = now_ms + _event_interval(rng, content.demand_balance)
+
+
+## Starts each demand event that is due by [param now_ms], in time order. For
+## each one, [param rng] chooses the event, then the time of the next start.
+func start_due_events(now_ms: int, rng: SimRng, content: Content) -> void:
+	var defs := content.demand_events()
+	while next_event_ms != UNSCHEDULED and next_event_ms <= now_ms:
+		if defs.is_empty():
+			next_event_ms = UNSCHEDULED
+			return
+		var def := defs[rng.randi_range(0, defs.size() - 1)]
+		_events.append(DemandEventState.new(def, next_event_ms, next_event_ms + def.duration_ms))
+		next_event_ms += _event_interval(rng, content.demand_balance)
+
+
+## The demand events that are active at [param now_ms], in start order.
+func active_events(now_ms: int) -> Array[DemandEventView]:
+	var views: Array[DemandEventView] = []
+	for event in _events:
+		if event.is_active_at(now_ms):
+			views.append(event.to_view(now_ms))
+	return views
+
+
+static func _event_interval(rng: SimRng, balance: DemandBalance) -> int:
+	return rng.randi_range(balance.event_interval_min_ms, balance.event_interval_max_ms)
 
 
 ## The drift part of demand: from 1 - amplitude to 1 + amplitude.
@@ -85,9 +148,11 @@ func record_sale(market_id: StringName, color: StringName, count: int, at_ms: in
 	_saturated_until_ms[market_id][color] = start + count * balance.saturation_ms_per_widget
 
 
-## Forgets saturation that has fully recovered by [param now_ms], so that the
-## state holds only saturation that has an effect.
+## Forgets saturation that has fully recovered by [param now_ms], and demand
+## events that have ended by then, so that the state holds only what has an
+## effect.
 func prune(now_ms: int) -> void:
+	_events = _events.filter(func(event: DemandEventState) -> bool: return event.ends_at_ms > now_ms)
 	for market_id in _saturated_until_ms.keys():
 		var colors: Dictionary = _saturated_until_ms[market_id]
 		for color: StringName in colors.keys():
@@ -98,10 +163,19 @@ func prune(now_ms: int) -> void:
 
 
 ## The state as plain data for [method Simulation.snapshot]: the keys
-## "drift_key" and "saturation". Saturation is sorted by market and color, so
+## "drift_key", "saturation", "demand_events", and "next_demand_event_ms".
+## Saturation is sorted by market and color, and events are in start order, so
 ## that equal states give equal snapshots.
 func to_dict() -> Dictionary:
-	return {"drift_key": drift_key, "saturation": _saturation_to_list()}
+	var events: Array[Dictionary] = []
+	for event in _events:
+		events.append(event.to_dict())
+	return {
+		"drift_key": drift_key,
+		"saturation": _saturation_to_list(),
+		"demand_events": events,
+		"next_demand_event_ms": next_event_ms,
+	}
 
 
 func _saturation_to_list() -> Array[Dictionary]:
@@ -146,7 +220,28 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int)
 		if not state._saturated_until_ms.has(market_id):
 			state._saturated_until_ms[market_id] = {}
 		state._saturated_until_ms[market_id][color] = until_ms
+	state._read_events(reader, content, now_ms)
 	return state
+
+
+## Reads the demand events and the time of the next one for
+## [method from_snapshot]. The events must be in start order, and the next
+## start must not be before [param now_ms], because a tick starts each event
+## that is due.
+func _read_events(reader: SnapshotReader, content: Content, now_ms: int) -> void:
+	next_event_ms = reader.integer("next_demand_event_ms", UNSCHEDULED)
+	if next_event_ms != UNSCHEDULED and next_event_ms < now_ms:
+		reader.fail("next_demand_event_ms", "must be %d (no start set) or not before time_ms (%d)" % [
+			UNSCHEDULED, now_ms])
+	var last_start_ms := 0
+	for entry in reader.objects("demand_events"):
+		var event := DemandEventState.from_snapshot(entry, content, now_ms)
+		if event == null:
+			continue
+		if event.started_at_ms < last_start_ms:
+			entry.fail("started_at_ms", "the events must be in start order")
+		last_start_ms = event.started_at_ms
+		_events.append(event)
 
 
 func _until_ms(market_id: StringName, color: StringName) -> int:

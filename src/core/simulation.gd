@@ -38,6 +38,7 @@ func _init(p_content: Content, p_seed: int) -> void:
 	_content = p_content
 	_rng = SimRng.new(p_seed)
 	_demand = DemandState.new(_rng.next_u32())
+	_demand.schedule_events(0, _rng, _content)
 	_money = _content.starting_money
 
 
@@ -316,16 +317,21 @@ func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
 ##
 ## Inside the tick, things happen in time order. Factories make widgets until
 ## the next event, then the event happens. The events are shipment arrivals,
-## which sell or go into an input bay, and automatic starts. At one time,
-## arrivals happen first, so their money and widgets can serve automatic starts
-## at that time. A tick that ends at a time does the arrivals at that time,
-## and the next tick does the automatic starts at that time, so that ticks of any length give the same state. A tick takes
-## time in proportion to the size of the state and the number of events.
+## which sell or go into an input bay, demand event starts, and automatic
+## starts. At one time, arrivals happen first, so their money and widgets can
+## serve automatic starts at that time, and they sell at the demand from
+## before a demand event that starts at that time. Then demand events start,
+## then automatic shipments. A tick that ends at a time does the arrivals at
+## that time, and the next tick does the starts at that time, so that ticks of
+## any length give the same state. A tick takes time in proportion to the size
+## of the state and the number of events.
 func tick(duration_ms: int) -> void:
 	assert(duration_ms >= 0, "tick duration cannot be negative")
 	if duration_ms <= 0:
 		return
 	var end_ms := _time_ms + duration_ms
+	# A save from before demand events has no next start yet.
+	_demand.schedule_events(_time_ms, _rng, _content)
 	while true:
 		var event_ms := mini(end_ms, _next_event_ms())
 		for state in _factories:
@@ -334,16 +340,20 @@ func tick(duration_ms: int) -> void:
 		_deliver_arrived_shipments()
 		if _time_ms == end_ms:
 			break
+		_demand.start_due_events(_time_ms, _rng, _content)
 		_start_automatic_shipments()
 	for state in _links:
 		state.forget_old_starts(_time_ms)
 	_demand.prune(_time_ms)
 
 
-## The time of the next event: the earliest arrival after now or automatic
-## start from now on. A large time when there is none.
+## The time of the next event: the earliest arrival after now, or demand
+## event start or automatic start from now on. A large time when there is
+## none.
 func _next_event_ms() -> int:
 	var next_ms := 9223372036854775807
+	if _demand.next_event_ms != DemandState.UNSCHEDULED:
+		next_ms = _demand.next_event_ms
 	for state in _links:
 		if state.is_automatic():
 			next_ms = mini(next_ms, state.next_automatic_ms)
@@ -431,6 +441,12 @@ func markets() -> Array[MarketView]:
 	for def in _content.markets():
 		views.append(_market_view(def))
 	return views
+
+
+## The demand events that are active now, in start order. Each one changes the
+## demand of its colors in every market until it ends.
+func demand_events() -> Array[DemandEventView]:
+	return _demand.active_events(_time_ms)
 
 
 ## The market with [param id], or null.

@@ -240,8 +240,9 @@ func test_each_saved_version_imports_as_a_code() -> void:
 		var save_text := FileAccess.get_file_as_string(dir + file)
 		var version := int(JSON.parse_string(save_text).version)
 
-		var from_file := SaveCodec.decode(ContentFixture.make_mixed(700, 6), save_text)
-		var from_code := _import(ExportCode.from_save(save_text, version))
+		var from_file := SaveCodec.decode(ContentFixture.make_for_saves(), save_text)
+		var from_code := ExportCode.decode(ContentFixture.make_for_saves(),
+			ExportCode.from_save(save_text, version))
 
 		assert_true(from_code.ok, "%s: %s" % [file, from_code.message])
 		if from_code.ok and from_file.ok:

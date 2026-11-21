@@ -2,8 +2,8 @@ extends Control
 ## The first screen: money, prisms, each color with its recipe and a button to
 ## build it, factories with their production lines, output bays, and input
 ## bays, links from factories to markets and to mixed factories, with manual
-## shipments, automatic transport, and throughput, and markets with the price
-## and demand of each color.
+## shipments, automatic transport, and throughput, the active demand events,
+## and markets with the price and demand of each color.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -24,6 +24,8 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _make_link_button: Button = %MakeLink
 @onready var _link_list: VBoxContainer = %LinkList
 @onready var _links_empty_label: Label = %LinksEmptyLabel
+@onready var _demand_event_list: VBoxContainer = %DemandEventList
+@onready var _demand_events_empty_label: Label = %DemandEventsEmptyLabel
 @onready var _market_list: VBoxContainer = %MarketList
 @onready var _money_label: Label = %MoneyLabel
 @onready var _prism_label: Label = %PrismLabel
@@ -40,6 +42,8 @@ var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
+## The rows of the active demand events, in start order.
+var _demand_event_rows: Array[DemandEventRow] = []
 var _export_code_dialog: ExportCodeDialog
 var _cards: Array[ColorCard] = []
 ## The metadata of each item in [member _new_link_destination], in order, as
@@ -215,6 +219,8 @@ func _refresh() -> void:
 		link_row.show_state(view, automatic_cost)
 	_links_empty_label.visible = _link_rows.is_empty()
 
+	_refresh_demand_events()
+
 	for view in _sim.markets():
 		var market_row: MarketRow = _market_rows.get(view.id)
 		if market_row == null:
@@ -222,6 +228,35 @@ func _refresh() -> void:
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
 		market_row.show_state(view)
+
+
+## Shows a row for each active demand event: a new row when an event starts,
+## and no row after it ends.
+func _refresh_demand_events() -> void:
+	var views := _sim.demand_events()
+	var by_key := {}
+	for view in views:
+		by_key[DemandEventRow.key_of(view)] = view
+	var kept: Array[DemandEventRow] = []
+	for row in _demand_event_rows:
+		if by_key.has(row.key):
+			kept.append(row)
+		else:
+			_demand_event_list.remove_child(row)
+			row.queue_free()
+	_demand_event_rows = kept
+	for view in views:
+		var key := DemandEventRow.key_of(view)
+		var row: DemandEventRow = null
+		for candidate in _demand_event_rows:
+			if candidate.key == key:
+				row = candidate
+		if row == null:
+			row = DemandEventRow.new(view, _content)
+			_demand_event_rows.append(row)
+			_demand_event_list.add_child(row)
+		row.show_state(view)
+	_demand_events_empty_label.visible = _demand_event_rows.is_empty()
 
 
 func _add_factory_row(view: FactoryView) -> FactoryRow:

@@ -1,0 +1,12 @@
+{
+	"_about": "Demand events: short, named spikes or crashes in the demand for one or more colors, in every market. Events start at random times (balance.json demand.event_interval_min_ms and event_interval_max_ms), and each start chooses one event from this list at random. Each event: id, name, colors (color ids), direction (\"spike\" or \"crash\"), size (a spike of 0.5 makes demand 1.5 times as high; a crash of 0.4 makes it 0.6 times as high, and a crash must be less than 1), and duration_ms. With no events, no demand events occur. PLACEHOLDER sizes and durations until playtests set them.",
+	"placeholder": true,
+	"events": [
+		{"id": "harvest_festival", "name": "Harvest festival", "colors": ["orange", "yellow_orange", "brown"], "direction": "spike", "size": 0.5, "duration_ms": 90000},
+		{"id": "royal_wedding", "name": "Royal wedding", "colors": ["purple", "blue_purple", "red_purple"], "direction": "spike", "size": 0.8, "duration_ms": 60000},
+		{"id": "spring_bloom", "name": "Spring bloom", "colors": ["green", "yellow_green", "yellow"], "direction": "spike", "size": 0.4, "duration_ms": 120000},
+		{"id": "seaside_fair", "name": "Seaside fair", "colors": ["blue", "blue_green"], "direction": "spike", "size": 0.5, "duration_ms": 90000},
+		{"id": "red_dye_scare", "name": "Red dye scare", "colors": ["red", "red_orange", "red_purple"], "direction": "crash", "size": 0.5, "duration_ms": 60000},
+		{"id": "grey_winter", "name": "Grey winter", "colors": ["yellow", "orange", "green"], "direction": "crash", "size": 0.3, "duration_ms": 120000}
+	]
+}
