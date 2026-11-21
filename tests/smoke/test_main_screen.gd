@@ -590,7 +590,7 @@ func test_a_confirmed_prestige_starts_a_new_run_and_saves_it() -> void:
 	assert_eq(sim.prisms().owned, 1)
 	assert_eq(_rows(main).size(), 0, "the screen shows the new run")
 	assert_eq(main.find_children("Link*", "LinkRow", true, false).size(), 0)
-	assert_eq((main.find_child("NewLinkFactory", true, false) as OptionButton).item_count, 0)
+	assert_eq((main.find_child("NewLinkSource", true, false) as OptionButton).item_count, 0)
 	assert_true(main.find_child("EmptyLabel", true, false).visible)
 	assert_eq((main.find_child("PrismLabel", true, false) as Label).text, "Prisms: 1")
 	var saved := _read_save()

@@ -399,3 +399,24 @@ func test_a_prestige_clears_warehouses_and_locks_them_again() -> void:
 	assert_false(sim.is_warehouse_unlocked(), "a fresh run has no factories, so warehouses are locked")
 	_factory(sim, &"blue")
 	assert_eq(_warehouse(sim, &"blue"), 1, "warehouse ids start at 1 again")
+
+
+# --- Market capacity -----------------------------------------------------------
+
+func test_a_shipment_from_a_warehouse_to_a_market_carries_no_more_than_the_capacity_left() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data(),
+		ContentFixture.balance_data(1000, 10, {"starting_money": 10_000,
+			"capacity_per_population": 0.006, "population_step": 200}),
+		null, ContentFixture.transport_data(TRANSIT_MS, 2)))
+	var sim := Simulation.new(content, SEED)
+	var line := _red_line(sim)
+	_ship(sim, line[2])
+	sim.tick(TRANSIT_MS)
+	var out: int = _ok(sim.link_warehouse_to_market(line[1], MARKET), "out")
+	assert_eq(sim.market(MARKET).capacity, 6)
+
+	assert_eq(_ship(sim, out), 6, "the market has capacity for 6 of the 10 widgets")
+	assert_eq(sim.warehouse(line[1]).count, 4, "the warehouse keeps the rest")
+	var before := sim.snapshot()
+	_assert_fails(sim, sim.start_shipment(out), CommandResult.Reason.NOTHING_TO_SHIP,
+		"Millbrook has no capacity left in this period", before)

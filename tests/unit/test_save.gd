@@ -957,7 +957,7 @@ func test_a_version_9_save_still_loads() -> void:
 
 func test_a_version_8_save_has_no_warehouses_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v8.json"),
-		SaveCodec.migrations(), _flat_content())
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
