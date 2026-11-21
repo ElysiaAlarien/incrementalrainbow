@@ -53,7 +53,8 @@ text = "Incremental Rainbow"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
-theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.98, 0.85, 0.45, 1)
+theme_override_font_sizes/font_size = 28
 text = "Money: 0"
 
 [node name="BuildButtons" type="HBoxContainer" parent="Margin/Layout"]
@@ -68,24 +69,71 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.55, 0.45, 1)
 autowrap_mode = 3
 
-[node name="FactoriesHeading" type="Label" parent="Margin/Layout"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Factories"
-
 [node name="Scroll" type="ScrollContainer" parent="Margin/Layout"]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="FactoryList" type="VBoxContainer" parent="Margin/Layout/Scroll"]
-unique_name_in_owner = true
+[node name="Sections" type="VBoxContainer" parent="Margin/Layout/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="FactoriesHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Factories"
+
+[node name="FactoryList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+unique_name_in_owner = true
+layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="EmptyLabel" type="Label" parent="Margin/Layout/Scroll/FactoryList"]
+[node name="EmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/FactoryList"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
 text = "No factories yet. Build one above."
+
+[node name="LinksHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Links"
+
+[node name="NewLink" type="HBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="NewLinkLabel" type="Label" parent="Margin/Layout/Scroll/Sections/NewLink"]
+layout_mode = 2
+text = "New link from"
+
+[node name="NewLinkFactory" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewLink"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+
+[node name="NewLinkTo" type="Label" parent="Margin/Layout/Scroll/Sections/NewLink"]
+layout_mode = 2
+text = "to"
+
+[node name="NewLinkMarket" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewLink"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+
+[node name="MakeLink" type="Button" parent="Margin/Layout/Scroll/Sections/NewLink"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Make link"
+
+[node name="LinkList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LinksEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/LinkList"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+text = "No links yet. Link a factory to a market to sell its widgets."

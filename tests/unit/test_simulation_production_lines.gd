@@ -6,14 +6,17 @@ const SEED := 777
 
 
 ## One widget each second for each line, an output bay of 100, 100 starting
-## money, and a flat line cost of 10.
+## money, and a flat line cost of 10. Factories are free here, so that money
+## changes only by line costs.
 func _sim() -> Simulation:
-	return Simulation.new(ContentFixture.make(1000, 100), SEED)
+	return _sim_with({})
 
 
 ## Like [method _sim], with balance values from [param overrides].
 func _sim_with(overrides: Dictionary, output_bay_capacity: int = 100) -> Simulation:
-	var balance := ContentFixture.balance_data(1000, output_bay_capacity, overrides)
+	var values := {"build_cost": 0}
+	values.merge(overrides, true)
+	var balance := ContentFixture.balance_data(1000, output_bay_capacity, values)
 	return Simulation.new(ContentFixture.make_with_balance(balance), SEED)
 
 

@@ -57,6 +57,10 @@ static func from_snapshot(reader: SnapshotReader, content: Content) -> FactorySt
 	state.output_bay_count = reader.integer("output_bay_count")
 	state.progress_ms = reader.integer("progress_ms")
 	return state
+## Removes [param count] widgets from the output bay, for a shipment.
+func take_output(count: int) -> void:
+	assert(count >= 0 and count <= output_bay_count, "cannot take %d of %d widgets" % [count, output_bay_count])
+	output_bay_count -= count
 
 
 func to_view(balance: FactoryBalance) -> FactoryView:

@@ -35,13 +35,17 @@ func test_a_color_with_a_recipe_cannot_be_built_as_a_base_factory() -> void:
 
 func _play(rng_seed: int) -> Simulation:
 	var sim := Simulation.new(ContentFixture.make(700, 6), rng_seed)
-	sim.build_factory(&"red")
+	var red: int = sim.build_factory(&"red").value
 	sim.tick(1234)
 	sim.build_factory(&"blue")
 	sim.build_factory(&"purple")
+	var link: int = sim.make_link(red, &"millbrook").value
 	sim.tick(5000)
+	sim.start_shipment(link)
 	sim.build_factory(&"yellow")
 	sim.tick(333)
+	sim.start_shipment(link)
+	sim.tick(ContentFixture.TRANSIT_TIME_MS)
 	return sim
 
 

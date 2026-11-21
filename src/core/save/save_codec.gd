@@ -19,7 +19,15 @@ const FORMAT := "incremental-rainbow-save"
 ## step gets the state as parsed JSON and returns the new state. It must not
 ## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
-	return []
+	return [_v1_add_links]
+
+
+## Version 2 (#3) adds links and their shipments. A version 1 game had none.
+static func _v1_add_links(state: Dictionary) -> Dictionary:
+	state.next_link_id = 1
+	state.links = []
+	state.next_shipment_id = 1
+	return state
 
 
 ## The version that [method encode] writes.

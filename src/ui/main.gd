@@ -1,6 +1,6 @@
 extends Control
-## The first screen: build base factories, add production lines to them, and
-## watch their output bays.
+## The first screen: money, base factories with their production lines and
+## output bays, and links from factories to markets with manual shipments.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -15,8 +15,13 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _build_buttons: HBoxContainer = %BuildButtons
 @onready var _factory_list: VBoxContainer = %FactoryList
 @onready var _empty_label: Label = %EmptyLabel
-@onready var _message_label: Label = %MessageLabel
+@onready var _new_link_factory: OptionButton = %NewLinkFactory
+@onready var _new_link_market: OptionButton = %NewLinkMarket
+@onready var _make_link_button: Button = %MakeLink
+@onready var _link_list: VBoxContainer = %LinkList
+@onready var _links_empty_label: Label = %LinksEmptyLabel
 @onready var _money_label: Label = %MoneyLabel
+@onready var _message_label: Label = %MessageLabel
 
 var _sim: Simulation
 var _save_file: SaveFile
@@ -25,6 +30,8 @@ var _save_file: SaveFile
 var _can_save := true
 var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
+var _link_rows: Dictionary[int, LinkRow] = {}
+var _build_button_by_color: Dictionary[StringName, Button] = {}
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
 
@@ -45,6 +52,7 @@ func _ready() -> void:
 	autosave.start()
 	for color_id in _sim.buildable_factory_colors():
 		_add_build_button(_content.color(color_id))
+	_make_link_button.pressed.connect(_on_make_link_pressed)
 	_refresh()
 
 
@@ -108,31 +116,87 @@ func _add_build_button(color: ColorDef) -> void:
 	button.icon = _symbol_icon(color)
 	button.pressed.connect(_on_build_pressed.bind(color.id))
 	_build_buttons.add_child(button)
+	_build_button_by_color[color.id] = button
 
 
 func _on_build_pressed(color_id: StringName) -> void:
-	var result := _sim.build_factory(color_id)
+	_show_result(_sim.build_factory(color_id))
+
+
+func _on_make_link_pressed() -> void:
+	var factory_index := _new_link_factory.selected
+	var market_index := _new_link_market.selected
+	if factory_index < 0 or market_index < 0:
+		_show_message("Build a factory first.")
+		return
+	_show_result(_sim.make_link(_new_link_factory.get_item_id(factory_index),
+		_new_link_market.get_item_metadata(market_index)))
+
+
+func _on_ship_pressed(link_id: int) -> void:
+	_show_result(_sim.start_shipment(link_id))
+
+
+func _show_result(result: CommandResult) -> void:
 	_show_message("" if result.ok else result.message)
 	_refresh()
 
 
 func _on_add_line_requested(factory_id: int) -> void:
-	var result := _sim.add_production_line(factory_id)
-	_show_message("" if result.ok else result.message)
-	_refresh()
+	_show_result(_sim.add_production_line(factory_id))
 
 
 func _refresh() -> void:
 	_money_label.text = "Money: %s" % _sim.money().format()
+	var cost := _sim.factory_build_cost().format()
+	for color_id in _build_button_by_color:
+		_build_button_by_color[color_id].text = "Build %s factory (%s)" % [_content.color(color_id).name, cost]
+
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)
 		if row == null:
-			row = FactoryRow.new(view.id, _content.color(view.color))
-			row.add_line_requested.connect(_on_add_line_requested)
-			_rows[view.id] = row
-			_factory_list.add_child(row)
+			row = _add_factory_row(view)
 		row.show_state(view)
 	_empty_label.visible = _rows.is_empty()
+	_refresh_new_link_choices()
+
+	for view in _sim.links():
+		var link_row: LinkRow = _link_rows.get(view.id)
+		if link_row == null:
+			link_row = _add_link_row(view)
+		link_row.show_state(view)
+	_links_empty_label.visible = _link_rows.is_empty()
+
+
+func _add_factory_row(view: FactoryView) -> FactoryRow:
+	var row := FactoryRow.new(view.id, _content.color(view.color))
+	row.add_line_requested.connect(_on_add_line_requested)
+	_rows[view.id] = row
+	_factory_list.add_child(row)
+	return row
+
+
+## Keeps the factory and market choices for a new link in step with the
+## simulation. Items are added, never removed, so the selection stays.
+func _refresh_new_link_choices() -> void:
+	var factories := _sim.factories()
+	for i in range(_new_link_factory.item_count, factories.size()):
+		var view := factories[i]
+		var color := _content.color(view.color)
+		_new_link_factory.add_icon_item(_symbol_icon(color), "%s factory #%d" % [color.name, view.id], view.id)
+	var markets := _sim.markets()
+	for i in range(_new_link_market.item_count, markets.size()):
+		_new_link_market.add_item(markets[i].name)
+		_new_link_market.set_item_metadata(i, markets[i].id)
+
+
+func _add_link_row(view: LinkView) -> LinkRow:
+	var row := LinkRow.new(view, _content.color(view.color), _sim.market(view.destination_market_id).name,
+		_content.transport_tier(view.vehicle).name)
+	row.ship_pressed.connect(_on_ship_pressed)
+	_link_rows[view.id] = row
+	_link_list.add_child(row)
+	return row
 
 
 func _show_message(text: String) -> void:

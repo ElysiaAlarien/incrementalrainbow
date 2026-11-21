@@ -96,6 +96,7 @@ func test_adding_a_line_with_too_little_money_shows_the_reason() -> void:
 func test_the_game_saves_on_exit_and_loads_on_start() -> void:
 	var first := await _open_main()
 	first.find_child("Build_red", true, false).pressed.emit()
+	first.find_child("MakeLink", true, false).pressed.emit()
 	first.simulation().add_production_line(1)
 	first.simulation().tick(1_750)
 	var saved_snapshot: Dictionary = first.simulation().snapshot()
@@ -114,6 +115,7 @@ func test_the_game_saves_on_exit_and_loads_on_start() -> void:
 	assert_eq((rows[0] as FactoryRow).bay_text(), "Output bay: 3 / 10")
 	assert_eq((rows[0] as FactoryRow).size_text(), "2 lines")
 	assert_true(second.simulation().money().equals(saved.simulation.money()))
+	assert_eq(second.find_children("Link*", "LinkRow", true, false).size(), 1, "the link is kept")
 
 
 func test_the_game_saves_at_intervals() -> void:
@@ -167,3 +169,56 @@ func test_a_damaged_save_that_cannot_move_is_not_overwritten() -> void:
 	assert_eq(FileAccess.get_file_as_string(SAVE_PATH), "not a save", "the damaged save is not overwritten")
 	DirAccess.remove_absolute(blocker.path_join("keep"))
 	DirAccess.remove_absolute(blocker)
+func test_a_factory_can_be_linked_to_a_market_and_ship_for_money() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var money_label: Label = main.find_child("MoneyLabel", true, false)
+	assert_eq(money_label.text, "Money: %s" % sim.money().format())
+	assert_string_contains(main.find_child("Build_red", true, false).text,
+		"(%s)" % sim.factory_build_cost().format())
+
+	main.find_child("Build_red", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var factory_choice: OptionButton = main.find_child("NewLinkFactory", true, false)
+	var market_choice: OptionButton = main.find_child("NewLinkMarket", true, false)
+	assert_eq(factory_choice.get_item_text(factory_choice.selected), "Red factory #1")
+	assert_eq(market_choice.get_item_text(market_choice.selected), "Millbrook")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	var rows := main.find_children("Link*", "LinkRow", true, false)
+	assert_eq(rows.size(), 1)
+	var row: LinkRow = rows[0]
+	var link := sim.link(row.link_id)
+	assert_string_contains(row.text(), "Vehicle: Cart")
+	assert_string_contains(row.text(), "Cost: %s" % link.shipment_cost.format())
+	assert_string_contains(row.text(), "Transit: %s" % LinkRow.format_seconds(link.transit_time_ms))
+	assert_false(main.find_child("LinksEmptyLabel", true, false).visible)
+
+	sim.tick(3000)
+	var before_ship := sim.money()
+	row.ship_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_true(sim.money().is_less_than(before_ship), "the shipment cost money")
+	assert_string_contains(row.text(), "widgets on the way")
+
+	sim.tick(sim.link(row.link_id).transit_time_ms)
+	await wait_process_frames(1)
+	assert_true(sim.money().is_greater_than(before_ship), "the sale made money")
+	assert_eq(money_label.text, "Money: %s" % sim.money().format())
+
+
+func test_a_failed_command_shows_its_reason() -> void:
+	var main := await _open_main()
+	main.find_child("Build_red", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var make_link: Button = main.find_child("MakeLink", true, false)
+	make_link.pressed.emit()
+
+	# The factory already has a link to this market.
+	make_link.pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "already has a link")

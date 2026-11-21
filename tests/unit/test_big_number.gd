@@ -134,3 +134,34 @@ func test_formats_huge_exponents_in_a_short_form() -> void:
 	# The exponent itself gets too long to read, so show only its size.
 	assert_eq(BigNumber.new(3.0, 1_234_567).format(), "e1.23e6")
 	assert_eq(BigNumber.new(3.0, 999_999).format(), "3.00e999999")
+
+
+func test_subtracts_a_smaller_value() -> void:
+	var difference := BigNumber.from_int(100).sub(BigNumber.from_int(30))
+	assert_true(difference.equals(BigNumber.from_int(70)), "100 - 30 = 70, got %s" % difference)
+
+
+func test_subtracting_an_equal_value_gives_zero() -> void:
+	assert_true(BigNumber.new(4.2, 500).sub(BigNumber.new(4.2, 500)).is_zero())
+
+
+func test_subtracting_a_larger_value_gives_a_negative_value() -> void:
+	var difference := BigNumber.from_int(5).sub(BigNumber.from_int(8))
+	assert_true(difference.is_negative())
+	assert_true(difference.equals(BigNumber.from_int(-3)), "5 - 8 = -3, got %s" % difference)
+
+
+func test_subtracts_past_float_range() -> void:
+	var difference := BigNumber.new(1.0, 401).sub(BigNumber.new(5.0, 400))
+	assert_true(difference.equals(BigNumber.new(5.0, 400)), "1e401 - 5e400 = 5e400, got %s" % difference)
+
+
+func test_whole_number_sums_stay_exact_over_many_steps() -> void:
+	# Money checks compare exactly, so whole-number money must not drift.
+	var value := BigNumber.from_int(100)
+	for i in 1000:
+		value = value.add(BigNumber.from_int(37)).sub(BigNumber.from_int(12))
+	assert_true(value.equals(BigNumber.from_int(25_100)), "got %s" % value)
+	for i in 1000:
+		value = value.sub(BigNumber.from_int(25))
+	assert_true(value.equals(BigNumber.from_int(100)), "got %s" % value)

@@ -11,9 +11,18 @@ func _rich_game() -> Simulation:
 	sim.tick(1234)
 	sim.build_factory(&"blue")
 	sim.add_production_line(2)
+	sim.make_link(1, &"millbrook")
+	sim.make_link(2, &"millbrook")
 	sim.tick(5000)
+	sim.start_shipment(1)
+	sim.start_shipment(2)
 	sim.build_factory(&"yellow")
 	sim.tick(333)
+	sim.tick(1400)
+	sim.start_shipment(1)
+	# The first two shipments sell, and two are still in transit on link 1.
+	sim.tick(3500)
+	sim.start_shipment(1)
 	return sim
 
 
@@ -39,6 +48,11 @@ func test_save_then_load_gives_the_same_state() -> void:
 		assert_eq(got.size, want.size)
 		assert_eq(got.output_bay_count, want.output_bay_count)
 		assert_eq(got.status, want.status)
+	assert_eq(loaded.links().size(), 2)
+	var shipments := loaded.link(1).shipments_in_transit
+	assert_eq(shipments.size(), 2, "shipments in transit are kept")
+	assert_eq(shipments.map(func(v: ShipmentView) -> int: return v.remaining_ms),
+		sim.link(1).shipments_in_transit.map(func(v: ShipmentView) -> int: return v.remaining_ms))
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
@@ -48,7 +62,10 @@ func test_the_loaded_game_plays_on_the_same_as_the_saved_game() -> void:
 
 	for game in [sim, loaded]:
 		game.build_factory(&"red")
+		game.make_link(3, &"millbrook")
 		game.tick(98_765)
+		game.start_shipment(1)
+		game.start_shipment(4)
 
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
@@ -184,6 +201,61 @@ func test_large_money_keeps_its_value() -> void:
 	assert_eq(result.simulation.money().to_data(), [1.2345678901234, 123_456_789])
 
 
+## [param change] gets the first link of the saved state, which has shipments.
+func _assert_link_change_fails(change: Callable, message_part: String) -> void:
+	var data := _save_data()
+	change.call(data.state.links[0])
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, message_part)
+
+
+func test_a_link_to_an_unknown_market_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.destination_market_id = "atlantis",
+		"state.links[0].destination_market_id: there is no market \"atlantis\"")
+
+
+func test_a_link_with_an_unknown_vehicle_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.vehicle = "rocket",
+		"state.links[0].vehicle: there is no transport tier \"rocket\"")
+
+
+func test_a_link_from_a_missing_factory_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.source_factory_id = 9,
+		"state.links[0].source_factory_id: there is no factory #9")
+
+
+func test_a_link_of_another_color_than_its_factory_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.color = "blue",
+		"state.links[0].color: must be the color of factory #1")
+
+
+func test_two_links_on_the_same_factory_and_market_fail() -> void:
+	var data := _save_data()
+	data.state.links[1].source_factory_id = 1
+	data.state.links[1].color = "red"
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE,
+		"state.links[1].destination_market_id: factory #1 has more than one link")
+
+
+func test_a_link_id_that_is_not_below_the_next_id_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.id = 3,
+		"state.links[0].id: must be less than next_link_id (3)")
+
+
+func test_two_shipments_with_the_same_id_fail() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.shipments[1].id = link.shipments[0].id,
+		"state.links[0].shipments[1].id: is used by more than one shipment")
+
+
+func test_an_empty_shipment_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.shipments[0].count = 0,
+		"state.links[0].shipments[0].count: must be from 1")
+
+
+func test_a_shipment_that_has_already_arrived_fails() -> void:
+	_assert_link_change_fails(func(link: Dictionary) -> void: link.shipments[0].arrives_at_ms = 0,
+		"state.links[0].shipments[0].arrives_at_ms: must be after time_ms")
+
+
 func test_a_random_number_state_of_all_zeros_fails() -> void:
 	var data := _save_data()
 	data.state.rng = [0, 0, 0, 0]
@@ -271,7 +343,7 @@ func test_a_save_of_an_older_version_migrates_to_the_current_version() -> void:
 	var result := _load(_old_save(1, state), steps)
 
 	assert_true(result.ok, result.message)
-	assert_eq(result.simulation.time_ms(), 6567)
+	assert_eq(result.simulation.time_ms(), _rich_game().time_ms())
 	assert_eq(result.simulation.snapshot(), _rich_game().snapshot())
 
 
@@ -318,3 +390,31 @@ func test_a_version_1_save_still_loads() -> void:
 	assert_false(factories[2].is_stopped())
 	sim.tick(367)
 	assert_eq(sim.factory(3).output_bay_count, 1, "the yellow factory kept its progress")
+
+
+## A save of version 2 (#3: links and shipments), as the game wrote it.
+func test_a_version_2_save_still_loads() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v2.json")
+
+	var result := _load(text)
+
+	assert_true(result.ok, result.message)
+	var sim := result.simulation
+	assert_eq(sim.time_ms(), 4000)
+	assert_eq(sim.money().format(), "78")
+	var link := sim.link(1)
+	assert_eq([link.color, link.source_factory_id, link.destination_market_id, link.vehicle],
+		[&"red", 1, &"millbrook", &"cart"])
+	assert_eq(link.shipments_in_transit.size(), 1)
+	assert_eq([link.shipments_in_transit[0].count, link.shipments_in_transit[0].remaining_ms], [4, 4000])
+	sim.tick(4000)
+	assert_eq(sim.money().format(), "98", "the shipment of 4 red widgets sold for 5 each")
+
+
+func test_a_version_1_save_has_no_links_after_migration() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v1.json"))
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.simulation.links().size(), 0)
+	assert_true(result.simulation.make_link(1, &"millbrook").ok, "link ids start at 1")
+	assert_eq(result.simulation.links()[0].id, 1)

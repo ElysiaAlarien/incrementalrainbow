@@ -4,7 +4,7 @@ extends RefCounted
 ##
 ## The value is [code]mantissa * 10^exponent[/code]. The mantissa is a float in
 ## [1, 10) (or (-10, -1] for negative values), and the exponent is an int, so the
-## largest value is about 10^(9.2e18). The mantissa keeps about 15 significant
+## largest value is about 10^(9.2e18). The mantissa keeps 15 significant
 ## digits, which is enough for an incremental game. See ADR-0005.
 ##
 ## GDScript has no operator overloading, so use the methods: [method add],
@@ -12,6 +12,9 @@ extends RefCounted
 
 ## Above this exponent difference, the smaller value has no effect on a sum.
 const _MAX_EXPONENT_GAP := 17
+## The mantissa is rounded to 15 significant digits (14 after the point), so
+## that float error does not build up: 100 - 30 is exactly 70.
+const _MANTISSA_SCALE := 1e14
 ## Short suffixes for each group of three digits, starting at 10^3.
 const _SUFFIXES: PackedStringArray = ["K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"]
 ## Above this exponent, the format shows only the size of the exponent.
@@ -50,6 +53,13 @@ func _init(p_mantissa: float = 0.0, p_exponent: int = 0) -> void:
 	elif absf(m) < 1.0:
 		m *= 10.0
 		e -= 1
+	# m * scale is below 2^53, so it rounds to an exact integer, and one
+	# division gives the float nearest to the rounded decimal mantissa.
+	m = roundf(m * _MANTISSA_SCALE) / _MANTISSA_SCALE
+	# Rounding can carry up to 10 (9.999... becomes 10.0).
+	if absf(m) >= 10.0:
+		m /= 10.0
+		e += 1
 	_mantissa = m
 	_exponent = e
 

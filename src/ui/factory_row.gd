@@ -38,13 +38,13 @@ func _init(id: int, color: ColorDef) -> void:
 	row.add_child(_symbol)
 
 	_name_label.text = "%s factory #%d" % [color.name, id]
-	_name_label.custom_minimum_size.x = 220
+	_name_label.custom_minimum_size.x = 200
 	row.add_child(_name_label)
 
 	_size_label.custom_minimum_size.x = 100
 	row.add_child(_size_label)
 
-	_bay_label.custom_minimum_size.x = 230
+	_bay_label.custom_minimum_size.x = 200
 	row.add_child(_bay_label)
 
 	_bay_bar.custom_minimum_size = Vector2(160, 14)
