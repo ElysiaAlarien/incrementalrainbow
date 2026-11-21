@@ -29,6 +29,8 @@ enum Reason {
 	NOTHING_TO_SHIP,
 	## The link already has automatic transport.
 	ALREADY_AUTOMATIC,
+	## A prestige needs at least one prism.
+	NO_PRISMS,
 }
 
 var ok: bool

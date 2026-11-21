@@ -132,6 +132,28 @@ func test_the_loaded_game_plays_on_the_same_as_the_saved_game() -> void:
 	assert_eq(loaded.snapshot(), sim.snapshot())
 
 
+func test_save_then_load_after_a_prestige_gives_the_same_state() -> void:
+	var sim := _rich_game()
+	assert_true(sim.prestige().ok, "the rich game has prisms")
+	sim.build_factory(&"red")
+	sim.tick(2500)
+
+	var result := _load(SaveCodec.encode(sim))
+
+	assert_true(result.ok, result.message)
+	var loaded := result.simulation
+	assert_eq(loaded.prisms().owned, 2)
+	assert_eq(loaded.prisms().total_bought, 2)
+	assert_eq(loaded.factories().size(), 1)
+	assert_eq(loaded.snapshot(), sim.snapshot())
+	for game in [sim, loaded]:
+		game.make_link(1, &"millbrook")
+		game.tick(12_345)
+		game.start_shipment(1)
+		game.prestige()
+	assert_eq(loaded.snapshot(), sim.snapshot(), "the loaded game plays on and prestiges the same")
+
+
 func test_the_save_has_a_version_number() -> void:
 	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_rich_game()))
 

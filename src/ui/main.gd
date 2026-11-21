@@ -9,6 +9,8 @@ extends Control
 ## each frame, and shows what the queries return. It loads the save on start,
 ## and saves at intervals and when the game exits or goes to the background.
 ## The Export or import button exports the game as a code and imports a code.
+## The Prestige button shows what a prestige keeps and clears, and asks the
+## player to confirm.
 
 ## Seconds between saves while the game runs.
 const AUTOSAVE_INTERVAL_S := 30.0
@@ -30,6 +32,7 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _buy_prism_button: Button = %BuyPrism
 @onready var _message_label: Label = %MessageLabel
 @onready var _export_code_button: Button = %ExportCodeButton
+@onready var _prestige_button: Button = %PrestigeButton
 
 var _sim: Simulation
 var _save_file: SaveFile
@@ -41,6 +44,7 @@ var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
 var _export_code_dialog: ExportCodeDialog
+var _prestige_confirm := ConfirmationDialog.new()
 var _cards: Array[ColorCard] = []
 ## The metadata of each item in [member _new_link_destination], in order, as
 ## from [method _link_destination_keys].
@@ -71,6 +75,12 @@ func _ready() -> void:
 	add_child(_export_code_dialog)
 	_export_code_button.pressed.connect(func() -> void: _export_code_dialog.open(_sim))
 	_buy_prism_button.pressed.connect(_on_buy_prism_pressed)
+	_prestige_confirm.name = "PrestigeConfirm"
+	_prestige_confirm.title = "Prestige?"
+	_prestige_confirm.ok_button_text = "Prestige"
+	_prestige_confirm.confirmed.connect(_on_prestige_confirmed)
+	add_child(_prestige_confirm)
+	_prestige_button.pressed.connect(_on_prestige_pressed)
 	_refresh()
 
 
@@ -131,6 +141,12 @@ func _load_or_start_game() -> Simulation:
 ## it at once.
 func _replace_game(simulation: Simulation) -> void:
 	_sim = simulation
+	_show_new_run()
+
+
+## Shows a game that has a new run: from an import, or after a prestige. It
+## removes the rows of the last run, and saves the game at once.
+func _show_new_run() -> void:
 	for row: Node in _rows.values() + _link_rows.values():
 		row.get_parent().remove_child(row)
 		row.queue_free()
@@ -171,6 +187,30 @@ func _on_make_link_pressed() -> void:
 
 func _on_buy_prism_pressed() -> void:
 	_show_result(_sim.buy_prism())
+
+
+## Shows what a prestige keeps and clears and asks the player to confirm, or
+## shows why a prestige is not allowed now.
+func _on_prestige_pressed() -> void:
+	var preview := _sim.prestige_preview()
+	if not preview.allowed:
+		_show_message(preview.message)
+		return
+	_prestige_confirm.dialog_text = "A prestige ends this run and starts a fresh one.\n\nKeeps:\n%s\n\nClears:\n%s" % [
+		_bullets(preview.keeps), _bullets(preview.clears)]
+	_prestige_confirm.popup_centered()
+
+
+func _on_prestige_confirmed() -> void:
+	var result := _sim.prestige()
+	if result.ok:
+		_show_new_run()
+	else:
+		_show_result(result)
+
+
+func _bullets(items: PackedStringArray) -> String:
+	return "\n".join(Array(items).map(func(item: String) -> String: return "  • " + item))
 
 
 func _on_ship_pressed(link_id: int) -> void:

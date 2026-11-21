@@ -16,6 +16,26 @@ const LinkState := preload("res://src/core/state/link_state.gd")
 const ShipmentState := preload("res://src/core/state/shipment_state.gd")
 const DemandState := preload("res://src/core/state/demand_state.gd")
 
+## The prestige keep set, in one place (see ADR-0012). A prestige makes a
+## fresh run with [method Simulation.new], the same path as a new game, and
+## copies only these members into it. Each key is a name for the player, and
+## its value lists the members that hold it. All other state, also state that
+## a later feature adds, is part of the run and clears by default. To keep new
+## state across runs, such as prestige upgrades, add it here.
+const _PRESTIGE_KEEPS: Dictionary[String, Array] = {
+	"Prisms": [&"_prisms"],
+	"Prism price": [&"_prisms_bought"],
+}
+## What a prestige clears, as names for the player. A prestige clears all
+## state that [constant _PRESTIGE_KEEPS] does not name, so this list only
+## tells the player. When a feature adds state to the run, add its name here.
+const _PRESTIGE_CLEARS: PackedStringArray = [
+	"Money",
+	"Factories",
+	"Links, with their vehicles and shipments",
+	"Demand and saturation",
+]
+
 var _content: Content
 var _rng: SimRng
 var _time_ms: int = 0
@@ -295,6 +315,35 @@ func buy_prism() -> CommandResult:
 	return CommandResult.success(_prisms)
 
 
+## Ends this run and starts a fresh one. A prestige keeps only the set in
+## [constant _PRESTIGE_KEEPS] (see [method prestige_preview]) and clears all
+## else to the state of a new game. The player must own at least one prism.
+## The random number generator of the old run seeds the new run, so the same
+## commands and ticks give the same new run.
+func prestige() -> CommandResult:
+	var blocked := _prestige_blocked()
+	if blocked != null:
+		return blocked
+
+	var fresh := Simulation.new(_content, (_rng.next_u32() << 32) | _rng.next_u32())
+	for members: Array in _PRESTIGE_KEEPS.values():
+		for member: StringName in members:
+			assert(member in self, "_PRESTIGE_KEEPS names no member %s" % member)
+			fresh.set(member, get(member))
+	for property in get_property_list():
+		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			set(property.name, fresh.get(property.name))
+	return CommandResult.success()
+
+
+## A failure if [method prestige] is not allowed now, or null.
+func _prestige_blocked() -> CommandResult:
+	if _prisms <= 0:
+		return CommandResult.failure(CommandResult.Reason.NO_PRISMS,
+			"A prestige needs at least one prism. Buy a prism first.")
+	return null
+
+
 ## Why the destination of [param state] accepts no widgets now.
 func _accepts_nothing_text(state: LinkState) -> String:
 	if state.destination_kind == LinkView.Destination.FACTORY:
@@ -380,6 +429,18 @@ func prisms() -> PrismView:
 	view.owned = _prisms
 	view.total_bought = _prisms_bought
 	view.next_price = _prism_price()
+	return view
+
+
+## What [method prestige] does now: if it is allowed, and what it keeps and
+## what it clears.
+func prestige_preview() -> PrestigeView:
+	var view := PrestigeView.new()
+	var blocked := _prestige_blocked()
+	view.allowed = blocked == null
+	view.message = "" if blocked == null else blocked.message
+	view.keeps = PackedStringArray(_PRESTIGE_KEEPS.keys())
+	view.clears = _PRESTIGE_CLEARS.duplicate()
 	return view
 
 

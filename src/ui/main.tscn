@@ -72,6 +72,12 @@ layout_mode = 2
 size_flags_vertical = 4
 text = "Buy prism"
 
+[node name="PrestigeButton" type="Button" parent="Margin/Layout/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+text = "Prestige"
+
 [node name="ExportCodeButton" type="Button" parent="Margin/Layout/Header"]
 unique_name_in_owner = true
 layout_mode = 2
