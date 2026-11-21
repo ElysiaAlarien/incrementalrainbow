@@ -128,6 +128,7 @@ func snapshot() -> Dictionary:
 	}
 
 
+# --- Internal -----------------------------------------------------------------
 
 func _factory_state(id: int) -> FactoryState:
 	for state in _factories:

@@ -38,12 +38,19 @@ func test_subtracting_a_much_smaller_value_keeps_the_larger_value() -> void:
 	assert_true(big.sub(BigNumber.from_int(1)).equals(big))
 
 
-func test_scaled_power_does_not_overflow() -> void:
-	assert_almost_eq(BigNumber.scaled_power(BigNumber.from_int(10), 2.0, 3).to_float(), 80.0, 1e-9)
-	assert_true(BigNumber.scaled_power(BigNumber.from_int(7), 1.5, 0).equals(BigNumber.from_int(7)))
+func test_times_power_does_not_overflow() -> void:
+	assert_almost_eq(BigNumber.from_int(10).times_power(2.0, 3).to_float(), 80.0, 1e-9)
+	assert_true(BigNumber.from_int(7).times_power(1.5, 0).equals(BigNumber.from_int(7)))
 	# 1.15^100000 is about 10^6069.
-	var huge := BigNumber.scaled_power(BigNumber.from_int(10), 1.15, 100_000)
-	assert_eq(huge.exponent, 6070)
+	assert_eq(BigNumber.from_int(10).times_power(1.15, 100_000).exponent, 6070)
+
+
+func test_ceiled_rounds_up_to_a_whole_number() -> void:
+	assert_eq(BigNumber.from_float(13.225).ceiled().to_float(), 14.0)
+	assert_eq(BigNumber.from_float(20.000000000000004).ceiled().to_float(), 20.0)
+	assert_eq(BigNumber.from_float(-2.5).ceiled().to_float(), -2.0)
+	var big := BigNumber.new(1.5, 300)
+	assert_true(big.ceiled().equals(big))
 
 
 func test_round_trips_through_plain_data() -> void:

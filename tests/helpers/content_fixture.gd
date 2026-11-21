@@ -11,18 +11,23 @@ static func colors_data() -> Dictionary:
 	]}
 
 
+## Balance data: 100 starting money and a flat production line cost of 10.
+## [param overrides] replaces values by key, such as
+## [code]{"starting_money": 15, "production_line_cost_growth": 2.0}[/code].
 static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 10,
-		starting_money: float = 100, production_line_cost: float = 10,
-		production_line_cost_growth: float = 1.0) -> Dictionary:
-	return {
-		"run": {"starting_money": starting_money},
-		"factory": {
-			"widget_time_ms": widget_time_ms,
-			"output_bay_capacity": output_bay_capacity,
-			"production_line_cost": production_line_cost,
-			"production_line_cost_growth": production_line_cost_growth,
-		},
+		overrides: Dictionary = {}) -> Dictionary:
+	var run := {"starting_money": 100}
+	var factory := {
+		"widget_time_ms": widget_time_ms,
+		"output_bay_capacity": output_bay_capacity,
+		"production_line_cost": 10,
+		"production_line_cost_growth": 1.0,
 	}
+	for key: String in overrides:
+		var section := run if run.has(key) else factory
+		assert(section.has(key), "unknown balance key %s" % key)
+		section[key] = overrides[key]
+	return {"run": run, "factory": factory}
 
 
 ## Data for [method Content.from_data], with each section replaceable.

@@ -28,14 +28,15 @@ var _production_line_cost_growth: float
 
 
 func _init(p_widget_time_ms: int, p_output_bay_capacity: int,
-		p_production_line_cost: BigNumber = BigNumber.ZERO,
-		p_production_line_cost_growth: float = 1.0) -> void:
+		p_production_line_cost: BigNumber, p_production_line_cost_growth: float) -> void:
 	_widget_time_ms = p_widget_time_ms
 	_output_bay_capacity = p_output_bay_capacity
 	_production_line_cost = p_production_line_cost
 	_production_line_cost_growth = p_production_line_cost_growth
 
 
-## The cost to add one production line to a factory that has [param size] lines.
+## The cost to add one production line to a factory that has [param size]
+## lines. Costs are whole numbers, so the money the screen shows is enough
+## exactly when it is at least the cost the screen shows.
 func next_line_cost(size: int) -> BigNumber:
-	return BigNumber.scaled_power(_production_line_cost, _production_line_cost_growth, size - 1)
+	return _production_line_cost.times_power(_production_line_cost_growth, size - 1).ceiled()

@@ -11,6 +11,12 @@ func _sim() -> Simulation:
 	return Simulation.new(ContentFixture.make(1000, 100), SEED)
 
 
+## Like [method _sim], with balance values from [param overrides].
+func _sim_with(overrides: Dictionary, output_bay_capacity: int = 100) -> Simulation:
+	var balance := ContentFixture.balance_data(1000, output_bay_capacity, overrides)
+	return Simulation.new(ContentFixture.make_with_balance(balance), SEED)
+
+
 func _build(sim: Simulation, color: StringName = &"red") -> int:
 	var result := sim.build_factory(color)
 	assert_true(result.ok, result.message)
@@ -89,8 +95,7 @@ func test_a_larger_factory_stops_when_its_output_bay_is_full() -> void:
 
 
 func test_a_very_long_tick_on_a_large_factory_fills_the_bay() -> void:
-	var balance := ContentFixture.balance_data(1000, 10, 1.0e9, 1)
-	var sim := Simulation.new(ContentFixture.make_with_balance(balance), SEED)
+	var sim := _sim_with({"starting_money": 1.0e9, "production_line_cost": 1}, 10)
 	var id := _build(sim)
 	for i in 1000:
 		_add_line(sim, id)
@@ -128,8 +133,7 @@ func test_a_production_line_costs_money() -> void:
 
 
 func test_each_line_costs_more_than_the_one_before_it_when_cost_grows() -> void:
-	var balance := ContentFixture.balance_data(1000, 10, 1000, 10, 2.0)
-	var sim := Simulation.new(ContentFixture.make_with_balance(balance), SEED)
+	var sim := _sim_with({"starting_money": 1000, "production_line_cost_growth": 2.0})
 	var id := _build(sim)
 
 	var costs: Array[float] = []
@@ -137,15 +141,25 @@ func test_each_line_costs_more_than_the_one_before_it_when_cost_grows() -> void:
 		costs.append(sim.factory(id).next_line_cost.to_float())
 		_add_line(sim, id)
 
-	assert_almost_eq(costs[0], 10.0, 1e-9)
-	assert_almost_eq(costs[1], 20.0, 1e-9)
-	assert_almost_eq(costs[2], 40.0, 1e-9)
-	assert_almost_eq(sim.money().to_float(), 930.0, 1e-9)
+	assert_eq(costs, [10.0, 20.0, 40.0] as Array[float])
+	assert_true(sim.money().equals(BigNumber.from_int(930)), "money is %s" % sim.money())
+
+
+func test_line_costs_are_whole_numbers() -> void:
+	var sim := _sim_with({"starting_money": 1.0e6, "production_line_cost_growth": 1.15})
+	var id := _build(sim)
+	var spent := 0.0
+	for i in 20:
+		var cost := sim.factory(id).next_line_cost.to_float()
+		assert_eq(cost, floorf(cost), "line %d costs %s" % [i + 2, cost])
+		spent += cost
+		_add_line(sim, id)
+	# BigNumber keeps about 15 significant digits (ADR-0005).
+	assert_almost_eq(sim.money().to_float(), 1.0e6 - spent, 1e-6)
 
 
 func test_with_too_little_money_adding_a_line_fails_and_changes_nothing() -> void:
-	var balance := ContentFixture.balance_data(1000, 10, 15, 10)
-	var sim := Simulation.new(ContentFixture.make_with_balance(balance), SEED)
+	var sim := _sim_with({"starting_money": 15})
 	var id := _build(sim)
 	_add_line(sim, id)
 	sim.tick(1500)
@@ -161,8 +175,7 @@ func test_with_too_little_money_adding_a_line_fails_and_changes_nothing() -> voi
 
 
 func test_exactly_enough_money_is_enough() -> void:
-	var balance := ContentFixture.balance_data(1000, 10, 10, 10)
-	var sim := Simulation.new(ContentFixture.make_with_balance(balance), SEED)
+	var sim := _sim_with({"starting_money": 10})
 	var id := _build(sim)
 
 	_add_line(sim, id)

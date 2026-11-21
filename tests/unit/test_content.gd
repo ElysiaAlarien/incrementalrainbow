@@ -36,7 +36,8 @@ func test_reads_balance_values_as_ints() -> void:
 
 func test_reads_production_line_cost_and_starting_money() -> void:
 	var content := Content.from_data(ContentFixture.data(
-		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10, 250, 12, 1.5)))
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"starting_money": 250, "production_line_cost": 12, "production_line_cost_growth": 1.5})))
 	assert_eq(content.errors, PackedStringArray())
 	assert_true(content.starting_money.equals(BigNumber.from_int(250)))
 	assert_true(content.factory_balance.production_line_cost.equals(BigNumber.from_int(12)))
@@ -45,7 +46,8 @@ func test_reads_production_line_cost_and_starting_money() -> void:
 
 func test_reports_bad_production_line_cost_and_starting_money() -> void:
 	var content := Content.from_data(ContentFixture.data(
-		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10, -1, -5, 0.5)))
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"starting_money": -1, "production_line_cost": -5, "production_line_cost_growth": 0.5})))
 	var text := "\n".join(content.errors)
 	for expected in ["run.starting_money must be a number of at least 0",
 			"factory.production_line_cost must be a number of at least 0",

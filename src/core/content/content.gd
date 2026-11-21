@@ -29,7 +29,7 @@ var starting_money: BigNumber:
 		return _starting_money
 
 var _errors: PackedStringArray = []
-var _factory_balance := FactoryBalance.new(0, 0)
+var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0)
 var _starting_money := BigNumber.ZERO
 var _colors: Array[ColorDef] = []
 var _colors_by_id: Dictionary[StringName, ColorDef] = {}

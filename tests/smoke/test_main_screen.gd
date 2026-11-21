@@ -23,13 +23,22 @@ func test_building_a_factory_shows_it_on_the_screen() -> void:
 	assert_false(main.find_child("EmptyLabel", true, false).visible)
 
 
-func test_adding_a_production_line_shows_the_new_size_and_money() -> void:
+## The main screen with one red factory built.
+func _main_with_red_factory() -> Control:
 	var main: Control = add_child_autofree(MainScene.instantiate())
 	await wait_process_frames(1)
 	main.find_child("Build_red", true, false).pressed.emit()
 	await wait_process_frames(1)
+	return main
 
-	var row: FactoryRow = main.find_children("Factory*", "FactoryRow", true, false)[0]
+
+func _first_row(main: Control) -> FactoryRow:
+	return main.find_children("Factory*", "FactoryRow", true, false)[0]
+
+
+func test_adding_a_production_line_shows_the_new_size_and_money() -> void:
+	var main: Control = await _main_with_red_factory()
+	var row := _first_row(main)
 	assert_eq(row.size_text(), "1 line")
 	var money_before: BigNumber = main.simulation().money()
 	row.add_line_button().pressed.emit()
@@ -42,11 +51,8 @@ func test_adding_a_production_line_shows_the_new_size_and_money() -> void:
 
 
 func test_adding_a_line_with_too_little_money_shows_the_reason() -> void:
-	var main: Control = add_child_autofree(MainScene.instantiate())
-	await wait_process_frames(1)
-	main.find_child("Build_red", true, false).pressed.emit()
-	await wait_process_frames(1)
-	var row: FactoryRow = main.find_children("Factory*", "FactoryRow", true, false)[0]
+	var main: Control = await _main_with_red_factory()
+	var row := _first_row(main)
 
 	# Add lines until the money runs out; the last press fails.
 	var message_label: Label = main.find_child("MessageLabel", true, false)
