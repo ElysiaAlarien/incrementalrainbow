@@ -11,6 +11,8 @@ extends RefCounted
 ## overflows.
 
 const _MASK32 := 0xFFFFFFFF
+## The most values that [method randi_range] can choose from.
+const MAX_RANGE := 1 << 31
 
 var _s0: int
 var _s1: int
@@ -56,7 +58,7 @@ func randf() -> float:
 ## 2^31 values.
 func randi_range(from: int, to: int) -> int:
 	var count := to - from + 1
-	assert(count > 0 and count <= (1 << 31), "randi_range needs 1 to 2^31 values")
+	assert(count > 0 and count <= MAX_RANGE, "randi_range needs 1 to 2^31 values")
 	return from + ((next_u32() * count) >> 32)
 
 

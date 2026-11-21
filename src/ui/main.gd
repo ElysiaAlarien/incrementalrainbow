@@ -42,8 +42,9 @@ var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
-## The rows of the active demand events, in start order.
-var _demand_event_rows: Array[DemandEventRow] = []
+## The rows of the active demand events, by [member DemandEventRow.key].
+## Events start in order, so the rows are in start order.
+var _demand_event_rows: Dictionary[String, DemandEventRow] = {}
 var _export_code_dialog: ExportCodeDialog
 var _cards: Array[ColorCard] = []
 ## The metadata of each item in [member _new_link_destination], in order, as
@@ -234,26 +235,21 @@ func _refresh() -> void:
 ## and no row after it ends.
 func _refresh_demand_events() -> void:
 	var views := _sim.demand_events()
-	var by_key := {}
+	var active := {}
 	for view in views:
-		by_key[DemandEventRow.key_of(view)] = view
-	var kept: Array[DemandEventRow] = []
-	for row in _demand_event_rows:
-		if by_key.has(row.key):
-			kept.append(row)
-		else:
-			_demand_event_list.remove_child(row)
-			row.queue_free()
-	_demand_event_rows = kept
+		active[DemandEventRow.key_of(view)] = true
+	for key: String in _demand_event_rows.keys():
+		if not active.has(key):
+			var old := _demand_event_rows[key]
+			_demand_event_list.remove_child(old)
+			old.queue_free()
+			_demand_event_rows.erase(key)
 	for view in views:
 		var key := DemandEventRow.key_of(view)
-		var row: DemandEventRow = null
-		for candidate in _demand_event_rows:
-			if candidate.key == key:
-				row = candidate
+		var row: DemandEventRow = _demand_event_rows.get(key)
 		if row == null:
 			row = DemandEventRow.new(view, _content)
-			_demand_event_rows.append(row)
+			_demand_event_rows[key] = row
 			_demand_event_list.add_child(row)
 		row.show_state(view)
 	_demand_events_empty_label.visible = _demand_event_rows.is_empty()

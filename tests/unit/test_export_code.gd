@@ -17,8 +17,9 @@ func _game() -> Simulation:
 	return sim
 
 
-func _import(code: String, steps: Array[Callable] = SaveCodec.migrations()) -> LoadResult:
-	return ExportCode.decode(ContentFixture.make_mixed(700, 6), code, steps)
+func _import(code: String, steps: Array[Callable] = SaveCodec.migrations(),
+		content: Content = ContentFixture.make_mixed(700, 6)) -> LoadResult:
+	return ExportCode.decode(content, code, steps)
 
 
 func test_export_then_import_gives_the_same_state() -> void:
@@ -241,8 +242,8 @@ func test_each_saved_version_imports_as_a_code() -> void:
 		var version := int(JSON.parse_string(save_text).version)
 
 		var from_file := SaveCodec.decode(ContentFixture.make_for_saves(), save_text)
-		var from_code := ExportCode.decode(ContentFixture.make_for_saves(),
-			ExportCode.from_save(save_text, version))
+		var from_code := _import(ExportCode.from_save(save_text, version), SaveCodec.migrations(),
+			ContentFixture.make_for_saves())
 
 		assert_true(from_code.ok, "%s: %s" % [file, from_code.message])
 		if from_code.ok and from_file.ok:

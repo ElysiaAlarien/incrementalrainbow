@@ -3,8 +3,12 @@ extends PanelContainer
 ## One active demand event on the screen: its name, the symbol and name of
 ## each of its colors, how much it changes their demand, and the time left.
 
-## The event's id and start time, which tell two events apart.
-var key: Array
+const SPIKE_COLOR := Color(0.45, 0.85, 0.5)
+const CRASH_COLOR := Color(0.95, 0.45, 0.4)
+
+## The event's id and start time, which tell two events apart, such as
+## "harvest_festival@90000".
+var key: String
 
 var _name_label := Label.new()
 var _change_label := Label.new()
@@ -25,7 +29,7 @@ func _init(view: DemandEventView, content: Content) -> void:
 
 	_change_label.text = change_text(view)
 	_change_label.add_theme_color_override(&"font_color",
-		Color(0.45, 0.85, 0.5) if view.is_spike() else Color(0.95, 0.45, 0.4))
+		SPIKE_COLOR if view.is_spike() else CRASH_COLOR)
 	_change_label.custom_minimum_size.x = 160
 	row.add_child(_change_label)
 
@@ -65,8 +69,8 @@ func text() -> String:
 
 
 ## The key of [param view] for [member key].
-static func key_of(view: DemandEventView) -> Array:
-	return [view.id, view.started_at_ms]
+static func key_of(view: DemandEventView) -> String:
+	return "%s@%d" % [view.id, view.started_at_ms]
 
 
 ## "Demand up 50%" for a spike of 0.5, "Demand down 40%" for a crash of 0.4.

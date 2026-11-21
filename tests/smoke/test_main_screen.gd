@@ -422,12 +422,12 @@ func test_the_screen_shows_the_name_and_colors_of_each_active_demand_event() -> 
 	var longest := 0
 	for def in content.demand_events():
 		longest = maxi(longest, def.duration_ms)
-	var old_keys := rows.map(func(r: DemandEventRow) -> Array: return r.key)
+	var old_keys := rows.map(func(r: DemandEventRow) -> String: return r.key)
 	sim.tick(longest)
 	await wait_process_frames(1)
-	var shown := _demand_event_rows(main).map(func(r: DemandEventRow) -> Array: return r.key)
-	for key: Array in old_keys:
-		assert_false(shown.has(key), "the row of the ended event %s is gone" % [key])
+	var shown := _demand_event_rows(main).map(func(r: DemandEventRow) -> String: return r.key)
+	for key: String in old_keys:
+		assert_false(shown.has(key), "the row of the ended event %s is gone" % key)
 	assert_eq(shown.size(), sim.demand_events().size())
 
 

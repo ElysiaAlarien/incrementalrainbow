@@ -7,6 +7,6 @@
 		{"id": "spring_bloom", "name": "Spring bloom", "colors": ["green", "yellow_green", "yellow"], "direction": "spike", "size": 0.4, "duration_ms": 120000},
 		{"id": "seaside_fair", "name": "Seaside fair", "colors": ["blue", "blue_green"], "direction": "spike", "size": 0.5, "duration_ms": 90000},
 		{"id": "red_dye_scare", "name": "Red dye scare", "colors": ["red", "red_orange", "red_purple"], "direction": "crash", "size": 0.5, "duration_ms": 60000},
-		{"id": "grey_winter", "name": "Grey winter", "colors": ["yellow", "orange", "green"], "direction": "crash", "size": 0.3, "duration_ms": 120000}
+		{"id": "gray_winter", "name": "Gray winter", "colors": ["yellow", "orange", "green"], "direction": "crash", "size": 0.3, "duration_ms": 120000}
 	]
 }

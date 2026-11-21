@@ -79,10 +79,8 @@ func schedule_events(now_ms: int, rng: SimRng, content: Content) -> void:
 ## each one, [param rng] chooses the event, then the time of the next start.
 func start_due_events(now_ms: int, rng: SimRng, content: Content) -> void:
 	var defs := content.demand_events()
-	while next_event_ms != UNSCHEDULED and next_event_ms <= now_ms:
-		if defs.is_empty():
-			next_event_ms = UNSCHEDULED
-			return
+	# [method schedule_events] clears the next start when there are no events.
+	while next_event_ms != UNSCHEDULED and next_event_ms <= now_ms and not defs.is_empty():
 		var def := defs[rng.randi_range(0, defs.size() - 1)]
 		_events.append(DemandEventState.new(def, next_event_ms, next_event_ms + def.duration_ms))
 		next_event_ms += _event_interval(rng, content.demand_balance)

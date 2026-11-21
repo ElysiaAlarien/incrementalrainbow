@@ -11,8 +11,6 @@ extends RefCounted
 ## [method from_data].
 
 const DEFAULT_DIR := "res://data"
-## The most values that [method SimRng.randi_range] can choose from.
-const _MAX_RANDOM_RANGE := 1 << 31
 ## Section name to file name. [method from_data] takes one Dictionary per section.
 const FILES: Dictionary[String, String] = {
 	"colors": "colors.json",
@@ -47,7 +45,7 @@ var prism_balance: PrismBalance:
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
-var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0)
+var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0, 1, 1)
 var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
 var _prism_balance := PrismBalance.new(BigNumber.from_int(1), 2.0)
@@ -244,9 +242,9 @@ func _parse_demand_balance(demand: Variant) -> void:
 	if interval_max < interval_min:
 		_errors.append("demand.event_interval_max_ms must be at least demand.event_interval_min_ms")
 		interval_max = interval_min
-	elif interval_max - interval_min >= _MAX_RANDOM_RANGE:
+	elif interval_max - interval_min >= SimRng.MAX_RANGE:
 		_errors.append("demand.event_interval_max_ms can be at most %d more than demand.event_interval_min_ms" % (
-			_MAX_RANDOM_RANGE - 1))
+			SimRng.MAX_RANGE - 1))
 		interval_max = interval_min
 	_demand_balance = DemandBalance.new(maxi(1, _read_positive_int(demand, "drift_period_ms", "demand")),
 		amplitude, _read_whole_number(demand, "saturation_ms_per_widget", "demand"), float(half),

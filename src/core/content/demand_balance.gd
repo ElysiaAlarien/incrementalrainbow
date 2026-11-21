@@ -43,7 +43,7 @@ var _event_interval_max_ms: int
 
 func _init(p_drift_period_ms: int, p_drift_amplitude: float,
 		p_saturation_ms_per_widget: int, p_saturation_half_widgets: float,
-		p_event_interval_min_ms: int = 1, p_event_interval_max_ms: int = 1) -> void:
+		p_event_interval_min_ms: int, p_event_interval_max_ms: int) -> void:
 	_drift_period_ms = p_drift_period_ms
 	_drift_amplitude = p_drift_amplitude
 	_saturation_ms_per_widget = p_saturation_ms_per_widget
