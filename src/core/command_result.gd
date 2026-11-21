@@ -45,6 +45,14 @@ enum Reason {
 	MARKET_TOO_REMOTE,
 	## The link's vehicle is already the player's transport tier.
 	VEHICLE_IS_CURRENT,
+	## No lab has the given id.
+	UNKNOWN_LAB,
+	## There is no research with that id.
+	UNKNOWN_RESEARCH,
+	## The research is complete already.
+	RESEARCH_COMPLETE,
+	## Research that it requires is not complete.
+	RESEARCH_LOCKED,
 }
 
 var ok: bool

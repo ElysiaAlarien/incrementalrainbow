@@ -56,6 +56,35 @@ func text_id(key: String) -> StringName:
 	return StringName(value)
 
 
+## A text id that can be empty, for a choice that can be none.
+func optional_text_id(key: String) -> StringName:
+	if not _has(key):
+		return &""
+	var value: Variant = _data[key]
+	if not value is String:
+		fail(key, "must be a text id or \"\", but it is %s" % _describe(value))
+		return &""
+	return StringName(value)
+
+
+## A list of text ids, none of them empty.
+func text_id_list(key: String) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	if not _has(key):
+		return ids
+	var value: Variant = _data[key]
+	if not value is Array:
+		fail(key, "must be a list, but it is %s" % _describe(value))
+		return ids
+	for i in value.size():
+		var item: Variant = value[i]
+		if item is String and not item.is_empty():
+			ids.append(StringName(item))
+		else:
+			_problem("%s[%d]" % [_key_path(key), i], "must be a text id, but it is %s" % _describe(item))
+	return ids
+
+
 ## A list of exactly [param count] whole numbers, each in [0, 2^32).
 func u32_list(key: String, count: int) -> PackedInt64Array:
 	var numbers := PackedInt64Array()

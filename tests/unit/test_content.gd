@@ -271,6 +271,68 @@ func test_research_unlocks_the_tertiary_colors_and_brown() -> void:
 	for id in [&"red_orange", &"yellow_orange", &"yellow_green", &"blue_green", &"blue_purple",
 			&"red_purple", &"brown"]:
 		assert_eq(content.color(id).unlock, ColorDef.Unlock.RESEARCH, "%s needs research" % id)
+		assert_false(content.research_unlocking(id).is_empty(), "research in the data unlocks %s" % id)
+
+
+func test_reads_research_and_the_lab_cost() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data()))
+
+	assert_true(content.lab_build_cost.equals(BigNumber.from_int(ContentFixture.LAB_COST)))
+	var ids := content.research().map(func(d: ResearchDef) -> StringName: return d.id)
+	assert_eq(ids, [&"earth_tones", &"cool_mixes"])
+	var cool := content.research_def(&"cool_mixes")
+	assert_eq(cool.name, "Cool mixes")
+	assert_eq(cool.cost, {&"green": 3} as Dictionary[StringName, int])
+	assert_eq(cool.requires, [&"earth_tones"] as Array[StringName])
+	assert_eq(cool.unlock_colors, [&"blue_green"] as Array[StringName])
+	assert_eq(content.research_unlocking(&"brown"), [content.research_def(&"earth_tones")] as Array[ResearchDef])
+
+
+## The errors of content with the mixed colors and the research
+## [param entries], with no lab cost when [param lab_cost] is null.
+func _research_errors(entries: Array, lab_cost: Variant = 30) -> String:
+	var research := {"research": entries}
+	if lab_cost != null:
+		research.lab_build_cost = lab_cost
+	var content := Content.from_data(ContentFixture.data(ContentFixture.mixed_colors_data(),
+		ContentFixture.balance_data(), null, ContentFixture.transport_data(), {"events": []}, research))
+	return "\n".join(content.errors)
+
+
+func _valid_research() -> Array:
+	return ContentFixture.research_data(ContentFixture.mixed_colors_data()).research
+
+
+func test_reports_bad_research() -> void:
+	var entries := _valid_research()
+	assert_eq(_research_errors(entries), "")
+	entries.append({"id": "bad", "name": "Bad", "cost": {"magenta": 1, "red": 0},
+		"requires": ["later", 3], "unlocks": {"colors": ["green", "teal"], "flight": true}})
+	entries.append({"id": "later", "name": "Later", "cost": {}, "unlocks": {}})
+
+	var errors := _research_errors(entries, null)
+
+	for expected in [
+		"research.lab_build_cost must be a number of at least 0",
+		"bad: cost has magenta, which is not a color",
+		"bad: cost of red must be a positive integer",
+		"bad: requires later, which must be a research earlier in research.json",
+		"bad: each item of research.requires must be a text id",
+		"bad: unlocks has flight, but it can have only colors",
+		"bad: unlocks green, but the unlock of green is not research",
+		"bad: unlocks teal, which is not a color",
+		"later: cost must be an object with at least one color",
+		"later: unlocks nothing",
+	]:
+		assert_string_contains(errors, expected)
+
+
+func test_reports_a_research_color_that_no_research_unlocks() -> void:
+	var entries := _valid_research()
+	entries.pop_back()
+
+	assert_string_contains(_research_errors(entries),
+		"blue_green: no research unlocks it, but its unlock is research")
 
 
 func test_reads_a_recipe() -> void:

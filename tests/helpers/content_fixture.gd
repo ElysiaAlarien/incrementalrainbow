@@ -25,6 +25,7 @@ const POPULATION_STEP := 100
 const INCOME_STEP := 50
 const WAREHOUSE_COST := 30
 const WAREHOUSE_SPACE := 20
+const LAB_COST := 30
 ## The tiers after carts in [method transport_data]: trucks reach remoteness
 ## 2 and trains reach 4. Carts reach only remoteness 0.
 const TRUCK_PRICE := 30
@@ -180,16 +181,35 @@ static func demand_events_data(ids: PackedStringArray = ["red_blue_spike", "yell
 	return {"events": events}
 
 
+## Labs that cost 30, and research for the colors in [param colors] that
+## research unlocks. With the colors of [method mixed_colors_data]:
+## "earth_tones" costs 2 red, 2 yellow, and 2 blue and unlocks brown, and
+## "cool_mixes" requires earth_tones, costs 3 green, and unlocks blue-green.
+## With no such colors, there is no research.
+static func research_data(colors: Dictionary = colors_data()) -> Dictionary:
+	var ids: Array = colors.colors.map(func(c: Dictionary) -> String: return c.id)
+	var research := []
+	if ids.has("brown"):
+		research.append({"id": "earth_tones", "name": "Earth tones",
+			"cost": {"red": 2, "yellow": 2, "blue": 2}, "unlocks": {"colors": ["brown"]}})
+	if ids.has("blue_green"):
+		research.append({"id": "cool_mixes", "name": "Cool mixes", "requires": ["earth_tones"],
+			"cost": {"green": 3}, "unlocks": {"colors": ["blue_green"]}})
+	return {"lab_build_cost": LAB_COST, "research": research}
+
+
 ## Data for [method Content.from_data], with each section replaceable. When
 ## [param markets] is null, one market prices every color in [param colors].
 ## By default there are no demand events.
 static func data(colors: Dictionary = colors_data(), balance: Dictionary = balance_data(),
 		markets: Variant = null, transport: Dictionary = transport_data(),
-		demand_events: Dictionary = {"events": []}) -> Dictionary:
+		demand_events: Dictionary = {"events": []}, research: Variant = null) -> Dictionary:
 	if markets == null:
 		markets = markets_data(PRICE, colors)
+	if research == null:
+		research = research_data(colors)
 	return {"colors": colors, "balance": balance, "markets": markets, "transport": transport,
-		"demand_events": demand_events}
+		"demand_events": demand_events, "research": research}
 
 
 ## Content with one widget per [param widget_time_ms] for each production line,

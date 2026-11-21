@@ -21,7 +21,7 @@ const FORMAT := "incremental-rainbow-save"
 static func migrations() -> Array[Callable]:
 	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
 		_v5_add_mixed_factories, _v6_add_demand_events,
-		_v7_add_markets, _v8_add_warehouses, _v9_add_transport_tier]
+		_v7_add_markets, _v8_add_warehouses, _v9_add_transport_tier, _v10_add_research]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -121,6 +121,18 @@ static func _v8_add_warehouses(state: Dictionary) -> Dictionary:
 ## the content of version 9, and every version 9 link uses them.
 static func _v9_add_transport_tier(state: Dictionary) -> Dictionary:
 	state.transport_tier = "cart"
+	return state
+
+
+## Version 11 (#16) adds labs and research. A version 10 game had no labs and
+## no research, so no link went to a lab.
+static func _v10_add_research(state: Dictionary) -> Dictionary:
+	state.next_lab_id = 1
+	state.labs = []
+	state.selected_research = ""
+	state.research_progress = []
+	state.completed_research = []
+	state.lab_stock = []
 	return state
 
 

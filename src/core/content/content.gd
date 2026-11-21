@@ -1,7 +1,7 @@
 class_name Content
 extends RefCounted
 ## The game content: colors, symbols, recipes, markets, transport tiers,
-## demand events, and balance values, such as those of factories, prisms,
+## demand events, research, and balance values, such as those of factories, prisms,
 ## markets, and warehouses. Read-only.
 ##
 ## Content is data, not code. It loads from JSON files in [constant DEFAULT_DIR]
@@ -19,6 +19,7 @@ const FILES: Dictionary[String, String] = {
 	"markets": "markets.json",
 	"transport": "transport.json",
 	"demand_events": "demand_events.json",
+	"research": "research.json",
 }
 
 ## Problems found in the data. Empty when the content is valid.
@@ -51,6 +52,10 @@ var market_balance: MarketBalance:
 var warehouse_balance: WarehouseBalance:
 	get:
 		return _warehouse_balance
+## The money that building one lab costs.
+var lab_build_cost: BigNumber:
+	get:
+		return _lab_build_cost
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
@@ -68,6 +73,9 @@ var _tiers: Array[TransportTier] = []
 var _tiers_by_id: Dictionary[StringName, TransportTier] = {}
 var _demand_events: Array[DemandEventDef] = []
 var _demand_events_by_id: Dictionary[StringName, DemandEventDef] = {}
+var _lab_build_cost := BigNumber.ZERO
+var _research: Array[ResearchDef] = []
+var _research_by_id: Dictionary[StringName, ResearchDef] = {}
 
 
 static func load_dir(dir_path: String) -> Content:
@@ -92,6 +100,8 @@ static func from_data(data: Dictionary) -> Content:
 	content._parse_transport(data.get("transport", {}))
 	# Demand events name colors, so parse them after the colors.
 	content._parse_demand_events(data.get("demand_events", {}))
+	# Research names colors, so parse it after the colors.
+	content._parse_research(data.get("research", {}))
 	content._check_remoteness()
 	return content
 
@@ -144,6 +154,35 @@ func tier_for_remoteness(remoteness: int) -> TransportTier:
 		if tier.reaches(remoteness):
 			return tier
 	return null
+
+
+## All research, in data order. Each research comes after the research it
+## requires.
+func research() -> Array[ResearchDef]:
+	return _research.duplicate()
+
+
+## The research with [param id], or null.
+func research_def(id: StringName) -> ResearchDef:
+	return _research_by_id.get(id)
+
+
+## The names of the research with [param ids], in that order.
+func research_names(ids: Array[StringName]) -> PackedStringArray:
+	var names := PackedStringArray()
+	for id in ids:
+		names.append(_research_by_id[id].name)
+	return names
+
+
+## The research that unlocks [param color], in data order. Empty for a color
+## that is available from the start.
+func research_unlocking(color: StringName) -> Array[ResearchDef]:
+	var defs: Array[ResearchDef] = []
+	for def in _research:
+		if def.unlocks_color(color):
+			defs.append(def)
+	return defs
 
 
 func _parse_colors(data: Dictionary) -> void:
@@ -435,6 +474,85 @@ func _check_remoteness() -> void:
 		first_reaches_one = first_reaches_one or _tiers[0].reaches(def.remoteness)
 	if not first_reaches_one:
 		_errors.append("markets.json: the first transport tier (%s) reaches no market, so a run has nowhere to sell" % _tiers[0].id)
+
+
+func _parse_research(data: Dictionary) -> void:
+	_lab_build_cost = _read_money(data, "lab_build_cost", "research")
+	for entry in _read_entries(data, "research.json", "research", "research", true):
+		var id := StringName(entry.id)
+		var cost := _parse_research_cost(id, entry.get("cost"))
+		var requires := _read_id_list(id, entry, "requires", "research")
+		for required in requires:
+			if not _research_by_id.has(required):
+				_errors.append("%s: requires %s, which must be a research earlier in research.json" % [id, required])
+		var unlock_colors := _parse_unlocks(id, entry.get("unlocks"))
+		var def := ResearchDef.new(id, entry.name, cost, requires, unlock_colors)
+		_research.append(def)
+		_research_by_id[id] = def
+	for def in _colors:
+		if def.unlock == ColorDef.Unlock.RESEARCH and research_unlocking(def.id).is_empty():
+			_errors.append("%s: no research unlocks it, but its unlock is research" % def.id)
+
+
+## A research cost: an object of color id to a positive count, with at least
+## one color.
+func _parse_research_cost(research_id: StringName, data: Variant) -> Dictionary[StringName, int]:
+	var cost: Dictionary[StringName, int] = {}
+	if not data is Dictionary or data.is_empty():
+		_errors.append("%s: cost must be an object with at least one color" % research_id)
+		return cost
+	for key: Variant in data:
+		var color_id := StringName(str(key))
+		if not _colors_by_id.has(color_id):
+			_errors.append("%s: cost has %s, which is not a color" % [research_id, color_id])
+		elif _is_positive_int(data[key]):
+			cost[color_id] = int(data[key])
+		else:
+			_errors.append("%s: cost of %s must be a positive integer" % [research_id, color_id])
+	return cost
+
+
+## The unlocks of a research: an object with keys from
+## [constant ResearchDef.UNLOCK_KINDS]. It must unlock at least one thing.
+## Returns the colors it unlocks. Each must be a color whose unlock is research.
+func _parse_unlocks(research_id: StringName, data: Variant) -> Array[StringName]:
+	var colors: Array[StringName] = []
+	if not data is Dictionary:
+		_errors.append("%s: unlocks must be an object" % research_id)
+		return colors
+	for key: Variant in data:
+		if not ResearchDef.UNLOCK_KINDS.has(str(key)):
+			_errors.append("%s: unlocks has %s, but it can have only %s" % [
+				research_id, key, ", ".join(ResearchDef.UNLOCK_KINDS)])
+	colors = _read_id_list(research_id, data, "colors", "unlocks")
+	for color_id in colors:
+		var def := color(color_id)
+		if def == null:
+			_errors.append("%s: unlocks %s, which is not a color" % [research_id, color_id])
+		elif def.unlock != ColorDef.Unlock.RESEARCH:
+			_errors.append("%s: unlocks %s, but the unlock of %s is not research" % [research_id, color_id, color_id])
+	if colors.is_empty():
+		_errors.append("%s: unlocks nothing" % research_id)
+	return colors
+
+
+## An optional list of unique text ids at [param key] in [param section]. A
+## missing key is an empty list.
+func _read_id_list(owner_id: StringName, section: Dictionary, key: String, section_name: String) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	var list: Variant = section.get(key, [])
+	if not list is Array:
+		_errors.append("%s: %s.%s must be a list" % [owner_id, section_name, key])
+		return ids
+	for item: Variant in list:
+		var id := StringName(str(item))
+		if not item is String or id == &"":
+			_errors.append("%s: each item of %s.%s must be a text id" % [owner_id, section_name, key])
+		elif ids.has(id):
+			_errors.append("%s: %s.%s has %s more than once" % [owner_id, section_name, key, id])
+		else:
+			ids.append(id)
+	return ids
 
 
 ## The entries of the list [param list_key] in [param file]: objects, each with

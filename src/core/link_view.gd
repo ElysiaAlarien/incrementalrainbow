@@ -26,6 +26,8 @@ enum Destination {
 	FACTORY,
 	## A warehouse, which holds the widgets.
 	WAREHOUSE,
+	## A lab, which consumes the widgets to pay for research.
+	LAB,
 }
 
 ## What kind of place a link takes widgets from.
@@ -54,6 +56,8 @@ var destination_factory_id: int
 ## The warehouse at the end of the link, or 0 when it goes to another kind of
 ## place.
 var destination_warehouse_id: int
+## The lab at the end of the link, or 0 when it goes to another kind of place.
+var destination_lab_id: int
 ## The transport tier id of the link's vehicle, such as &"cart".
 var vehicle: StringName
 ## Time for one shipment to arrive, from the vehicle.

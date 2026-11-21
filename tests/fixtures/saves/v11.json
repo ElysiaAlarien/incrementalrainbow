@@ -1,0 +1,237 @@
+{
+	"format": "incremental-rainbow-save",
+	"state": {
+		"completed_research": [
+			"earth_tones"
+		],
+		"demand_events": [
+			{
+				"ends_at_ms": 27561,
+				"event_id": "red_blue_spike",
+				"started_at_ms": 7561
+			}
+		],
+		"drift_key": 1004282400,
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			},
+			{
+				"color": "yellow",
+				"id": 2,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			},
+			{
+				"color": "blue",
+				"id": 3,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			},
+			{
+				"color": "green",
+				"id": 4,
+				"input_bays": [
+					{
+						"color": "yellow",
+						"count": 1
+					},
+					{
+						"color": "blue",
+						"count": 1
+					}
+				],
+				"output_bay_count": 1,
+				"progress_ms": 300,
+				"size": 1
+			},
+			{
+				"color": "brown",
+				"id": 5,
+				"input_bays": [
+					{
+						"color": "red",
+						"count": 0
+					},
+					{
+						"color": "yellow",
+						"count": 0
+					},
+					{
+						"color": "blue",
+						"count": 0
+					}
+				],
+				"output_bay_count": 0,
+				"progress_ms": 0,
+				"size": 1
+			}
+		],
+		"lab_stock": [],
+		"labs": [
+			{
+				"id": 1
+			}
+		],
+		"links": [
+			{
+				"automatic_status": "manual",
+				"color": "red",
+				"destination_kind": "lab",
+				"destination_lab_id": 1,
+				"id": 1,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 2,
+						"started_at_ms": 4000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 1,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "yellow",
+				"destination_kind": "lab",
+				"destination_lab_id": 1,
+				"id": 2,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 2,
+						"started_at_ms": 4000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 2,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "blue",
+				"destination_kind": "lab",
+				"destination_lab_id": 1,
+				"id": 3,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 2,
+						"started_at_ms": 4000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 3,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "yellow",
+				"destination_factory_id": 4,
+				"destination_kind": "factory",
+				"id": 4,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 3,
+						"started_at_ms": 4000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 2,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "blue",
+				"destination_factory_id": 4,
+				"destination_kind": "factory",
+				"id": 5,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 3,
+						"started_at_ms": 4000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 3,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "green",
+				"destination_kind": "lab",
+				"destination_lab_id": 1,
+				"id": 6,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 1,
+						"started_at_ms": 9700
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 14700,
+						"count": 1,
+						"id": 6
+					}
+				],
+				"source_factory_id": 4,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			}
+		],
+		"markets": [
+			{
+				"capacity_used": 0,
+				"id": "millbrook",
+				"income": 100,
+				"income_investments": 0,
+				"population": 1000,
+				"population_investments": 0
+			}
+		],
+		"money": [
+			8.0,
+			0
+		],
+		"next_demand_event_ms": 13424,
+		"next_factory_id": 6,
+		"next_lab_id": 2,
+		"next_link_id": 7,
+		"next_shipment_id": 7,
+		"next_warehouse_id": 1,
+		"prisms": 0,
+		"prisms_bought": 0,
+		"research_progress": [],
+		"rng": [
+			4004871382,
+			3862909744,
+			3624387629,
+			603720124
+		],
+		"saturation": [],
+		"selected_research": "cool_mixes",
+		"time_ms": 10700,
+		"transport_tier": "cart",
+		"warehouses": []
+	},
+	"version": 11
+}

@@ -27,6 +27,7 @@ const DESTINATION_NAMES: Dictionary[String, LinkView.Destination] = {
 	"market": LinkView.Destination.MARKET,
 	"factory": LinkView.Destination.FACTORY,
 	"warehouse": LinkView.Destination.WAREHOUSE,
+	"lab": LinkView.Destination.LAB,
 }
 
 ## The name of each source kind in a save.
@@ -52,6 +53,8 @@ var destination_factory_id: int = 0
 ## The warehouse at the end of the link, or 0 when it goes to another kind of
 ## place.
 var destination_warehouse_id: int = 0
+## The lab at the end of the link, or 0 when it goes to another kind of place.
+var destination_lab_id: int = 0
 ## The transport tier id of the link's vehicle.
 var vehicle: StringName
 ## Shipments in transit, in the order they started.
@@ -137,6 +140,14 @@ static func to_warehouse(p_id: int, p_color: StringName, p_source_factory_id: in
 	return state
 
 
+static func to_lab(p_id: int, p_color: StringName, p_source_factory_id: int,
+		lab_id: int, p_vehicle: StringName) -> LinkState:
+	var state := LinkState.new(p_id, p_color, p_source_factory_id, p_vehicle)
+	state.destination_kind = LinkView.Destination.LAB
+	state.destination_lab_id = lab_id
+	return state
+
+
 ## Makes the link start at the warehouse [param warehouse_id] instead of a
 ## factory. Returns the link, so that it can follow [method to_market] or
 ## [method to_factory] with a source factory id of 0.
@@ -172,6 +183,11 @@ func goes_to_warehouse(warehouse_id: int) -> bool:
 	return destination_kind == LinkView.Destination.WAREHOUSE and destination_warehouse_id == warehouse_id
 
 
+## True if the link goes to the lab [param lab_id].
+func goes_to_lab(lab_id: int) -> bool:
+	return destination_kind == LinkView.Destination.LAB and destination_lab_id == lab_id
+
+
 ## What the link starts at, as [code][source_kind, id][/code], to compare links.
 func source_key() -> Array:
 	return [source_kind, source_factory_id if source_kind == LinkView.Source.FACTORY else source_warehouse_id]
@@ -185,6 +201,8 @@ func destination_key() -> Array:
 			return [destination_kind, destination_factory_id]
 		LinkView.Destination.WAREHOUSE:
 			return [destination_kind, destination_warehouse_id]
+		LinkView.Destination.LAB:
+			return [destination_kind, destination_lab_id]
 	return [destination_kind, destination_market_id]
 
 
@@ -222,6 +240,8 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 		state.destination_factory_id = reader.integer("destination_factory_id", 1)
 	elif kind_name == &"warehouse":
 		state.destination_warehouse_id = reader.integer("destination_warehouse_id", 1)
+	elif kind_name == &"lab":
+		state.destination_lab_id = reader.integer("destination_lab_id", 1)
 	elif kind_name == &"market":
 		state.destination_market_id = reader.text_id("destination_market_id")
 		if state.destination_market_id != &"" and content.market(state.destination_market_id) == null:
@@ -277,6 +297,7 @@ func to_view(tier: TransportTier, now_ms: int) -> LinkView:
 	view.destination_market_id = destination_market_id
 	view.destination_factory_id = destination_factory_id
 	view.destination_warehouse_id = destination_warehouse_id
+	view.destination_lab_id = destination_lab_id
 	view.vehicle = vehicle
 	view.transit_time_ms = tier.transit_time_ms
 	view.shipment_cost = tier.shipment_cost
@@ -322,6 +343,8 @@ func to_dict() -> Dictionary:
 			data.destination_factory_id = destination_factory_id
 		LinkView.Destination.WAREHOUSE:
 			data.destination_warehouse_id = destination_warehouse_id
+		LinkView.Destination.LAB:
+			data.destination_lab_id = destination_lab_id
 		_:
 			data.destination_market_id = destination_market_id
 	return data
