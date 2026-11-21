@@ -91,7 +91,7 @@ _Avoid_: Delivery, trip, load
 
 **Automatic transport**:
 An upgrade that the player buys for one link. An automatic link starts a shipment by itself once each transit time of its vehicle. If there is nothing to ship or too little money, it sends nothing that time.
-_Avoid_: Auto-ship, automation
+_Avoid_: Auto-ship, autopilot
 
 **Throughput**:
 The number of widgets that started on a link in the last minute. It shows where widgets cannot move fast enough.

@@ -76,7 +76,7 @@ func test_reads_markets_with_a_price_for_each_color() -> void:
 
 
 func test_reads_transport_tiers_in_order() -> void:
-	var transport := {"automatic_cost": 12.5, "tiers": [
+	var transport := {"automatic_transport_cost": 12.5, "tiers": [
 		{"id": "cart", "name": "Cart", "transit_time_ms": 8000, "shipment_cost": 3},
 		{"id": "truck", "name": "Truck", "transit_time_ms": 2000, "shipment_cost": 1.5},
 	]}
@@ -120,7 +120,7 @@ func test_reports_bad_data() -> void:
 		{"id": "millbrook", "name": "", "prices": {"red": 0, "pink": 3, "white": 1}},
 		{"id": "millbrook", "name": "Again", "prices": {}},
 	]}
-	var transport := {"automatic_cost": -3,
+	var transport := {"automatic_transport_cost": -3,
 		"tiers": [{"id": "cart", "name": "", "transit_time_ms": 0, "shipment_cost": -1}]}
 	var content := Content.from_data(ContentFixture.data(colors,
 		{"factory": {"widget_time_ms": 0}, "run": {"starting_money": -5}}, markets, transport))
@@ -138,7 +138,7 @@ func test_reports_bad_data() -> void:
 			"millbrook: no price for teal", "duplicate market id millbrook",
 			"cart: name is missing", "cart.transit_time_ms must be a positive integer",
 			"cart.shipment_cost must be a number of at least 0",
-			"transport.automatic_cost must be a number of at least 0"]:
+			"transport.automatic_transport_cost must be a number of at least 0"]:
 		assert_string_contains(text, expected)
 
 

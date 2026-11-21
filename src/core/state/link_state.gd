@@ -60,6 +60,20 @@ func make_automatic(now_ms: int) -> void:
 	next_automatic_ms = now_ms
 
 
+## Records what the automatic start that is due now did, from the [param result]
+## of the start, and sets the next one [param transit_time_ms] later.
+func record_automatic_start(result: CommandResult, transit_time_ms: int) -> void:
+	match result.reason:
+		CommandResult.Reason.NONE:
+			automatic_status = SHIPPED
+		CommandResult.Reason.NOT_ENOUGH_MONEY:
+			automatic_status = NOT_ENOUGH_MONEY
+		_:
+			assert(result.reason == CommandResult.Reason.NOTHING_TO_SHIP, "unexpected %s" % result.message)
+			automatic_status = NOTHING_TO_SHIP
+	next_automatic_ms += transit_time_ms
+
+
 ## Records a shipment of [param count] widgets that starts at [param now_ms].
 func add_shipment(shipment_id: int, count: int, now_ms: int, transit_time_ms: int) -> void:
 	shipments.append(ShipmentState.new(shipment_id, count, now_ms + transit_time_ms))

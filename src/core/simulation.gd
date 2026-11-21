@@ -168,7 +168,7 @@ func start_shipment(link_id: int) -> CommandResult:
 
 ## Buys automatic transport for the link [param link_id], for
 ## [method automatic_transport_cost]. From now on, the link starts a shipment
-## by itself now and then once each transit time of its vehicle, by the rules
+## by itself: first now, and after that once each transit time of its vehicle, by the rules
 ## of [method start_shipment]. A start with nothing to ship or too little money
 ## sends nothing, and [member LinkView.automatic] shows why.
 func buy_automatic_transport(link_id: int) -> CommandResult:
@@ -262,15 +262,7 @@ func _start_automatic_shipments() -> void:
 		if not state.is_automatic() or state.next_automatic_ms != _time_ms:
 			continue
 		var result := _start_shipment(state)
-		match result.reason:
-			CommandResult.Reason.NONE:
-				state.automatic_status = LinkState.SHIPPED
-			CommandResult.Reason.NOT_ENOUGH_MONEY:
-				state.automatic_status = LinkState.NOT_ENOUGH_MONEY
-			_:
-				assert(result.reason == CommandResult.Reason.NOTHING_TO_SHIP, "unexpected %s" % result.message)
-				state.automatic_status = LinkState.NOTHING_TO_SHIP
-		state.next_automatic_ms += _content.transport_tier(state.vehicle).transit_time_ms
+		state.record_automatic_start(result, _content.transport_tier(state.vehicle).transit_time_ms)
 
 
 # --- Queries ------------------------------------------------------------------

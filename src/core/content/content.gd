@@ -203,7 +203,7 @@ func _parse_prices(market_id: StringName, data: Variant) -> Dictionary[StringNam
 
 
 func _parse_transport(data: Dictionary) -> void:
-	_automatic_transport_cost = _read_money(data, "automatic_cost", "transport")
+	_automatic_transport_cost = _read_money(data, "automatic_transport_cost", "transport")
 	for entry in _read_entries(data, "transport.json", "tiers", "transport tier"):
 		var id := StringName(entry.id)
 		var tier := TransportTier.new(id, entry.name,
