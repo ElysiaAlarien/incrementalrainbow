@@ -82,7 +82,7 @@ The level of vehicle technology the player has bought, such as carts, trucks, or
 _Avoid_: Vehicle level, transport tech
 
 **Vehicle**:
-The transport tier that one link uses. A link keeps its vehicle until the player pays to upgrade it.
+The transport tier that one link uses. A new link gets the player's transport tier as its vehicle. A link keeps its vehicle until the player pays to upgrade it to the player's transport tier.
 _Avoid_: Carrier, truck
 
 **Shipment**:

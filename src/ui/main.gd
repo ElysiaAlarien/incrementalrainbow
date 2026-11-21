@@ -1,11 +1,12 @@
 extends Control
 ## The first screen: money, prisms, each color with its recipe and a button to
 ## build it, factories with their production lines, output bays, and input
-## bays, warehouses with their widgets and throughput, links from factories and
-## warehouses to markets, mixed factories, and warehouses, with manual
+## bays, warehouses with their widgets and throughput, the transport tier with
+## a button to buy the next one, links from factories and warehouses to
+## markets, mixed factories, and warehouses, with their vehicles, manual
 ## shipments, automatic transport, and throughput, the active demand events,
-## and markets with their population, income, capacity, community investment,
-## and the price and demand of each color.
+## and markets with their remoteness, population, income, capacity, community
+## investment, and the price and demand of each color.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -29,6 +30,8 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _warehouse_list: VBoxContainer = %WarehouseList
 @onready var _warehouses_empty_label: Label = %WarehousesEmptyLabel
 @onready var _new_link_source: OptionButton = %NewLinkSource
+@onready var _transport_label: Label = %TransportLabel
+@onready var _buy_transport_tier_button: Button = %BuyTransportTier
 @onready var _new_link_destination: OptionButton = %NewLinkDestination
 @onready var _make_link_button: Button = %MakeLink
 @onready var _link_list: VBoxContainer = %LinkList
@@ -65,6 +68,9 @@ var _source_keys: Array = []
 ## The metadata of each item in [member _new_link_destination], in order, as
 ## from [method _link_destination_keys].
 var _destination_keys: Array = []
+## The transport tier when [member _new_link_destination] was last made, which
+## sets which markets in it are open.
+var _destination_keys_tier: StringName = &""
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
 
@@ -101,6 +107,7 @@ func _ready() -> void:
 	_prestige_confirm.confirmed.connect(_on_prestige_confirmed)
 	add_child(_prestige_confirm)
 	_prestige_button.pressed.connect(_on_prestige_pressed)
+	_buy_transport_tier_button.pressed.connect(func() -> void: _show_result(_sim.buy_transport_tier()))
 	_refresh()
 
 
@@ -263,6 +270,10 @@ func _on_invest_pressed(market_id: StringName, goal: MarketView.Investment) -> v
 	_show_result(_sim.make_community_investment(market_id, goal))
 
 
+func _on_upgrade_vehicle_pressed(link_id: int) -> void:
+	_show_result(_sim.upgrade_vehicle(link_id))
+
+
 func _show_result(result: CommandResult) -> void:
 	_show_message("" if result.ok else result.message)
 	_refresh()
@@ -288,14 +299,16 @@ func _refresh() -> void:
 		row.show_state(view)
 	_empty_label.visible = _rows.is_empty()
 	_refresh_warehouses()
+	_refresh_transport()
 	_refresh_new_link_choices()
 
 	var automatic_cost := _sim.automatic_transport_cost()
+	var tier := _sim.transport_tier()
 	for view in _sim.links():
 		var link_row: LinkRow = _link_rows.get(view.id)
 		if link_row == null:
 			link_row = _add_link_row(view)
-		link_row.show_state(view, automatic_cost)
+		link_row.show_state(view, automatic_cost, _content.transport_tier(view.vehicle), tier)
 	_links_empty_label.visible = _link_rows.is_empty()
 
 	_refresh_demand_events()
@@ -307,7 +320,16 @@ func _refresh() -> void:
 			market_row.invest_pressed.connect(_on_invest_pressed)
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
-		market_row.show_state(view)
+		market_row.show_state(view, _content.transport_tier(view.needed_tier).plural_name)
+
+
+func _refresh_transport() -> void:
+	var tier := _sim.transport_tier()
+	_transport_label.text = "Transport tier: %s, reaches remoteness %d" % [tier.name, tier.max_remoteness]
+	var next := _sim.next_transport_tier()
+	_buy_transport_tier_button.disabled = next == null
+	_buy_transport_tier_button.text = "Highest tier" if next == null else "Buy %s (%s)" % [
+		next.plural_name.to_lower(), next.price.format()]
 
 
 ## Shows a row for each active demand event: a new row when an event starts,
@@ -370,12 +392,18 @@ func _refresh_new_link_choices() -> void:
 	var factories := _sim.factories()
 	var warehouses := _sim.warehouses()
 	_source_keys = _refresh_choice(_new_link_source, _source_keys, _link_source_keys(factories, warehouses))
+	# A new tier opens markets, so the destinations change even when their keys
+	# do not.
+	if _sim.transport_tier().id != _destination_keys_tier:
+		_destination_keys = []
+		_destination_keys_tier = _sim.transport_tier().id
 	_destination_keys = _refresh_choice(_new_link_destination, _destination_keys,
 		_link_destination_keys(factories, warehouses))
 
 
 ## Fills [param choice] with an item for each of [param keys] when they are not
-## [param old_keys], and keeps the selected key. Returns [param keys].
+## [param old_keys], and keeps the selected key. Returns [param keys]. A closed
+## market stays in the list, disabled, with the transport tier it needs.
 func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Array:
 	if keys == old_keys:
 		return keys
@@ -393,7 +421,13 @@ func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Arra
 				var view := _sim.warehouse(key[1])
 				choice.add_icon_item(_symbol_icon(_content.color(view.color)), _warehouse_name(view))
 			_:
-				choice.add_item(_sim.market(key[1]).name)
+				var market := _sim.market(key[1])
+				if market.is_open:
+					choice.add_item(market.name)
+				else:
+					choice.add_item("%s (needs %s)" % [market.name,
+						_content.transport_tier(market.needed_tier).plural_name.to_lower()])
+					choice.set_item_disabled(i, true)
 		choice.set_item_metadata(i, key)
 	var keep := keys.find(selected)
 	choice.select(keep if keep >= 0 else (0 if not keys.is_empty() else -1))
@@ -445,10 +479,10 @@ func _add_link_row(view: LinkView) -> LinkRow:
 			destination_name = _warehouse_name(_sim.warehouse(view.destination_warehouse_id))
 		_:
 			destination_name = _sim.market(view.destination_market_id).name
-	var row := LinkRow.new(view, _content.color(view.color), source_name, destination_name,
-		_content.transport_tier(view.vehicle).name)
+	var row := LinkRow.new(view, _content.color(view.color), source_name, destination_name)
 	row.ship_pressed.connect(_on_ship_pressed)
 	row.automate_pressed.connect(_on_automate_pressed)
+	row.upgrade_vehicle_pressed.connect(_on_upgrade_vehicle_pressed)
 	_link_rows[view.id] = row
 	_link_list.add_child(row)
 	return row

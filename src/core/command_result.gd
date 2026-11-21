@@ -39,6 +39,12 @@ enum Reason {
 	## The link would carry another color than the warehouse at one of its ends
 	## holds.
 	WRONG_COLOR,
+	## The player already has the highest transport tier.
+	NO_HIGHER_TIER,
+	## The player's transport tier does not reach the market's remoteness.
+	MARKET_TOO_REMOTE,
+	## The link's vehicle is already the player's transport tier.
+	VEHICLE_IS_CURRENT,
 }
 
 var ok: bool

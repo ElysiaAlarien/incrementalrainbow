@@ -39,6 +39,7 @@ const _PRESTIGE_CLEARS: PackedStringArray = [
 	"Demand and saturation",
 	"Community investments and capacity used in each market",
 	"Warehouses and the widgets in them",
+	"Transport tier",
 ]
 
 var _content: Content
@@ -55,6 +56,9 @@ var _next_shipment_id: int = 1
 var _demand: DemandState
 ## Market id to the state of that market, for each market in the content.
 var _markets: Dictionary[StringName, MarketState] = {}
+## The transport tier the player has. New links use it as their vehicle, and
+## it sets which markets are open.
+var _transport_tier: TransportTier
 ## Prisms owned now, and prisms bought across all runs (ADR-0003). Prestige
 ## clears neither.
 var _prisms: int = 0
@@ -71,6 +75,7 @@ func _init(p_content: Content, p_seed: int) -> void:
 	_money = _content.starting_money
 	for def in _content.markets():
 		_markets[def.id] = MarketState.from_def(def)
+	_transport_tier = _content.transport_tiers()[0]
 
 
 ## Makes a simulation from saved state: the inverse of [method snapshot].
@@ -99,6 +104,7 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		ids[state.id] = true
 		sim._factories.append(state)
 	sim._read_warehouses(reader)
+	sim._read_transport_tier(reader)
 	sim._read_links(reader)
 	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms)
 	sim._read_markets(reader)
@@ -137,8 +143,19 @@ func _check_warehouse_space(reader: SnapshotReader) -> void:
 				"%d widgets are in the warehouse and on the way, but it holds %d" % [total, space])
 
 
+## Reads the transport tier for [method from_snapshot].
+func _read_transport_tier(reader: SnapshotReader) -> void:
+	var id := reader.text_id("transport_tier")
+	var tier := _content.transport_tier(id)
+	if tier != null:
+		_transport_tier = tier
+	elif id != &"":
+		reader.fail("transport_tier", "there is no transport tier \"%s\"" % id)
+
+
 ## Reads the links and their shipments for [method from_snapshot], and checks
-## them against the factories and the time, which it has read first.
+## them against the factories, the time, and the transport tier, which it has
+## read first.
 func _read_links(reader: SnapshotReader) -> void:
 	_next_link_id = reader.integer("next_link_id", 1)
 	_next_shipment_id = reader.integer("next_shipment_id", 1)
@@ -153,6 +170,10 @@ func _read_links(reader: SnapshotReader) -> void:
 		elif state.id >= _next_link_id:
 			link_reader.fail("id", "must be less than next_link_id (%d)" % _next_link_id)
 		link_ids[state.id] = true
+		var vehicle := _content.transport_tier(state.vehicle)
+		if vehicle != null and vehicle.rank > _transport_tier.rank:
+			link_reader.fail("vehicle", "%s is a higher tier than the transport tier (%s)" % [
+				vehicle.id, _transport_tier.id])
 		var source_text := _check_link_source(state, link_reader)
 		var destination_key := "destination_market_id"
 		var destination_text := String(state.destination_market_id)
@@ -279,9 +300,10 @@ func add_production_line(factory_id: int) -> CommandResult:
 
 
 ## Makes a link from the factory [param factory_id] to the market
-## [param market_id]. The link carries the factory's color, and its vehicle is
-## the first transport tier. Making a link is free; each shipment costs money.
-## On success, [member CommandResult.value] is the new link id.
+## [param market_id], which must be open: the transport tier must reach its
+## remoteness. The link carries the factory's color, and its vehicle is the
+## transport tier the player has now. Making a link is free; each shipment
+## costs money. On success, [member CommandResult.value] is the new link id.
 func make_link(factory_id: int, market_id: StringName) -> CommandResult:
 	var source := _factory_state(factory_id)
 	if source == null:
@@ -291,18 +313,21 @@ func make_link(factory_id: int, market_id: StringName) -> CommandResult:
 	if market == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_MARKET,
 			"There is no market \"%s\"." % market_id)
+	if not _transport_tier.reaches(market.remoteness):
+		return _too_remote(market)
 	if has_link(factory_id, market_id):
 		return CommandResult.failure(CommandResult.Reason.LINK_EXISTS,
 			"Factory #%d already has a link to %s." % [factory_id, market.name])
 
 	return _add_link(LinkState.to_market(_next_link_id, source.color, factory_id, market_id,
-		_content.transport_tiers()[0].id))
+		_transport_tier.id))
 
 
 ## Makes a link from the factory [param source_id] to the mixed factory
 ## [param destination_id], whose recipe must use the source's color. The link
 ## carries that color to the input bay of that color. Like a link to a market,
-## its vehicle is the first transport tier and it is free. On success,
+## its vehicle is the transport tier the player has now and it is free.
+## Factories have no remoteness, so every tier reaches them. On success,
 ## [member CommandResult.value] is the new link id.
 func make_factory_link(source_id: int, destination_id: int) -> CommandResult:
 	var source := _factory_state(source_id)
@@ -321,7 +346,7 @@ func make_factory_link(source_id: int, destination_id: int) -> CommandResult:
 			"Factory #%d already has a link to factory #%d." % [source_id, destination_id])
 
 	return _add_link(LinkState.to_factory(_next_link_id, source.color, source_id, destination_id,
-		_content.transport_tiers()[0].id))
+		_transport_tier.id))
 
 
 ## Builds a warehouse for [param color] for [method warehouse_build_cost], when
@@ -348,7 +373,7 @@ func build_warehouse(color: StringName) -> CommandResult:
 
 ## Makes a link from the factory [param factory_id] to the warehouse
 ## [param warehouse_id], which must hold the factory's color. Like other links,
-## its vehicle is the first transport tier and it is free. On success,
+## its vehicle is the transport tier the player has now and it is free. On success,
 ## [member CommandResult.value] is the new link id.
 func link_factory_to_warehouse(factory_id: int, warehouse_id: int) -> CommandResult:
 	var source := _factory_state(factory_id)
@@ -362,21 +387,25 @@ func link_factory_to_warehouse(factory_id: int, warehouse_id: int) -> CommandRes
 			"%s holds %s, but %s makes %s." % [_warehouse_name(destination),
 				_color_text(destination.color), _factory_name(source), _color_text(source.color)])
 	return _add_new_link(LinkState.to_warehouse(_next_link_id, source.color, factory_id, warehouse_id,
-		_content.transport_tiers()[0].id))
+		_transport_tier.id))
 
 
 ## Makes a link from the warehouse [param warehouse_id] to the market
-## [param market_id]. The link carries the warehouse's color. On success,
-## [member CommandResult.value] is the new link id.
+## [param market_id], which must be open, as for [method make_link]. The link
+## carries the warehouse's color. On success, [member CommandResult.value] is
+## the new link id.
 func link_warehouse_to_market(warehouse_id: int, market_id: StringName) -> CommandResult:
 	var source := _warehouse_state(warehouse_id)
 	if source == null:
 		return _unknown_warehouse(warehouse_id)
-	if _content.market(market_id) == null:
+	var market := _content.market(market_id)
+	if market == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_MARKET,
 			"There is no market \"%s\"." % market_id)
+	if not _transport_tier.reaches(market.remoteness):
+		return _too_remote(market)
 	return _add_new_link(LinkState.to_market(_next_link_id, source.color, 0, market_id,
-		_content.transport_tiers()[0].id).from_warehouse(warehouse_id))
+		_transport_tier.id).from_warehouse(warehouse_id))
 
 
 ## Makes a link from the warehouse [param warehouse_id] to the mixed factory
@@ -393,7 +422,7 @@ func link_warehouse_to_factory(warehouse_id: int, factory_id: int) -> CommandRes
 		return CommandResult.failure(CommandResult.Reason.NOT_A_RECIPE_INPUT,
 			"%s does not use %s." % [_factory_name(destination), _color_text(source.color)])
 	return _add_new_link(LinkState.to_factory(_next_link_id, source.color, 0, factory_id,
-		_content.transport_tiers()[0].id).from_warehouse(warehouse_id))
+		_transport_tier.id).from_warehouse(warehouse_id))
 
 
 ## Adds [param state] if no link has the same source and destination yet.
@@ -407,6 +436,12 @@ func _add_new_link(state: LinkState) -> CommandResult:
 
 func _unknown_factory(id: int) -> CommandResult:
 	return CommandResult.failure(CommandResult.Reason.UNKNOWN_FACTORY, "There is no factory #%d." % id)
+
+
+func _too_remote(market: MarketDef) -> CommandResult:
+	return CommandResult.failure(CommandResult.Reason.MARKET_TOO_REMOTE,
+		"%s is too remote for %s: it needs %s." % [market.name, _transport_tier.plural_name.to_lower(),
+			_content.tier_for_remoteness(market.remoteness).plural_name.to_lower()])
 
 
 func _unknown_warehouse(id: int) -> CommandResult:
@@ -454,6 +489,47 @@ func buy_automatic_transport(link_id: int) -> CommandResult:
 	_money = _money.sub(cost)
 	state.make_automatic(_time_ms)
 	return CommandResult.success()
+
+
+## Buys the next transport tier for its price. Current links keep their
+## vehicles (see [method upgrade_vehicle]). New links use the new tier, and the
+## markets that it reaches open. On success, [member CommandResult.value] is
+## the id of the new tier.
+func buy_transport_tier() -> CommandResult:
+	var tier := next_transport_tier()
+	if tier == null:
+		return CommandResult.failure(CommandResult.Reason.NO_HIGHER_TIER,
+			"You already have the highest transport tier (%s)." % _transport_tier.name.to_lower())
+	if _money.is_less_than(tier.price):
+		return _not_enough_money("The %s tier" % tier.name.to_lower(), tier.price)
+
+	_money = _money.sub(tier.price)
+	_transport_tier = tier
+	return CommandResult.success(tier.id)
+
+
+## Moves the vehicle of the link [param link_id] onto the transport tier the
+## player has now, for that tier's vehicle upgrade cost. From then on, each
+## new shipment on the link costs the new vehicle's shipment cost and takes
+## its transit time. Shipments in transit keep their arrival time. On an
+## automatic link, the next automatic start keeps its time, and the starts
+## after it come once each new transit time. On success,
+## [member CommandResult.value] is the id of the new vehicle.
+func upgrade_vehicle(link_id: int) -> CommandResult:
+	var state := _link_state(link_id)
+	if state == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_LINK,
+			"There is no link #%d." % link_id)
+	if state.vehicle == _transport_tier.id:
+		return CommandResult.failure(CommandResult.Reason.VEHICLE_IS_CURRENT,
+			"Link #%d already uses %s, your transport tier." % [link_id, _transport_tier.plural_name.to_lower()])
+	var cost := _transport_tier.vehicle_upgrade_cost
+	if _money.is_less_than(cost):
+		return _not_enough_money("A %s for link #%d" % [_transport_tier.name.to_lower(), link_id], cost)
+
+	_money = _money.sub(cost)
+	state.vehicle = _transport_tier.id
+	return CommandResult.success(state.vehicle)
 
 
 ## Starts a shipment on [param state] if the rules allow it, for
@@ -665,6 +741,19 @@ func factory_build_cost() -> BigNumber:
 	return _content.factory_balance.build_cost
 
 
+## The transport tier the player has now.
+func transport_tier() -> TransportTier:
+	return _transport_tier
+
+
+## The transport tier that [method buy_transport_tier] buys, or null when the
+## player has the highest tier.
+func next_transport_tier() -> TransportTier:
+	var tiers := _content.transport_tiers()
+	var rank := _transport_tier.rank + 1
+	return tiers[rank] if rank < tiers.size() else null
+
+
 ## The money that [method buy_automatic_transport] costs now.
 func automatic_transport_cost() -> BigNumber:
 	return _content.automatic_transport_cost
@@ -728,8 +817,9 @@ func factory(id: int) -> FactoryView:
 	return null if state == null else _factory_view(state)
 
 
-## All markets that are open, in content order, with the demand and price of
-## each color now, and the population, income, and capacity.
+## All markets, open or not, in content order, with the remoteness of each,
+## whether it is open, the demand and price of each color now, and the
+## population, income, and capacity.
 func markets() -> Array[MarketView]:
 	var views: Array[MarketView] = []
 	for def in _content.markets():
@@ -804,6 +894,7 @@ func snapshot() -> Dictionary:
 		"prisms": _prisms,
 		"prisms_bought": _prisms_bought,
 		"markets": _markets_to_dicts(),
+		"transport_tier": _transport_tier.id,
 	}.merged(_demand.to_dict())
 
 
@@ -1038,6 +1129,10 @@ func _market_view(def: MarketDef) -> MarketView:
 	view.period_ends_in_ms = balance.period_end_ms(_time_ms) - _time_ms
 	view.population_investment_cost = _investment_cost(state, MarketView.Investment.POPULATION)
 	view.income_investment_cost = _investment_cost(state, MarketView.Investment.INCOME)
+	view.remoteness = def.remoteness
+	var needed := _content.tier_for_remoteness(def.remoteness)
+	view.needed_tier = &"" if needed == null else needed.id
+	view.is_open = _transport_tier.reaches(def.remoteness)
 	for color in def.prices:
 		var demand := _demand.demand(def.id, color, _time_ms, _content.demand_balance)
 		view.demands[color] = demand

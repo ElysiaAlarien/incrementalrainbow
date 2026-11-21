@@ -92,6 +92,7 @@ static func from_data(data: Dictionary) -> Content:
 	content._parse_transport(data.get("transport", {}))
 	# Demand events name colors, so parse them after the colors.
 	content._parse_demand_events(data.get("demand_events", {}))
+	content._check_remoteness()
 	return content
 
 
@@ -105,7 +106,8 @@ func color(id: StringName) -> ColorDef:
 	return _colors_by_id.get(id)
 
 
-## All markets, in data order. A run starts with all of them open.
+## All markets, in data order. A run starts with the markets that the first
+## transport tier reaches open.
 func markets() -> Array[MarketDef]:
 	return _markets.duplicate()
 
@@ -115,7 +117,7 @@ func market(id: StringName) -> MarketDef:
 	return _markets_by_id.get(id)
 
 
-## All transport tiers, lowest first. A new link uses the first one.
+## All transport tiers, lowest first. A run starts with the first one.
 func transport_tiers() -> Array[TransportTier]:
 	return _tiers.duplicate()
 
@@ -133,6 +135,15 @@ func demand_events() -> Array[DemandEventDef]:
 ## The demand event with [param id], or null.
 func demand_event(id: StringName) -> DemandEventDef:
 	return _demand_events_by_id.get(id)
+
+
+## The lowest transport tier that reaches a market of [param remoteness], or
+## null when no tier reaches it.
+func tier_for_remoteness(remoteness: int) -> TransportTier:
+	for tier in _tiers:
+		if tier.reaches(remoteness):
+			return tier
+	return null
 
 
 func _parse_colors(data: Dictionary) -> void:
@@ -316,7 +327,7 @@ func _parse_markets(data: Dictionary) -> void:
 		var id := StringName(entry.id)
 		var population := _read_positive_int(entry, "population", id)
 		var def := MarketDef.new(id, entry.name, _parse_prices(id, entry.get("prices", {})),
-			population, _read_positive_int(entry, "income", id))
+			population, _read_positive_int(entry, "income", id), _read_whole_number(entry, "remoteness", id))
 		if population > 0 and _market_balance.capacity(population) < 1:
 			_errors.append("%s: a population of %d gives a capacity of 0 (market.capacity_per_population)" % [
 				id, population])
@@ -347,9 +358,26 @@ func _parse_transport(data: Dictionary) -> void:
 	_automatic_transport_cost = _read_money(data, "automatic_transport_cost", "transport")
 	for entry in _read_entries(data, "transport.json", "tiers", "transport tier"):
 		var id := StringName(entry.id)
+		var rank := _tiers.size()
+		var max_remoteness := _read_whole_number(entry, "max_remoteness", id)
+		if rank > 0 and max_remoteness < _tiers[-1].max_remoteness:
+			_errors.append("%s: max_remoteness cannot be less than that of %s, the tier before it" % [
+				id, _tiers[-1].id])
+		var price := BigNumber.ZERO
+		var upgrade_cost := BigNumber.ZERO
+		if rank == 0:
+			for key: String in ["price", "vehicle_upgrade_cost"]:
+				if entry.has(key):
+					_errors.append("%s: the first tier cannot have a %s, because a run starts with it" % [id, key])
+		else:
+			price = _read_money(entry, "price", id)
+			upgrade_cost = _read_money(entry, "vehicle_upgrade_cost", id)
+		var plural_name := str(entry.get("plural_name", ""))
+		if plural_name.is_empty():
+			_errors.append("%s: plural_name is missing" % id)
 		var tier := TransportTier.new(id, entry.name,
 			_read_positive_int(entry, "transit_time_ms", id),
-			_read_money(entry, "shipment_cost", id))
+			_read_money(entry, "shipment_cost", id), rank, max_remoteness, price, upgrade_cost, plural_name)
 		_tiers.append(tier)
 		_tiers_by_id[id] = tier
 
@@ -390,6 +418,23 @@ func _parse_event_colors(event_id: StringName, data: Variant) -> Array[StringNam
 		else:
 			colors.append(color_id)
 	return colors
+
+
+## Each market must be in reach of the highest tier, or the player can never
+## open it, and the first tier must reach at least one market, or a run has
+## nowhere to sell. Needs the markets and the tiers.
+func _check_remoteness() -> void:
+	if _tiers.is_empty() or _markets.is_empty():
+		return
+	var highest := _tiers[-1]
+	var first_reaches_one := false
+	for def in _markets:
+		if not highest.reaches(def.remoteness):
+			_errors.append("%s: remoteness %d is more than any transport tier reaches (%s reaches %d)" % [
+				def.id, def.remoteness, highest.id, highest.max_remoteness])
+		first_reaches_one = first_reaches_one or _tiers[0].reaches(def.remoteness)
+	if not first_reaches_one:
+		_errors.append("markets.json: the first transport tier (%s) reaches no market, so a run has nowhere to sell" % _tiers[0].id)
 
 
 ## The entries of the list [param list_key] in [param file]: objects, each with

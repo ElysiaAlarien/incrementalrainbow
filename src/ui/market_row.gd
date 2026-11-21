@@ -1,9 +1,10 @@
 class_name MarketRow
 extends PanelContainer
-## One market on the screen. On the left: its name, and a button for each kind
-## of community investment, with its cost. On the right, the first line has its
-## population, income, the capacity used in this period, and the time until the
-## next period. Below it, the current price and demand of each color there. The
+## One market on the screen. On the left: its name, its remoteness with the
+## transport tier it needs, and a button for each kind of community
+## investment, with its cost. On the right, the first line has its population,
+## income, the capacity used in this period, and the time until the next
+## period. Below it, the current price and demand of each color there. The
 ## colors wrap to more lines when they do not fit.
 
 signal invest_pressed(market_id: StringName, goal: MarketView.Investment)
@@ -20,6 +21,7 @@ var _capacity_label := Label.new()
 var _period_label := Label.new()
 ## Investment goal to its button.
 var _invest_buttons: Dictionary[MarketView.Investment, Button] = {}
+var _reach_label := Label.new()
 ## Color id to the label that shows its price and demand.
 var _color_labels: Dictionary[StringName, Label] = {}
 
@@ -38,6 +40,8 @@ func _init(view: MarketView, colors: Array[ColorDef]) -> void:
 	row.add_child(left)
 	_name_label.text = view.name
 	left.add_child(_name_label)
+	_reach_label.add_theme_font_size_override(&"font_size", 16)
+	left.add_child(_reach_label)
 	for goal: MarketView.Investment in [MarketView.Investment.POPULATION, MarketView.Investment.INCOME]:
 		var button := Button.new()
 		button.name = "InvestPopulation" if goal == MarketView.Investment.POPULATION else "InvestIncome"
@@ -87,7 +91,11 @@ func _init(view: MarketView, colors: Array[ColorDef]) -> void:
 		_color_labels[color.id] = label
 
 
-func show_state(view: MarketView) -> void:
+## Shows [param view]. [param needed_tier_plural] is the plural name of the
+## transport tier that the market needs, such as "Trucks".
+func show_state(view: MarketView, needed_tier_plural: String) -> void:
+	_reach_label.text = reach_text(view, needed_tier_plural)
+	_reach_label.add_theme_color_override(&"font_color", MUTED_COLOR if view.is_open else BLOCKED_COLOR)
 	_population_label.text = "Population: %s" % BigNumber.from_int(view.population).format()
 	_income_label.text = "Income: %s" % BigNumber.from_int(view.income).format()
 	_capacity_label.text = capacity_text(view)
@@ -104,6 +112,17 @@ func show_state(view: MarketView) -> void:
 		var label := _color_labels[color_id]
 		label.text = "Price %s, demand %s" % [view.price(color_id).format(),
 			format_demand(view.demand(color_id))]
+
+
+## Such as "Remoteness 2, open to trucks" or "Remoteness 4, needs trains".
+static func reach_text(view: MarketView, needed_tier_plural: String) -> String:
+	return "Remoteness %d, %s %s" % [view.remoteness, "open to" if view.is_open else "needs",
+		needed_tier_plural.to_lower()]
+
+
+## The text that shows the remoteness and the tier the market needs.
+func reach_label_text() -> String:
+	return _reach_label.text
 
 
 ## The text that shows the price and demand of [param color_id].

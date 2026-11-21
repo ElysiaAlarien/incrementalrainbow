@@ -1,16 +1,22 @@
 class_name LinkRow
 extends PanelContainer
 ## One link on the screen. The first line has its source (a factory or a
-## warehouse) and destination (a market, a mixed factory, or a warehouse), vehicle, shipment cost, transit time, a button
-## to start a shipment, and a button to buy automatic transport. The second line has its transport (manual, or what
-## automatic transport did last), its throughput, and its shipments in transit.
+## warehouse) and destination (a market, a mixed factory, or a warehouse),
+## vehicle, shipment cost, transit time, a button to start a shipment, and a
+## button to buy automatic transport. The second line has its transport
+## (manual, or what automatic transport did last), its throughput, and its
+## shipments in transit. A third line shows only when the player's transport
+## tier is above the link's vehicle: what the newer vehicle does, and a button
+## to upgrade to it.
 
 signal ship_pressed(link_id: int)
 signal automate_pressed(link_id: int)
+signal upgrade_vehicle_pressed(link_id: int)
 
 const MUTED_COLOR := Color(0.7, 0.72, 0.8)
 const AUTOMATIC_COLOR := Color(0.6, 0.85, 0.6)
 const BLOCKED_COLOR := Color(1.0, 0.55, 0.45)
+const UPGRADE_COLOR := Color(0.98, 0.85, 0.45)
 
 var link_id: int
 
@@ -24,10 +30,12 @@ var _automate_button := Button.new()
 var _transport_label := Label.new()
 var _throughput_label := Label.new()
 var _in_transit_label := Label.new()
+var _upgrade_line := HBoxContainer.new()
+var _upgrade_label := Label.new()
+var _upgrade_button := Button.new()
 
 
-func _init(view: LinkView, color: ColorDef, source_name: String, destination_name: String,
-		vehicle_name: String) -> void:
+func _init(view: LinkView, color: ColorDef, source_name: String, destination_name: String) -> void:
 	link_id = view.id
 	name = "Link%d" % view.id
 	var lines := VBoxContainer.new()
@@ -48,7 +56,6 @@ func _init(view: LinkView, color: ColorDef, source_name: String, destination_nam
 	_ends_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top.add_child(_ends_label)
 
-	_vehicle_label.text = "Vehicle: %s" % vehicle_name
 	_vehicle_label.custom_minimum_size.x = 140
 	top.add_child(_vehicle_label)
 
@@ -91,9 +98,33 @@ func _init(view: LinkView, color: ColorDef, source_name: String, destination_nam
 	_in_transit_label.add_theme_color_override(&"font_color", MUTED_COLOR)
 	bottom.add_child(_in_transit_label)
 
+	_upgrade_line.add_theme_constant_override(&"separation", 16)
+	_upgrade_line.visible = false
+	lines.add_child(_upgrade_line)
+	var upgrade_indent := Control.new()
+	upgrade_indent.custom_minimum_size.x = 32
+	_upgrade_line.add_child(upgrade_indent)
+	_upgrade_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_upgrade_label.add_theme_color_override(&"font_color", UPGRADE_COLOR)
+	_upgrade_line.add_child(_upgrade_label)
+	# Under the Automate button, with the same width.
+	_upgrade_button.name = "UpgradeVehicle"
+	_upgrade_button.custom_minimum_size.x = 190
+	_upgrade_button.pressed.connect(func() -> void: upgrade_vehicle_pressed.emit(link_id))
+	_upgrade_line.add_child(_upgrade_button)
 
-## Shows [param view]. [param automatic_cost] is what automatic transport costs now.
-func show_state(view: LinkView, automatic_cost: BigNumber) -> void:
+
+## Shows [param view]. [param automatic_cost] is what automatic transport costs
+## now. [param vehicle] is the tier of the link's vehicle, and [param tier] is
+## the player's transport tier, which an upgrade moves the vehicle onto.
+func show_state(view: LinkView, automatic_cost: BigNumber, vehicle: TransportTier,
+		tier: TransportTier) -> void:
+	_vehicle_label.text = "Vehicle: %s" % vehicle.name
+	_upgrade_line.visible = vehicle != tier
+	if vehicle != tier:
+		_upgrade_label.text = "%s are ready for this link: transit %s, cost %s" % [tier.plural_name,
+			format_seconds(tier.transit_time_ms), tier.shipment_cost.format()]
+		_upgrade_button.text = "Upgrade (%s)" % tier.vehicle_upgrade_cost.format()
 	_cost_label.text = "Cost: %s" % view.shipment_cost.format()
 	_transit_label.text = "Transit: %s" % format_seconds(view.transit_time_ms)
 	# Disable the button instead of hiding it, so the Ship buttons stay in line.
@@ -112,6 +143,15 @@ func ship_button() -> Button:
 
 func automate_button() -> Button:
 	return _automate_button
+
+
+func upgrade_button() -> Button:
+	return _upgrade_button
+
+
+## The text of the line that offers a vehicle upgrade, or "" when it is hidden.
+func upgrade_text() -> String:
+	return _upgrade_label.text if _upgrade_line.visible else ""
 
 
 func text() -> String:

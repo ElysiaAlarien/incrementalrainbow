@@ -1,0 +1,113 @@
+{
+	"format": "incremental-rainbow-save",
+	"state": {
+		"demand_events": [],
+		"drift_key": 3761845996,
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 1,
+				"progress_ms": 300,
+				"size": 1
+			}
+		],
+		"links": [
+			{
+				"automatic_status": "manual",
+				"color": "red",
+				"destination_kind": "warehouse",
+				"destination_warehouse_id": 1,
+				"id": 1,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 4,
+						"started_at_ms": 2800
+					},
+					{
+						"count": 4,
+						"started_at_ms": 5600
+					},
+					{
+						"count": 6,
+						"started_at_ms": 11600
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 16600,
+						"count": 6,
+						"id": 4
+					}
+				],
+				"source_factory_id": 1,
+				"source_kind": "factory",
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "red",
+				"destination_kind": "market",
+				"destination_market_id": "millbrook",
+				"id": 2,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 4,
+						"started_at_ms": 7800
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 12800,
+						"count": 4,
+						"id": 3
+					}
+				],
+				"source_kind": "warehouse",
+				"source_warehouse_id": 1,
+				"vehicle": "truck"
+			}
+		],
+		"markets": [
+			{
+				"capacity_used": 0,
+				"id": "millbrook",
+				"income": 100,
+				"income_investments": 0,
+				"population": 1000,
+				"population_investments": 0
+			}
+		],
+		"money": [
+			1.7,
+			1
+		],
+		"next_demand_event_ms": -1,
+		"next_factory_id": 2,
+		"next_link_id": 3,
+		"next_shipment_id": 5,
+		"next_warehouse_id": 2,
+		"prisms": 0,
+		"prisms_bought": 0,
+		"rng": [
+			1187801015,
+			1410795074,
+			1545266947,
+			3339219190
+		],
+		"saturation": [],
+		"time_ms": 12600,
+		"transport_tier": "truck",
+		"warehouses": [
+			{
+				"color": "red",
+				"count": 4,
+				"id": 1
+			}
+		]
+	},
+	"version": 10
+}
