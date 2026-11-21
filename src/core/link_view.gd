@@ -18,11 +18,23 @@ enum Automatic {
 	NOT_ENOUGH_MONEY,
 }
 
+## What kind of place a link goes to.
+enum Destination {
+	## A market, which sells the widgets.
+	MARKET,
+	## A mixed factory, which puts the widgets in the input bay of their color.
+	FACTORY,
+}
+
 var id: int
 ## The one color that the link carries.
 var color: StringName
 var source_factory_id: int
+var destination_kind: Destination
+## The market at the end of the link, or &"" when it goes to a factory.
 var destination_market_id: StringName
+## The factory at the end of the link, or 0 when it goes to a market.
+var destination_factory_id: int
 ## The transport tier id of the link's vehicle, such as &"cart".
 var vehicle: StringName
 ## Time for one shipment to arrive, from the vehicle.

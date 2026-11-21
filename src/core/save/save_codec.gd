@@ -19,7 +19,8 @@ const FORMAT := "incremental-rainbow-save"
 ## step gets the state as parsed JSON and returns the new state. It must not
 ## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
-	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms]
+	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
+		_v5_add_mixed_factories]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -57,6 +58,24 @@ static func _v3_add_demand(state: Dictionary) -> Dictionary:
 static func _v4_add_prisms(state: Dictionary) -> Dictionary:
 	state.prisms = 0
 	state.prisms_bought = 0
+	return state
+
+
+## Version 6 (#6) adds mixed factories: each factory has input bays, and a
+## link goes to a market or to a factory. A version 5 game had only base
+## factories, which have no input bays, and only links to markets.
+static func _v5_add_mixed_factories(state: Dictionary) -> Dictionary:
+	for key: String in ["factories", "links"]:
+		var items: Variant = state.get(key)
+		if not items is Array:
+			continue
+		for item: Variant in items:
+			if not item is Dictionary:
+				continue
+			if key == "factories":
+				item.input_bays = []
+			else:
+				item.destination_kind = "market"
 	return state
 
 

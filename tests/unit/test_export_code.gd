@@ -5,7 +5,7 @@ extends GutTest
 
 ## A game with factories, production lines, links, and shipments in transit.
 func _game() -> Simulation:
-	var sim := Simulation.new(ContentFixture.make(700, 6), 77)
+	var sim := Simulation.new(ContentFixture.make_mixed(700, 6), 77)
 	sim.build_factory(&"red")
 	sim.tick(1234)
 	sim.build_factory(&"blue")
@@ -18,7 +18,7 @@ func _game() -> Simulation:
 
 
 func _import(code: String, steps: Array[Callable] = SaveCodec.migrations()) -> LoadResult:
-	return ExportCode.decode(ContentFixture.make(700, 6), code, steps)
+	return ExportCode.decode(ContentFixture.make_mixed(700, 6), code, steps)
 
 
 func test_export_then_import_gives_the_same_state() -> void:
@@ -240,7 +240,7 @@ func test_each_saved_version_imports_as_a_code() -> void:
 		var save_text := FileAccess.get_file_as_string(dir + file)
 		var version := int(JSON.parse_string(save_text).version)
 
-		var from_file := SaveCodec.decode(ContentFixture.make(700, 6), save_text)
+		var from_file := SaveCodec.decode(ContentFixture.make_mixed(700, 6), save_text)
 		var from_code := _import(ExportCode.from_save(save_text, version))
 
 		assert_true(from_code.ok, "%s: %s" % [file, from_code.message])

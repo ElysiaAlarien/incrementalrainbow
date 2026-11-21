@@ -1,8 +1,8 @@
 class_name LinkRow
 extends PanelContainer
-## One link on the screen. The first line has its factory and market, vehicle,
-## shipment cost, transit time, a button to start a shipment, and a button to
-## buy automatic transport. The second line has its transport (manual, or what
+## One link on the screen. The first line has its factory and destination (a
+## market or a mixed factory), vehicle, shipment cost, transit time, a button
+## to start a shipment, and a button to buy automatic transport. The second line has its transport (manual, or what
 ## automatic transport did last), its throughput, and its shipments in transit.
 
 signal ship_pressed(link_id: int)
@@ -26,7 +26,7 @@ var _throughput_label := Label.new()
 var _in_transit_label := Label.new()
 
 
-func _init(view: LinkView, color: ColorDef, market_name: String, vehicle_name: String) -> void:
+func _init(view: LinkView, color: ColorDef, destination_name: String, vehicle_name: String) -> void:
 	link_id = view.id
 	name = "Link%d" % view.id
 	var lines := VBoxContainer.new()
@@ -40,10 +40,10 @@ func _init(view: LinkView, color: ColorDef, market_name: String, vehicle_name: S
 	_symbol.custom_minimum_size = Vector2(32, 32)
 	top.add_child(_symbol)
 
-	_ends_label.text = "%s factory #%d to %s" % [color.name, view.source_factory_id, market_name]
+	_ends_label.text = "%s factory #%d to %s" % [color.name, view.source_factory_id, destination_name]
 	_ends_label.tooltip_text = _ends_label.text
 	# A fixed width keeps the columns of all rows in line. Trim a long name.
-	_ends_label.custom_minimum_size.x = 310
+	_ends_label.custom_minimum_size.x = 400
 	_ends_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top.add_child(_ends_label)
 
@@ -102,6 +102,7 @@ func show_state(view: LinkView, automatic_cost: BigNumber) -> void:
 	_transport_label.add_theme_color_override(&"font_color", _transport_color(view.automatic))
 	_throughput_label.text = "Throughput: %s/min" % BigNumber.from_int(view.widgets_per_minute).format()
 	_in_transit_label.text = _in_transit_text(view.shipments_in_transit)
+	_in_transit_label.tooltip_text = _in_transit_label.text
 
 
 func ship_button() -> Button:

@@ -22,10 +22,20 @@ const AUTOMATIC_STATUSES: Dictionary[StringName, LinkView.Automatic] = {
 	NOT_ENOUGH_MONEY: LinkView.Automatic.NOT_ENOUGH_MONEY,
 }
 
+## The name of each destination kind in a save.
+const DESTINATION_NAMES: Dictionary[String, LinkView.Destination] = {
+	"market": LinkView.Destination.MARKET,
+	"factory": LinkView.Destination.FACTORY,
+}
+
 var id: int
 var color: StringName
 var source_factory_id: int
-var destination_market_id: StringName
+var destination_kind: LinkView.Destination
+## The market at the end of the link, or &"" when it goes to a factory.
+var destination_market_id: StringName = &""
+## The factory at the end of the link, or 0 when it goes to a market.
+var destination_factory_id: int = 0
 ## The transport tier id of the link's vehicle.
 var vehicle: StringName
 ## Shipments in transit, in the order they started.
@@ -41,12 +51,10 @@ var next_automatic_ms: int = 0
 var recent_starts: Array[PackedInt64Array] = []
 
 
-func _init(p_id: int, p_color: StringName, p_source_factory_id: int,
-		p_destination_market_id: StringName, p_vehicle: StringName) -> void:
+func _init(p_id: int, p_color: StringName, p_source_factory_id: int, p_vehicle: StringName) -> void:
 	id = p_id
 	color = p_color
 	source_factory_id = p_source_factory_id
-	destination_market_id = p_destination_market_id
 	vehicle = p_vehicle
 
 
@@ -89,19 +97,61 @@ func forget_old_starts(now_ms: int) -> void:
 		recent_starts.pop_front()
 
 
+static func to_market(p_id: int, p_color: StringName, p_source_factory_id: int,
+		market_id: StringName, p_vehicle: StringName) -> LinkState:
+	var state := LinkState.new(p_id, p_color, p_source_factory_id, p_vehicle)
+	state.destination_kind = LinkView.Destination.MARKET
+	state.destination_market_id = market_id
+	return state
+
+
+static func to_factory(p_id: int, p_color: StringName, p_source_factory_id: int,
+		factory_id: int, p_vehicle: StringName) -> LinkState:
+	var state := LinkState.new(p_id, p_color, p_source_factory_id, p_vehicle)
+	state.destination_kind = LinkView.Destination.FACTORY
+	state.destination_factory_id = factory_id
+	return state
+
+
+## True if the link goes to the market [param market_id].
+func goes_to_market(market_id: StringName) -> bool:
+	return destination_kind == LinkView.Destination.MARKET and destination_market_id == market_id
+
+
+## True if the link goes to the factory [param factory_id].
+func goes_to_factory(factory_id: int) -> bool:
+	return destination_kind == LinkView.Destination.FACTORY and destination_factory_id == factory_id
+
+
+## Widgets in all shipments in transit.
+func widgets_in_transit() -> int:
+	var count := 0
+	for shipment in shipments:
+		count += shipment.count
+	return count
+
+
 ## The inverse of [method to_dict]. Records problems in [param reader]. Checks
-## the ids that the content must know; the simulation checks the source
-## factory and the link id. [param now_ms], [param next_shipment_id], and
+## the ids that the content must know; the simulation checks the factories at
+## each end and the link id. [param now_ms], [param next_shipment_id], and
 ## [param shipment_ids] are for [method ShipmentState.from_snapshot].
 static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 		next_shipment_id: int, shipment_ids: Dictionary) -> LinkState:
 	var state := LinkState.new(reader.integer("id", 1), reader.text_id("color"),
-		reader.integer("source_factory_id", 1), reader.text_id("destination_market_id"),
-		reader.text_id("vehicle"))
+		reader.integer("source_factory_id", 1), reader.text_id("vehicle"))
+	var kind_name := reader.text_id("destination_kind")
+	if kind_name != &"" and not DESTINATION_NAMES.has(String(kind_name)):
+		reader.fail("destination_kind", "must be one of %s, but it is \"%s\"" % [
+			", ".join(DESTINATION_NAMES.keys()), kind_name])
+	state.destination_kind = DESTINATION_NAMES.get(String(kind_name), LinkView.Destination.MARKET)
+	if kind_name == &"factory":
+		state.destination_factory_id = reader.integer("destination_factory_id", 1)
+	elif kind_name == &"market":
+		state.destination_market_id = reader.text_id("destination_market_id")
+		if state.destination_market_id != &"" and content.market(state.destination_market_id) == null:
+			reader.fail("destination_market_id", "there is no market \"%s\"" % state.destination_market_id)
 	if state.color != &"" and content.color(state.color) == null:
 		reader.fail("color", "there is no color \"%s\"" % state.color)
-	if state.destination_market_id != &"" and content.market(state.destination_market_id) == null:
-		reader.fail("destination_market_id", "there is no market \"%s\"" % state.destination_market_id)
 	if state.vehicle != &"" and content.transport_tier(state.vehicle) == null:
 		reader.fail("vehicle", "there is no transport tier \"%s\"" % state.vehicle)
 	for shipment_reader in reader.objects("shipments"):
@@ -145,7 +195,9 @@ func to_view(tier: TransportTier, now_ms: int) -> LinkView:
 	view.id = id
 	view.color = color
 	view.source_factory_id = source_factory_id
+	view.destination_kind = destination_kind
 	view.destination_market_id = destination_market_id
+	view.destination_factory_id = destination_factory_id
 	view.vehicle = vehicle
 	view.transit_time_ms = tier.transit_time_ms
 	view.shipment_cost = tier.shipment_cost
@@ -159,12 +211,13 @@ func to_view(tier: TransportTier, now_ms: int) -> LinkView:
 	return view
 
 
+## Only the destination key of the link's kind is in the save.
 func to_dict() -> Dictionary:
-	return {
+	var data := {
 		"id": id,
 		"color": color,
 		"source_factory_id": source_factory_id,
-		"destination_market_id": destination_market_id,
+		"destination_kind": DESTINATION_NAMES.find_key(destination_kind),
 		"vehicle": vehicle,
 		"shipments": shipments.map(func(s: ShipmentState) -> Dictionary: return s.to_dict()),
 		"automatic_status": automatic_status,
@@ -172,3 +225,8 @@ func to_dict() -> Dictionary:
 		"recent_starts": recent_starts.map(func(s: PackedInt64Array) -> Dictionary:
 			return {"started_at_ms": s[0], "count": s[1]}),
 	}
+	if destination_kind == LinkView.Destination.FACTORY:
+		data.destination_factory_id = destination_factory_id
+	else:
+		data.destination_market_id = destination_market_id
+	return data

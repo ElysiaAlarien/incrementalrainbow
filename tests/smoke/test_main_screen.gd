@@ -39,7 +39,6 @@ func test_building_a_factory_shows_it_on_the_screen() -> void:
 
 	var button: Button = main.find_child("Build_red", true, false)
 	assert_not_null(button, "a build button for red")
-	assert_not_null(button.icon, "the button shows the red symbol")
 	button.pressed.emit()
 	main.simulation().tick(60_000)
 	await wait_process_frames(1)
@@ -180,7 +179,7 @@ func test_a_factory_can_be_linked_to_a_market_and_ship_for_money() -> void:
 	main.find_child("Build_red", true, false).pressed.emit()
 	await wait_process_frames(1)
 	var factory_choice: OptionButton = main.find_child("NewLinkFactory", true, false)
-	var market_choice: OptionButton = main.find_child("NewLinkMarket", true, false)
+	var market_choice: OptionButton = main.find_child("NewLinkDestination", true, false)
 	assert_eq(factory_choice.get_item_text(factory_choice.selected), "Red factory #1")
 	assert_eq(market_choice.get_item_text(market_choice.selected), "Millbrook")
 	main.find_child("MakeLink", true, false).pressed.emit()
@@ -423,3 +422,91 @@ func test_the_header_fits_the_screen_width() -> void:
 	var main := await _open_main()
 	var header: Control = main.find_child("Header", true, false)
 	assert_lt(header.get_combined_minimum_size().x, 1280.0 - 64.0)
+
+
+func _card(main: Control, color_id: StringName) -> ColorCard:
+	return main.find_child("Color_%s" % color_id, true, false)
+
+
+func test_each_color_shows_its_symbol_and_recipe() -> void:
+	var main := await _open_main()
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+
+	for color in content.colors():
+		var card := _card(main, color.id)
+		assert_not_null(card, "a card for %s" % color.id)
+		var symbol: ColorSymbol = card.find_child("Symbol", true, false)
+		assert_eq(symbol.symbol, color.symbol)
+		assert_false(ColorSymbol.shape_points(color.symbol, Rect2(0, 0, 20, 20)).is_empty(),
+			"the screen can draw the %s symbol" % color.symbol)
+	assert_eq(_card(main, &"red").recipe_text(), "no inputs")
+	assert_eq(_card(main, &"green").recipe_text(), "Yellow + Blue")
+	assert_eq(_card(main, &"brown").recipe_text(), "Red + Yellow + Blue")
+
+
+func test_a_color_that_needs_research_shows_it_instead_of_a_build_button() -> void:
+	var main := await _open_main()
+
+	var green := _card(main, &"green")
+	assert_false(green.is_locked())
+	assert_true(green.build_button().visible)
+	var red_orange := _card(main, &"red_orange")
+	assert_true(red_orange.is_locked())
+	assert_false(red_orange.build_button().visible)
+
+
+## Selects the item with [param text] in the option button [param name].
+func _choose(main: Control, name: String, text: String) -> void:
+	var choice: OptionButton = main.find_child(name, true, false)
+	for i in choice.item_count:
+		if choice.get_item_text(i) == text:
+			choice.select(i)
+			return
+	fail_test("%s has no item %s" % [name, text])
+
+
+func test_a_mixed_factory_shows_its_input_bays_and_waits_for_input() -> void:
+	var main := await _open_main()
+	for color in ["yellow", "blue", "green"]:
+		_card(main, color).build_button().pressed.emit()
+	await wait_process_frames(1)
+
+	_choose(main, "NewLinkFactory", "Blue factory #2")
+	_choose(main, "NewLinkDestination", "Green factory #3")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var link_rows := main.find_children("Link*", "LinkRow", true, false)
+	assert_eq(link_rows.size(), 1)
+	var link_row: LinkRow = link_rows[0]
+	assert_string_contains(link_row.text(), "Blue factory #2 to Green factory #3")
+
+	var sim: Simulation = main.simulation()
+	sim.tick(4000)
+	link_row.ship_button().pressed.emit()
+	sim.tick(sim.link(link_row.link_id).transit_time_ms)
+	await wait_process_frames(1)
+
+	var green_row: FactoryRow = main.find_child("Factory3", true, false)
+	assert_eq(green_row.status_text(), "Waiting for input")
+	var bays := green_row.input_bay_texts()
+	assert_eq(bays.size(), 2)
+	assert_eq(bays[0], "Yellow 0 / 10 (short)")
+	assert_string_contains(bays[1], "Blue ")
+	assert_false(bays[1].contains("short"), "blue is there")
+	var yellow_row: FactoryRow = main.find_child("Factory1", true, false)
+	assert_eq(yellow_row.input_bay_texts().size(), 0, "a base factory has no input bays")
+
+
+func test_a_link_to_a_factory_whose_recipe_does_not_use_the_color_shows_the_reason() -> void:
+	var main := await _open_main()
+	for color in ["red", "green"]:
+		_card(main, color).build_button().pressed.emit()
+	await wait_process_frames(1)
+
+	_choose(main, "NewLinkDestination", "Green factory #2")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_string_contains(message.text, "does not use red")

@@ -43,7 +43,7 @@ var prism_balance: PrismBalance:
 		return _prism_balance
 
 var _errors: PackedStringArray = []
-var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO)
+var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
 var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0)
 var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
@@ -142,13 +142,21 @@ func _parse_colors(data: Dictionary) -> void:
 			display_color = Color.html(display)
 		else:
 			_errors.append("%s: bad display color %s" % [id, display])
-		var def := ColorDef.new(id, color_name, symbol, display_color, _parse_recipe(id, entry.get("recipe", {})))
+		var unlock_name := str(entry.get("unlock", "start"))
+		var unlock: ColorDef.Unlock = ColorDef.UNLOCK_NAMES.get(unlock_name, ColorDef.Unlock.START)
+		if not ColorDef.UNLOCK_NAMES.has(unlock_name):
+			_errors.append("%s: unlock must be one of %s, but it is %s" % [
+				id, ", ".join(ColorDef.UNLOCK_NAMES.keys()), unlock_name])
+		var def := ColorDef.new(id, color_name, symbol, display_color,
+			_parse_recipe(id, entry.get("recipe", {})), unlock)
 		_colors.append(def)
 		_colors_by_id[id] = def
 	# Inputs can name colors later in the file, so check them after all are read.
 	for def in _colors:
 		for input in def.recipe:
-			if not _colors_by_id.has(input):
+			if input == def.id:
+				_errors.append("%s: a recipe cannot use its own color" % def.id)
+			elif not _colors_by_id.has(input):
 				_errors.append("%s: recipe input %s is not a color" % [def.id, input])
 
 
@@ -183,7 +191,23 @@ func _parse_balance(data: Dictionary) -> void:
 		_read_positive_int(factory, "output_bay_capacity", "factory"),
 		_read_money(factory, "production_line_cost", "factory"),
 		_read_number(factory, "production_line_cost_growth", "factory", 1.0),
-		_read_money(factory, "build_cost", "factory"))
+		_read_money(factory, "build_cost", "factory"),
+		_read_positive_int(factory, "input_bay_capacity", "factory"))
+	_check_input_bays()
+
+
+## Each input bay must hold one full recipe, or the factory can never make a
+## widget. Colors are parsed first.
+func _check_input_bays() -> void:
+	var capacity := _factory_balance.input_bay_capacity
+	if capacity <= 0:
+		return
+	for def in _colors:
+		var recipe := def.recipe
+		for input in recipe:
+			if recipe[input] > capacity:
+				_errors.append("%s: recipe needs %d %s, but an input bay holds only %d (factory.input_bay_capacity)" % [
+					def.id, recipe[input], input, capacity])
 
 
 func _parse_demand_balance(demand: Variant) -> void:

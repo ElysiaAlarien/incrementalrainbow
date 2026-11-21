@@ -135,6 +135,36 @@ func test_the_game_data_has_a_first_market_and_carts() -> void:
 	assert_eq(content.transport_tiers()[0].id, &"cart")
 
 
+func test_the_game_data_has_a_recipe_for_each_mixed_color() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	var recipes := {
+		&"green": {&"yellow": 1, &"blue": 1},
+		&"orange": {&"red": 1, &"yellow": 1},
+		&"purple": {&"red": 1, &"blue": 1},
+		&"red_orange": {&"red": 1, &"orange": 1},
+		&"yellow_orange": {&"yellow": 1, &"orange": 1},
+		&"yellow_green": {&"yellow": 1, &"green": 1},
+		&"blue_green": {&"blue": 1, &"green": 1},
+		&"blue_purple": {&"blue": 1, &"purple": 1},
+		&"red_purple": {&"red": 1, &"purple": 1},
+		&"brown": {&"red": 1, &"yellow": 1, &"blue": 1},
+	}
+	for id: StringName in recipes:
+		var color := content.color(id)
+		assert_not_null(color, "missing color %s" % id)
+		if color != null:
+			assert_eq(color.recipe, recipes[id], "recipe of %s" % id)
+
+
+func test_research_unlocks_the_tertiary_colors_and_brown() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	for id in [&"red", &"yellow", &"blue", &"green", &"orange", &"purple"]:
+		assert_eq(content.color(id).unlock, ColorDef.Unlock.START, "%s is there from the start" % id)
+	for id in [&"red_orange", &"yellow_orange", &"yellow_green", &"blue_green", &"blue_purple",
+			&"red_purple", &"brown"]:
+		assert_eq(content.color(id).unlock, ColorDef.Unlock.RESEARCH, "%s needs research" % id)
+
+
 func test_reads_a_recipe() -> void:
 	var colors := ContentFixture.colors_data()
 	colors.colors.append({"id": "green", "name": "Green", "symbol": "diamond",
@@ -151,6 +181,8 @@ func test_reports_bad_data() -> void:
 		{"id": "red", "name": "Red again", "symbol": "circle", "display": "#ff0000", "recipe": {}},
 		{"id": "pink", "name": "Pink", "symbol": "square", "display": "not a color", "recipe": {"white": 1}},
 		{"id": "teal", "name": "", "symbol": "", "display": "#00aaaa", "recipe": {"red": 0.5}},
+		{"id": "rust", "name": "Rust", "symbol": "star", "display": "#aa5500",
+			"recipe": {"rust": 1, "red": 3}, "unlock": "magic"},
 	]}
 	var markets := {"markets": [
 		{"id": "millbrook", "name": "", "prices": {"red": 0, "pink": 3, "white": 1}},
@@ -159,7 +191,7 @@ func test_reports_bad_data() -> void:
 	var transport := {"automatic_transport_cost": -3,
 		"tiers": [{"id": "cart", "name": "", "transit_time_ms": 0, "shipment_cost": -1}]}
 	var content := Content.from_data(ContentFixture.data(colors,
-		{"factory": {"widget_time_ms": 0}, "run": {"starting_money": -5}}, markets, transport))
+		{"factory": {"widget_time_ms": 0, "input_bay_capacity": 2}, "run": {"starting_money": -5}}, markets, transport))
 	var text := "\n".join(content.errors)
 	for expected in ["duplicate color id red", "pink: symbol square is already used",
 			"pink: bad display color", "pink: recipe input white is not a color",
@@ -167,6 +199,9 @@ func test_reports_bad_data() -> void:
 			"teal: recipe count for red must be a positive integer",
 			"factory.widget_time_ms must be a positive integer",
 			"factory.output_bay_capacity must be a positive integer",
+			"rust: a recipe cannot use its own color",
+			"rust: unlock must be one of start, research, but it is magic",
+			"rust: recipe needs 3 red, but an input bay holds only 2 (factory.input_bay_capacity)",
 			"factory.build_cost must be a number of at least 0",
 			"run.starting_money must be a number of at least 0",
 			"millbrook: name is missing", "millbrook: price for red must be a positive number",
