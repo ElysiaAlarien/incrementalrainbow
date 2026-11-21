@@ -68,6 +68,14 @@ var next_automatic_ms: int = 0
 ## The shipments that started in the last [constant THROUGHPUT_WINDOW_MS], in
 ## start order, each as [code][started_at_ms, count][/code].
 var recent_starts: Array[PackedInt64Array] = []
+## The percentage of the source's widgets of [member color] that the split
+## sends on this link, or [constant LinkView.NO_SPLIT] when the source has no
+## split. The links from one source with a split all have a percentage, and
+## the percentages add up to 100.
+var split_percent: int = LinkView.NO_SPLIT
+## The widgets that this link shipped since the player set the split. 0 when
+## the source has no split.
+var split_shipped: int = 0
 
 
 func _init(p_id: int, p_color: StringName, p_source_factory_id: int, p_vehicle: StringName) -> void:
@@ -168,6 +176,30 @@ func comes_from_warehouse(warehouse_id: int) -> bool:
 	return source_kind == LinkView.Source.WAREHOUSE and source_warehouse_id == warehouse_id
 
 
+## True if [param other] starts at the same source (a factory or a
+## warehouse) as this link, with the same color. Such links share one split.
+## Compare sources only here, so that a new kind of source needs a change in
+## one place.
+func same_source_as(other: LinkState) -> bool:
+	return other.source_key() == source_key() and other.color == color
+
+
+func has_split() -> bool:
+	return split_percent != LinkView.NO_SPLIT
+
+
+## Gives the link [param percent] of a new split, which counts from 0.
+func set_split(percent: int) -> void:
+	split_percent = percent
+	split_shipped = 0
+
+
+## Records [param count] widgets that a shipment on this link carries.
+func record_split_shipment(count: int) -> void:
+	if has_split():
+		split_shipped += count
+
+
 ## True if the link goes to the market [param market_id].
 func goes_to_market(market_id: StringName) -> bool:
 	return destination_kind == LinkView.Destination.MARKET and destination_market_id == market_id
@@ -255,7 +287,19 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 			next_shipment_id, shipment_ids))
 	state._read_automatic(reader, now_ms)
 	state._read_recent_starts(reader, now_ms)
+	state._read_split(reader)
 	return state
+
+
+## Reads the split values of one link. The simulation checks that the links
+## of one source agree.
+func _read_split(reader: SnapshotReader) -> void:
+	split_percent = reader.integer("split_percent", LinkView.NO_SPLIT, 100)
+	split_shipped = reader.integer("split_shipped")
+	if not has_split() and split_shipped != 0:
+		reader.fail("split_shipped", "must be 0 on a link with no split")
+	elif split_percent > 0 and not is_automatic():
+		reader.fail("split_percent", "must be 0 on a manual link")
 
 
 func _read_automatic(reader: SnapshotReader, now_ms: int) -> void:
@@ -306,6 +350,7 @@ func to_view(tier: TransportTier, now_ms: int) -> LinkView:
 	view.automatic = AUTOMATIC_STATUSES[automatic_status]
 	view.next_automatic_in_ms = next_automatic_ms - now_ms if is_automatic() else 0
 	view.widgets_per_minute = widgets_per_minute(now_ms)
+	view.split_percent = split_percent
 	return view
 
 
@@ -333,6 +378,8 @@ func to_dict() -> Dictionary:
 		"next_automatic_ms": next_automatic_ms,
 		"recent_starts": recent_starts.map(func(s: PackedInt64Array) -> Dictionary:
 			return {"started_at_ms": s[0], "count": s[1]}),
+		"split_percent": split_percent,
+		"split_shipped": split_shipped,
 	}
 	if source_kind == LinkView.Source.WAREHOUSE:
 		data.source_warehouse_id = source_warehouse_id

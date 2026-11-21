@@ -53,6 +53,16 @@ enum Reason {
 	RESEARCH_COMPLETE,
 	## Research that it requires is not complete.
 	RESEARCH_LOCKED,
+	## The percentages of a split do not add up to 100.
+	SPLIT_NOT_100,
+	## A percentage of a split is not a whole number from 0 to 100.
+	BAD_PERCENT,
+	## The command needs a link with automatic transport.
+	NOT_AUTOMATIC,
+	## The links of a split do not all start at one source with one color.
+	MIXED_SOURCES,
+	## The source of the link has no split.
+	NO_SPLIT,
 }
 
 var ok: bool

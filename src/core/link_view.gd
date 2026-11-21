@@ -38,6 +38,9 @@ enum Source {
 	WAREHOUSE,
 }
 
+## The value of [member split_percent] when the source has no split.
+const NO_SPLIT := -1
+
 var id: int
 ## The one color that the link carries.
 var color: StringName
@@ -75,6 +78,9 @@ var next_automatic_in_ms: int
 ## The throughput: widgets that started on the link, by hand or automatically,
 ## in the last minute.
 var widgets_per_minute: int
+## The percentage of the source's widgets that the split sends to this link,
+## or [constant NO_SPLIT]. See [method Simulation.splits].
+var split_percent: int = NO_SPLIT
 
 
 func is_automatic() -> bool:
