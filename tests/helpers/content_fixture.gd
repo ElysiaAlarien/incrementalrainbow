@@ -23,6 +23,8 @@ const PERIOD_MS := 60_000
 const INVESTMENT_COST := 10
 const POPULATION_STEP := 100
 const INCOME_STEP := 50
+const WAREHOUSE_COST := 30
+const WAREHOUSE_SPACE := 20
 
 
 static func colors_data() -> Dictionary:
@@ -61,6 +63,7 @@ static func mixed_colors_data() -> Dictionary:
 ## fixture markets have a capacity of [constant CAPACITY] in each period of
 ## [constant PERIOD_MS]; prices at the base price at [constant INCOME]; and
 ## community investments that cost 10, then 20, 40, and so on.
+## Warehouses cost 30, hold 20, and are unlocked from the start.
 ## [param overrides] replaces values by key, such as
 ## [code]{"starting_money": 15, "production_line_cost_growth": 2.0}[/code].
 ## Keys are unique across the sections.
@@ -94,14 +97,15 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 		"population_step": POPULATION_STEP,
 		"income_step": INCOME_STEP,
 	}
+	var warehouse := {"cost": WAREHOUSE_COST, "space": WAREHOUSE_SPACE, "unlock_factory_count": 0}
 	for key: String in overrides:
 		var section: Dictionary = {}
-		for candidate: Dictionary in [run, factory, demand, prism, market]:
+		for candidate: Dictionary in [run, factory, demand, prism, market, warehouse]:
 			if candidate.has(key):
 				section = candidate
 		assert(not section.is_empty(), "unknown balance key %s" % key)
 		section[key] = overrides[key]
-	return {"run": run, "factory": factory, "demand": demand, "prism": prism, "market": market}
+	return {"run": run, "factory": factory, "demand": demand, "prism": prism, "market": market, "warehouse": warehouse}
 
 
 ## Overrides for [method balance_data] that turn on drift (up to 30%, with a

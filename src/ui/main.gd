@@ -1,7 +1,8 @@
 extends Control
 ## The first screen: money, prisms, each color with its recipe and a button to
 ## build it, factories with their production lines, output bays, and input
-## bays, links from factories to markets and to mixed factories, with manual
+## bays, warehouses with their widgets and throughput, links from factories and
+## warehouses to markets, mixed factories, and warehouses, with manual
 ## shipments, automatic transport, and throughput, the active demand events,
 ## and markets with their population, income, capacity, community investment,
 ## and the price and demand of each color.
@@ -22,7 +23,12 @@ var save_path := SaveFile.DEFAULT_PATH
 @onready var _color_cards: HFlowContainer = %ColorCards
 @onready var _factory_list: VBoxContainer = %FactoryList
 @onready var _empty_label: Label = %EmptyLabel
-@onready var _new_link_factory: OptionButton = %NewLinkFactory
+@onready var _new_warehouse_color: OptionButton = %NewWarehouseColor
+@onready var _build_warehouse_button: Button = %BuildWarehouse
+@onready var _warehouse_locked_label: Label = %WarehouseLockedLabel
+@onready var _warehouse_list: VBoxContainer = %WarehouseList
+@onready var _warehouses_empty_label: Label = %WarehousesEmptyLabel
+@onready var _new_link_source: OptionButton = %NewLinkSource
 @onready var _new_link_destination: OptionButton = %NewLinkDestination
 @onready var _make_link_button: Button = %MakeLink
 @onready var _link_list: VBoxContainer = %LinkList
@@ -45,6 +51,7 @@ var _can_save := true
 var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
+var _warehouse_rows: Dictionary[int, WarehouseRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
 ## The rows of the active demand events, by [member DemandEventRow.key].
 ## Events start in order, so the rows are in start order.
@@ -52,6 +59,9 @@ var _demand_event_rows: Dictionary[String, DemandEventRow] = {}
 var _export_code_dialog: ExportCodeDialog
 var _prestige_confirm := ConfirmationDialog.new()
 var _cards: Array[ColorCard] = []
+## The metadata of each item in [member _new_link_source], in order, as from
+## [method _link_source_keys].
+var _source_keys: Array = []
 ## The metadata of each item in [member _new_link_destination], in order, as
 ## from [method _link_destination_keys].
 var _destination_keys: Array = []
@@ -75,6 +85,10 @@ func _ready() -> void:
 	autosave.start()
 	for color in _content.colors():
 		_add_color_card(color)
+	for color in _content.colors():
+		_new_warehouse_color.add_icon_item(_symbol_icon(color), color.name)
+		_new_warehouse_color.set_item_metadata(_new_warehouse_color.item_count - 1, color.id)
+	_build_warehouse_button.pressed.connect(_on_build_warehouse_pressed)
 	_make_link_button.pressed.connect(_on_make_link_pressed)
 	_export_code_dialog = ExportCodeDialog.new(_content)
 	_export_code_dialog.import_confirmed.connect(_replace_game)
@@ -153,13 +167,15 @@ func _replace_game(simulation: Simulation) -> void:
 ## Shows the run of the game after an import or a prestige replaced the last
 ## run. It removes the rows of the last run, and saves the game at once.
 func _show_replaced_run() -> void:
-	for row: Node in _rows.values() + _link_rows.values():
+	for row: Node in _rows.values() + _link_rows.values() + _warehouse_rows.values():
 		row.get_parent().remove_child(row)
 		row.queue_free()
 	_rows.clear()
 	_link_rows.clear()
-	_new_link_factory.clear()
+	_warehouse_rows.clear()
+	_new_link_source.clear()
 	_new_link_destination.clear()
+	_source_keys = []
 	_destination_keys = []
 	_show_message("")
 	write_save()
@@ -177,18 +193,34 @@ func _on_build_pressed(color_id: StringName) -> void:
 	_show_result(_sim.build_factory(color_id))
 
 
+func _on_build_warehouse_pressed() -> void:
+	var index := _new_warehouse_color.selected
+	if index >= 0:
+		_show_result(_sim.build_warehouse(_new_warehouse_color.get_item_metadata(index)))
+
+
+## Sends the link command for the kinds of the chosen source and destination.
 func _on_make_link_pressed() -> void:
-	var factory_index := _new_link_factory.selected
+	var source_index := _new_link_source.selected
 	var destination_index := _new_link_destination.selected
-	if factory_index < 0 or destination_index < 0:
+	if source_index < 0 or destination_index < 0:
 		_show_message("Build a factory first.")
 		return
-	var source_id := _new_link_factory.get_item_id(factory_index)
-	var destination: Variant = _new_link_destination.get_item_metadata(destination_index)
-	if destination is int:
-		_show_result(_sim.make_factory_link(source_id, destination))
-	else:
-		_show_result(_sim.make_link(source_id, destination))
+	var source: Array = _new_link_source.get_item_metadata(source_index)
+	var destination: Array = _new_link_destination.get_item_metadata(destination_index)
+	match [source[0], destination[0]]:
+		[&"factory", &"market"]:
+			_show_result(_sim.make_link(source[1], destination[1]))
+		[&"factory", &"factory"]:
+			_show_result(_sim.make_factory_link(source[1], destination[1]))
+		[&"factory", &"warehouse"]:
+			_show_result(_sim.link_factory_to_warehouse(source[1], destination[1]))
+		[&"warehouse", &"market"]:
+			_show_result(_sim.link_warehouse_to_market(source[1], destination[1]))
+		[&"warehouse", &"factory"]:
+			_show_result(_sim.link_warehouse_to_factory(source[1], destination[1]))
+		_:
+			_show_message("A warehouse cannot link to another warehouse. Link it to a market or a mixed factory.")
 
 
 func _on_buy_prism_pressed() -> void:
@@ -255,6 +287,7 @@ func _refresh() -> void:
 			row = _add_factory_row(view)
 		row.show_state(view)
 	_empty_label.visible = _rows.is_empty()
+	_refresh_warehouses()
 	_refresh_new_link_choices()
 
 	var automatic_cost := _sim.automatic_transport_cost()
@@ -301,6 +334,24 @@ func _refresh_demand_events() -> void:
 	_demand_events_empty_label.visible = _demand_event_rows.is_empty()
 
 
+func _refresh_warehouses() -> void:
+	var unlocked := _sim.is_warehouse_unlocked()
+	_new_warehouse_color.visible = unlocked
+	_build_warehouse_button.visible = unlocked
+	_build_warehouse_button.text = "Build warehouse (%s)" % _sim.warehouse_build_cost().format()
+	_warehouse_locked_label.visible = not unlocked
+	_warehouse_locked_label.text = "Warehouses unlock when you have %d factories." % \
+		_content.warehouse_balance.unlock_factory_count
+	for view in _sim.warehouses():
+		var row: WarehouseRow = _warehouse_rows.get(view.id)
+		if row == null:
+			row = WarehouseRow.new(view.id, _content.color(view.color))
+			_warehouse_rows[view.id] = row
+			_warehouse_list.add_child(row)
+		row.show_state(view)
+	_warehouses_empty_label.visible = _warehouse_rows.is_empty()
+
+
 func _add_factory_row(view: FactoryView) -> FactoryRow:
 	var row := FactoryRow.new(view.id, _content.color(view.color), _content)
 	row.add_line_requested.connect(_on_add_line_requested)
@@ -309,45 +360,67 @@ func _add_factory_row(view: FactoryView) -> FactoryRow:
 	return row
 
 
-## Keeps the factory and destination choices for a new link in step with the
-## simulation. Factories are added, never removed, so the selection stays. The
-## destinations are the markets, then the mixed factories. When they change,
-## the list is made again with the same destination selected.
+## Keeps the source and destination choices for a new link in step with the
+## simulation. Each choice has a key: [code][kind, id][/code], where the kind
+## is &"factory", &"warehouse", or &"market". The sources are the factories,
+## then the warehouses. The destinations are the markets, then the mixed
+## factories, then the warehouses. When a list changes, it is made again with
+## the same place selected.
 func _refresh_new_link_choices() -> void:
 	var factories := _sim.factories()
-	for i in range(_new_link_factory.item_count, factories.size()):
-		var view := factories[i]
-		var color := _content.color(view.color)
-		_new_link_factory.add_icon_item(_symbol_icon(color), _factory_name(view), view.id)
-	var keys := _link_destination_keys(factories)
-	if keys == _destination_keys:
-		return
+	var warehouses := _sim.warehouses()
+	_source_keys = _refresh_choice(_new_link_source, _source_keys, _link_source_keys(factories, warehouses))
+	_destination_keys = _refresh_choice(_new_link_destination, _destination_keys,
+		_link_destination_keys(factories, warehouses))
+
+
+## Fills [param choice] with an item for each of [param keys] when they are not
+## [param old_keys], and keeps the selected key. Returns [param keys].
+func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Array:
+	if keys == old_keys:
+		return keys
 	var selected: Variant = null
-	if _new_link_destination.selected >= 0:
-		selected = _new_link_destination.get_item_metadata(_new_link_destination.selected)
-	_new_link_destination.clear()
+	if choice.selected >= 0:
+		selected = choice.get_item_metadata(choice.selected)
+	choice.clear()
 	for i in keys.size():
-		var key: Variant = keys[i]
-		if key is int:
-			var view := _sim.factory(key)
-			_new_link_destination.add_icon_item(_symbol_icon(_content.color(view.color)), _factory_name(view))
-		else:
-			_new_link_destination.add_item(_sim.market(key).name)
-		_new_link_destination.set_item_metadata(i, key)
-	_destination_keys = keys
+		var key: Array = keys[i]
+		match key[0]:
+			&"factory":
+				var view := _sim.factory(key[1])
+				choice.add_icon_item(_symbol_icon(_content.color(view.color)), _factory_name(view))
+			&"warehouse":
+				var view := _sim.warehouse(key[1])
+				choice.add_icon_item(_symbol_icon(_content.color(view.color)), _warehouse_name(view))
+			_:
+				choice.add_item(_sim.market(key[1]).name)
+		choice.set_item_metadata(i, key)
 	var keep := keys.find(selected)
-	_new_link_destination.select(keep if keep >= 0 else 0)
+	choice.select(keep if keep >= 0 else (0 if not keys.is_empty() else -1))
+	return keys
 
 
-## The places a new link can go: each market (its key is the market id), then
-## each mixed factory (its key is the factory id).
-func _link_destination_keys(factories: Array[FactoryView]) -> Array:
+## The places a new link can start: each factory, then each warehouse.
+func _link_source_keys(factories: Array[FactoryView], warehouses: Array[WarehouseView]) -> Array:
+	var keys: Array = []
+	for view in factories:
+		keys.append([&"factory", view.id])
+	for view in warehouses:
+		keys.append([&"warehouse", view.id])
+	return keys
+
+
+## The places a new link can go: each market, then each mixed factory, then
+## each warehouse.
+func _link_destination_keys(factories: Array[FactoryView], warehouses: Array[WarehouseView]) -> Array:
 	var keys: Array = []
 	for market in _sim.markets():
-		keys.append(market.id)
+		keys.append([&"market", market.id])
 	for view in factories:
 		if not view.input_bays.is_empty():
-			keys.append(view.id)
+			keys.append([&"factory", view.id])
+	for view in warehouses:
+		keys.append([&"warehouse", view.id])
 	return keys
 
 
@@ -356,13 +429,23 @@ func _factory_name(view: FactoryView) -> String:
 	return "%s factory #%d" % [_content.color(view.color).name, view.id]
 
 
+## Such as "Green warehouse #2".
+func _warehouse_name(view: WarehouseView) -> String:
+	return "%s warehouse #%d" % [_content.color(view.color).name, view.id]
+
+
 func _add_link_row(view: LinkView) -> LinkRow:
+	var source_name := _factory_name(_sim.factory(view.source_factory_id)) \
+		if view.source_kind == LinkView.Source.FACTORY else _warehouse_name(_sim.warehouse(view.source_warehouse_id))
 	var destination_name := ""
-	if view.destination_kind == LinkView.Destination.FACTORY:
-		destination_name = _factory_name(_sim.factory(view.destination_factory_id))
-	else:
-		destination_name = _sim.market(view.destination_market_id).name
-	var row := LinkRow.new(view, _content.color(view.color), destination_name,
+	match view.destination_kind:
+		LinkView.Destination.FACTORY:
+			destination_name = _factory_name(_sim.factory(view.destination_factory_id))
+		LinkView.Destination.WAREHOUSE:
+			destination_name = _warehouse_name(_sim.warehouse(view.destination_warehouse_id))
+		_:
+			destination_name = _sim.market(view.destination_market_id).name
+	var row := LinkRow.new(view, _content.color(view.color), source_name, destination_name,
 		_content.transport_tier(view.vehicle).name)
 	row.ship_pressed.connect(_on_ship_pressed)
 	row.automate_pressed.connect(_on_automate_pressed)

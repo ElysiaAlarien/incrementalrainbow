@@ -66,11 +66,11 @@ _Avoid_: Spend, burn
 ## Logistics
 
 **Warehouse**:
-A building, unlocked later in a run, that holds widgets of one color between their source and their destination, so its outflow can differ from its inflow.
+A building, unlocked later in a run, that holds widgets of one color between their source and their destination, so its outflow can differ from its inflow. Links go into it from factories, and out of it to markets and mixed factories. Its space is how many widgets it holds.
 _Avoid_: Storage, inventory, stockpile
 
 **Link**:
-One route that moves widgets of one color from a source to a destination. At the start of a run, links go from factories directly to a market or to other factories.
+One route that moves widgets of one color from a source to a destination. At the start of a run, links go from factories directly to a market or to other factories. Later, links also go to and from warehouses.
 _Avoid_: Route, belt, connection
 
 **Transport**:
@@ -94,7 +94,7 @@ An upgrade that the player buys for one link. An automatic link starts a shipmen
 _Avoid_: Auto-ship, autopilot
 
 **Throughput**:
-The number of widgets that started on a link in the last minute. It shows where widgets cannot move fast enough.
+The number of widgets that started on a link in the last minute. It shows where widgets cannot move fast enough. A warehouse has an inflow and an outflow throughput: the throughput of its links in and of its links out.
 _Avoid_: Flow, rate
 
 **Split**:

@@ -32,6 +32,13 @@ enum Reason {
 	ALREADY_AUTOMATIC,
 	## A prestige needs at least one prism.
 	NO_PRISMS,
+	## No warehouse has the given id.
+	UNKNOWN_WAREHOUSE,
+	## Warehouses are not unlocked yet in this run.
+	WAREHOUSE_LOCKED,
+	## The link would carry another color than the warehouse at one of its ends
+	## holds.
+	WRONG_COLOR,
 }
 
 var ok: bool

@@ -89,6 +89,34 @@ func test_reports_a_missing_prism_section() -> void:
 	assert_string_contains("\n".join(content.errors), "balance.json: \"prism\" must be an object")
 
 
+func test_reads_the_warehouse_values() -> void:
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"cost": 45, "space": 60, "unlock_factory_count": 3})))
+	assert_eq(content.errors, PackedStringArray())
+	assert_true(content.warehouse_balance.build_cost.equals(BigNumber.from_int(45)))
+	assert_eq(content.warehouse_balance.space, 60)
+	assert_eq(content.warehouse_balance.unlock_factory_count, 3)
+
+
+func test_reports_bad_warehouse_values() -> void:
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10,
+			{"cost": -1, "space": 0, "unlock_factory_count": 1.5})))
+	var text := "\n".join(content.errors)
+	for expected in ["warehouse.cost must be a number of at least 0",
+			"warehouse.space must be a positive integer",
+			"warehouse.unlock_factory_count must be a whole number of at least 0"]:
+		assert_string_contains(text, expected)
+
+
+func test_reports_a_missing_warehouse_section() -> void:
+	var balance := ContentFixture.balance_data()
+	balance.erase("warehouse")
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "warehouse.cost must be a number of at least 0")
+
+
 func test_reads_the_economy_values() -> void:
 	var balance := ContentFixture.balance_data(1000, 10, {"build_cost": 25, "starting_money": 120})
 	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))

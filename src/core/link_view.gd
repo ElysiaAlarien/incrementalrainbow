@@ -24,17 +24,36 @@ enum Destination {
 	MARKET,
 	## A mixed factory, which puts the widgets in the input bay of their color.
 	FACTORY,
+	## A warehouse, which holds the widgets.
+	WAREHOUSE,
+}
+
+## What kind of place a link takes widgets from.
+enum Source {
+	## The output bay of a factory.
+	FACTORY,
+	## A warehouse.
+	WAREHOUSE,
 }
 
 var id: int
 ## The one color that the link carries.
 var color: StringName
+var source_kind: Source
+## The factory at the start of the link, or 0 when it starts at a warehouse.
 var source_factory_id: int
+## The warehouse at the start of the link, or 0 when it starts at a factory.
+var source_warehouse_id: int
 var destination_kind: Destination
-## The market at the end of the link, or &"" when it goes to a factory.
+## The market at the end of the link, or &"" when it goes to another kind of
+## place.
 var destination_market_id: StringName
-## The factory at the end of the link, or 0 when it goes to a market.
+## The factory at the end of the link, or 0 when it goes to another kind of
+## place.
 var destination_factory_id: int
+## The warehouse at the end of the link, or 0 when it goes to another kind of
+## place.
+var destination_warehouse_id: int
 ## The transport tier id of the link's vehicle, such as &"cart".
 var vehicle: StringName
 ## Time for one shipment to arrive, from the vehicle.
