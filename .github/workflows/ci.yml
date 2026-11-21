@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Import and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GODOT_VERSION: "4.7.2"
+      GODOT_DIR: ${{ github.workspace }}/../godot
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.GODOT_DIR }}
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
+      - name: Download Godot
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          name="Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          mkdir -p "$GODOT_DIR" && cd "$GODOT_DIR"
+          curl -fsSL -o "${name}.zip" "${base}/${name}.zip"
+          curl -fsSL -o SHA512-SUMS.txt "${base}/SHA512-SUMS.txt"
+          grep " ${name}.zip\$" SHA512-SUMS.txt | sha512sum -c -
+          unzip -q "${name}.zip"
+          mv "$name" godot
+          rm "${name}.zip" SHA512-SUMS.txt
+
+      - name: Import the project and run the tests
+        run: GODOT="$GODOT_DIR/godot" tools/test.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: test-results/
+          if-no-files-found: ignore

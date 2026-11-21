@@ -1,0 +1,8 @@
+{
+	"_about": "PLACEHOLDER balance values. No balance numbers exist yet (spec gap); playtests will set them. Every value in this file is a placeholder until this note is removed.",
+	"placeholder": true,
+	"factory": {
+		"widget_time_ms": 1000,
+		"output_bay_capacity": 10
+	}
+}
