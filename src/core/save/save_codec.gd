@@ -19,7 +19,7 @@ const FORMAT := "incremental-rainbow-save"
 ## step gets the state as parsed JSON and returns the new state. It must not
 ## stop on damaged data, because the load checks the result.
 static func migrations() -> Array[Callable]:
-	return [_v1_add_links, _v2_add_automatic_transport]
+	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -40,6 +40,16 @@ static func _v2_add_automatic_transport(state: Dictionary) -> Dictionary:
 				link.automatic_status = "manual"
 				link.next_automatic_ms = 0
 				link.recent_starts = []
+	return state
+
+
+## Version 4 (#8) adds demand: the drift key and saturation. A version 3 game
+## had no sales that saturate. Its drift key is a fixed 0, not a draw from its
+## random number generator, so that this step does not change the generator
+## state. Any key gives valid drift.
+static func _v3_add_demand(state: Dictionary) -> Dictionary:
+	state.drift_key = 0
+	state.saturation = []
 	return state
 
 

@@ -26,6 +26,10 @@ var errors: PackedStringArray:
 var factory_balance: FactoryBalance:
 	get:
 		return _factory_balance
+## Balance values for demand, drift, and saturation.
+var demand_balance: DemandBalance:
+	get:
+		return _demand_balance
 ## The money the player has at the start of a run.
 var starting_money: BigNumber:
 	get:
@@ -37,6 +41,7 @@ var automatic_transport_cost: BigNumber:
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO)
+var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0)
 var _starting_money := BigNumber.ZERO
 var _automatic_transport_cost := BigNumber.ZERO
 var _colors: Array[ColorDef] = []
@@ -163,6 +168,7 @@ func _parse_balance(data: Dictionary) -> void:
 		_starting_money = _read_money(run, "starting_money", "run")
 	else:
 		_errors.append("balance.json: \"run\" must be an object")
+	_parse_demand_balance(data.get("demand", {}))
 	var factory: Variant = data.get("factory", {})
 	if not factory is Dictionary:
 		_errors.append("balance.json: \"factory\" must be an object")
@@ -173,6 +179,28 @@ func _parse_balance(data: Dictionary) -> void:
 		_read_money(factory, "production_line_cost", "factory"),
 		_read_number(factory, "production_line_cost_growth", "factory", 1.0),
 		_read_money(factory, "build_cost", "factory"))
+
+
+func _parse_demand_balance(demand: Variant) -> void:
+	if not demand is Dictionary:
+		_errors.append("balance.json: \"demand\" must be an object")
+		return
+	var amplitude := _read_number(demand, "drift_amplitude", "demand", 0.0)
+	if amplitude >= 1.0:
+		_errors.append("demand.drift_amplitude must be less than 1, so that demand stays above 0")
+		amplitude = 0.0
+	var ms_per_widget := 0
+	var value: Variant = demand.get("saturation_ms_per_widget")
+	if _is_positive_int(value) or (_is_number(value) and value == 0):
+		ms_per_widget = int(value)
+	else:
+		_errors.append("demand.saturation_ms_per_widget must be a whole number of at least 0")
+	var half := _read_number(demand, "saturation_half_widgets", "demand", 0.0)
+	if half == 0.0:
+		_errors.append("demand.saturation_half_widgets must be more than 0")
+		half = 1.0
+	_demand_balance = DemandBalance.new(maxi(1, _read_positive_int(demand, "drift_period_ms", "demand")),
+		amplitude, ms_per_widget, half)
 
 
 func _parse_markets(data: Dictionary) -> void:

@@ -350,3 +350,36 @@ func test_a_bad_code_shows_the_reason_and_does_not_change_the_game() -> void:
 	assert_string_contains(message.text, "checksum does not match")
 	assert_same(main.simulation(), before, "the game is the same game")
 	assert_eq(main.simulation().factories().size(), 1)
+
+
+# --- Markets ------------------------------------------------------------------
+
+func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	var rows := main.find_children("Market_*", "MarketRow", true, false)
+	assert_eq(rows.size(), sim.markets().size())
+	var row: MarketRow = rows[0]
+	var view := sim.market(row.market_id)
+	for color in Content.load_dir(Content.DEFAULT_DIR).colors():
+		assert_eq(row.color_text(color.id), "Price %s, demand %s" % [view.price(color.id).format(),
+			MarketRow.format_demand(view.demand(color.id))])
+
+	# A sale of red lowers its demand on the screen.
+	main.find_child("Build_red", true, false).pressed.emit()
+	main.find_child("MakeLink", true, false).pressed.emit()
+	sim.tick(10_000)
+	sim.start_shipment(1)
+	sim.tick(sim.link(1).transit_time_ms)
+	await wait_process_frames(1)
+	view = sim.market(row.market_id)
+	assert_eq(sim.snapshot().saturation.size(), 1, "the sale saturated red")
+	assert_eq(row.color_text(&"red"), "Price %s, demand %s" % [view.price(&"red").format(),
+		MarketRow.format_demand(view.demand(&"red"))])
+	assert_lte(row.get_global_rect().end.x, main.get_viewport_rect().size.x, "the row fits the screen")
+
+
+func test_format_demand_shows_a_whole_percent() -> void:
+	assert_eq(MarketRow.format_demand(1.0), "100%")
+	assert_eq(MarketRow.format_demand(0.874), "87%")
+	assert_eq(MarketRow.format_demand(1.296), "130%")

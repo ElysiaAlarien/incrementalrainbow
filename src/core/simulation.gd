@@ -14,6 +14,7 @@ extends RefCounted
 const FactoryState := preload("res://src/core/state/factory_state.gd")
 const LinkState := preload("res://src/core/state/link_state.gd")
 const ShipmentState := preload("res://src/core/state/shipment_state.gd")
+const DemandState := preload("res://src/core/state/demand_state.gd")
 
 var _content: Content
 var _rng: SimRng
@@ -24,6 +25,7 @@ var _factories: Array[FactoryState] = []
 var _next_link_id: int = 1
 var _links: Array[LinkState] = []
 var _next_shipment_id: int = 1
+var _demand: DemandState
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -31,6 +33,7 @@ func _init(p_content: Content, p_seed: int) -> void:
 	assert(p_content.errors.is_empty(), "Simulation needs valid content: %s" % "; ".join(p_content.errors))
 	_content = p_content
 	_rng = SimRng.new(p_seed)
+	_demand = DemandState.new(_rng.next_u32())
 	_money = _content.starting_money
 
 
@@ -59,6 +62,7 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		ids[state.id] = true
 		sim._factories.append(state)
 	sim._read_links(reader)
+	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms)
 	return sim
 
 
@@ -242,6 +246,7 @@ func tick(duration_ms: int) -> void:
 		_start_automatic_shipments()
 	for state in _links:
 		state.forget_old_starts(_time_ms)
+	_demand.prune(_time_ms)
 
 
 ## The time of the next event: the earliest arrival after now or automatic
@@ -310,7 +315,8 @@ func factory(id: int) -> FactoryView:
 	return null if state == null else state.to_view(_content.factory_balance)
 
 
-## All markets that are open, in content order.
+## All markets that are open, in content order, with the demand and price of
+## each color now.
 func markets() -> Array[MarketView]:
 	var views: Array[MarketView] = []
 	for def in _content.markets():
@@ -365,6 +371,8 @@ func snapshot() -> Dictionary:
 		"next_link_id": _next_link_id,
 		"links": link_dicts,
 		"next_shipment_id": _next_shipment_id,
+		"drift_key": _demand.drift_key,
+		"saturation": _demand.saturation_to_list(),
 	}
 
 
@@ -396,14 +404,26 @@ func _sell_arrived_shipments() -> void:
 	arrived.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return a.shipment.arrives_before(b.shipment))
 	for entry in arrived:
-		_sell(entry.link, entry.shipment.count)
+		_sell(entry.link, entry.shipment)
 
 
-## The market at the end of [param state] buys [param count] widgets at its
-## current price for the link's color.
-func _sell(state: LinkState, count: int) -> void:
-	var price := _content.market(state.destination_market_id).price(state.color)
-	_money = _money.add(price.mul(BigNumber.from_int(count)))
+## The market at the end of [param state] buys [param shipment] at its price
+## for the link's color when the shipment arrives, which can be before now in
+## a long tick. Then the sale saturates that color in that market. All widgets
+## of one shipment sell at the same price.
+func _sell(state: LinkState, shipment: ShipmentState) -> void:
+	var market_id := state.destination_market_id
+	var at_ms := shipment.arrives_at_ms
+	var price := _price(_content.market(market_id), state.color, at_ms)
+	_money = _money.add(price.mul(BigNumber.from_int(shipment.count)))
+	_demand.record_sale(market_id, state.color, shipment.count, at_ms, _content.demand_balance)
+
+
+## The price of one widget of [param color] in [param def] at [param at_ms]:
+## the base price times demand.
+func _price(def: MarketDef, color: StringName, at_ms: int) -> BigNumber:
+	var demand := _demand.demand(def.id, color, at_ms, _content.demand_balance)
+	return def.price(color).mul(BigNumber.from_float(demand))
 
 
 func _factory_state(id: int) -> FactoryState:
@@ -428,5 +448,7 @@ func _market_view(def: MarketDef) -> MarketView:
 	var view := MarketView.new()
 	view.id = def.id
 	view.name = def.name
-	view.prices = def.prices
+	for color in def.prices:
+		view.demands[color] = _demand.demand(def.id, color, _time_ms, _content.demand_balance)
+		view.prices[color] = _price(def, color, _time_ms)
 	return view

@@ -150,6 +150,51 @@ func test_reports_empty_market_and_transport_lists() -> void:
 	assert_string_contains(text, "transport.json: there must be at least one transport tier")
 
 
+func test_reads_demand_balance_values() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(1000, 10, {"drift_period_ms": 45_000.0, "drift_amplitude": 0.25,
+			"saturation_ms_per_widget": 1500.0, "saturation_half_widgets": 12.5})))
+	var demand := content.demand_balance
+	assert_eq(demand.drift_period_ms, 45_000)
+	assert_eq(demand.drift_amplitude, 0.25)
+	assert_eq(demand.saturation_ms_per_widget, 1500)
+	assert_eq(demand.saturation_half_widgets, 12.5)
+
+
+func test_zero_turns_drift_and_saturation_off() -> void:
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(1000, 10, {"drift_amplitude": 0.0, "saturation_ms_per_widget": 0.0})))
+	assert_eq(content.errors, PackedStringArray())
+
+
+func test_reports_bad_demand_balance_values() -> void:
+	var bad := {"drift_period_ms": 0, "drift_amplitude": 1.0,
+		"saturation_ms_per_widget": 2.5, "saturation_half_widgets": 0}
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(1000, 10, bad)))
+	var text := "\n".join(content.errors)
+	for expected in ["demand.drift_period_ms must be a positive integer",
+			"demand.drift_amplitude must be less than 1",
+			"demand.saturation_ms_per_widget must be a whole number of at least 0",
+			"demand.saturation_half_widgets must be more than 0"]:
+		assert_string_contains(text, expected)
+	bad = {"drift_amplitude": -0.1, "saturation_ms_per_widget": -1}
+	text = "\n".join(Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(1000, 10, bad))).errors)
+	assert_string_contains(text, "demand.drift_amplitude must be a number of at least 0")
+	assert_string_contains(text, "demand.saturation_ms_per_widget must be a whole number of at least 0")
+
+
+func test_reports_a_missing_demand_section() -> void:
+	var balance := ContentFixture.balance_data()
+	balance.erase("demand")
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "demand.drift_period_ms must be a positive integer")
+	balance.demand = []
+	content = Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "balance.json: \"demand\" must be an object")
+
+
 func test_reports_a_missing_data_file() -> void:
 	var content := Content.load_dir("res://no_such_dir")
 	assert_eq(content.errors.size(), Content.FILES.size())
