@@ -2,6 +2,9 @@ extends GutTest
 ## The export code: the save as a code that the player copies to another
 ## device (see ADR-0010).
 
+## The save time of the saves that the tests write: a time in November 2026.
+const SAVED_AT_UNIX_MS := 1_795_000_000_000
+
 
 ## A game with factories, production lines, links, and shipments in transit.
 func _game() -> Simulation:
@@ -25,7 +28,7 @@ func _import(code: String, steps: Array[Callable] = SaveCodec.migrations(),
 func test_export_then_import_gives_the_same_state() -> void:
 	var sim := _game()
 
-	var result := _import(ExportCode.encode(sim))
+	var result := _import(ExportCode.encode(sim, SAVED_AT_UNIX_MS))
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.snapshot(), sim.snapshot())
@@ -34,16 +37,16 @@ func test_export_then_import_gives_the_same_state() -> void:
 
 func test_the_code_holds_the_same_save_as_the_device() -> void:
 	var sim := _game()
-	var code := ExportCode.encode(sim)
+	var code := ExportCode.encode(sim, SAVED_AT_UNIX_MS)
 	var compressed := Marshalls.base64_to_raw(code.split(".")[1])
 
 	var save_text := compressed.decompress_dynamic(-1, FileAccess.COMPRESSION_DEFLATE).get_string_from_utf8()
 
-	assert_eq(save_text, SaveCodec.encode(sim))
+	assert_eq(save_text, SaveCodec.encode(sim, SAVED_AT_UNIX_MS))
 
 
 func test_the_code_has_a_version_and_a_checksum() -> void:
-	var code := ExportCode.encode(_game())
+	var code := ExportCode.encode(_game(), SAVED_AT_UNIX_MS)
 	var parts := code.split(".")
 
 	assert_eq(parts.size(), 3)
@@ -54,7 +57,7 @@ func test_the_code_has_a_version_and_a_checksum() -> void:
 
 func test_spaces_and_line_breaks_in_the_code_do_not_matter() -> void:
 	var sim := _game()
-	var code := ExportCode.encode(sim)
+	var code := ExportCode.encode(sim, SAVED_AT_UNIX_MS)
 	var wrapped := "  %s\n%s \r\n\t%s  " % [code.substr(0, 10), code.substr(10, 30), code.substr(40)]
 
 	var result := _import(wrapped)
@@ -91,7 +94,7 @@ func _with_changed_character(code: String, index: int) -> String:
 
 
 func test_a_code_with_a_changed_character_fails_its_checksum() -> void:
-	var code := ExportCode.encode(_game())
+	var code := ExportCode.encode(_game(), SAVED_AT_UNIX_MS)
 	var index := code.find(".") + 20
 
 	_assert_import_fails(_with_changed_character(code, index), LoadResult.Reason.BAD_CHECKSUM,
@@ -99,14 +102,14 @@ func test_a_code_with_a_changed_character_fails_its_checksum() -> void:
 
 
 func test_a_code_with_a_changed_checksum_fails() -> void:
-	var code := ExportCode.encode(_game())
+	var code := ExportCode.encode(_game(), SAVED_AT_UNIX_MS)
 
 	_assert_import_fails(_with_changed_character(code, code.length() - 1), LoadResult.Reason.BAD_CHECKSUM,
 		"checksum does not match")
 
 
 func test_a_code_that_is_cut_off_fails_its_checksum() -> void:
-	var code := ExportCode.encode(_game())
+	var code := ExportCode.encode(_game(), SAVED_AT_UNIX_MS)
 	var last_dot := code.rfind(".")
 	var cut := code.substr(0, last_dot - 12) + code.substr(last_dot)
 
@@ -114,7 +117,7 @@ func test_a_code_that_is_cut_off_fails_its_checksum() -> void:
 
 
 func test_a_code_with_a_changed_version_fails_its_checksum() -> void:
-	var code := ExportCode.encode(_game())
+	var code := ExportCode.encode(_game(), SAVED_AT_UNIX_MS)
 	var changed := code.replace("IR%d." % SaveCodec.current_version(), "IR1.")
 
 	_assert_import_fails(changed, LoadResult.Reason.BAD_CHECKSUM, "checksum does not match")
@@ -123,7 +126,7 @@ func test_a_code_with_a_changed_version_fails_its_checksum() -> void:
 func test_text_that_is_not_a_code_fails() -> void:
 	_assert_import_fails("", LoadResult.Reason.NOT_A_CODE, "not an export code")
 	_assert_import_fails("hello", LoadResult.Reason.NOT_A_CODE, "not an export code")
-	_assert_import_fails(SaveCodec.encode(_game()), LoadResult.Reason.NOT_A_CODE, "not an export code")
+	_assert_import_fails(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS), LoadResult.Reason.NOT_A_CODE, "not an export code")
 	_assert_import_fails("XY2.abc.12345678", LoadResult.Reason.NOT_A_CODE, "not an export code")
 
 
@@ -134,7 +137,7 @@ func _signed(body: String) -> String:
 
 
 func test_a_code_with_no_valid_version_fails() -> void:
-	var payload := ExportCode.encode(_game()).split(".")[1]
+	var payload := ExportCode.encode(_game(), SAVED_AT_UNIX_MS).split(".")[1]
 
 	_assert_import_fails(_signed("IR." + payload), LoadResult.Reason.BAD_VERSION, "no valid version")
 	_assert_import_fails(_signed("IR0." + payload), LoadResult.Reason.BAD_VERSION, "no valid version")
@@ -142,7 +145,7 @@ func test_a_code_with_no_valid_version_fails() -> void:
 
 
 func test_a_code_with_a_payload_that_is_not_compressed_fails() -> void:
-	var payload := Marshalls.utf8_to_base64(SaveCodec.encode(_game()))
+	var payload := Marshalls.utf8_to_base64(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
 
 	_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.current_version(), payload]),
 		LoadResult.Reason.NOT_A_CODE, "its save cannot be read")
@@ -173,7 +176,7 @@ func test_a_code_of_text_that_is_not_a_save_fails() -> void:
 
 
 func test_a_code_of_a_damaged_save_fails() -> void:
-	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game()))
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
 	data.state.factories[0].color = "magenta"
 
 	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), SaveCodec.current_version()),
@@ -183,7 +186,7 @@ func test_a_code_of_a_damaged_save_fails() -> void:
 # --- Versions -------------------------------------------------------------------
 
 func test_a_code_from_a_newer_game_fails() -> void:
-	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game()))
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
 	var newer := SaveCodec.current_version() + 1
 	data.version = newer
 
@@ -208,7 +211,7 @@ static func _lose_time(state: Dictionary) -> Dictionary:
 
 ## The code of a version 1 save in which time is named "clock_ms".
 func _version_1_code() -> String:
-	var state: Dictionary = JSON.parse_string(SaveCodec.encode(_game())).state
+	var state: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS)).state
 	state.clock_ms = state.time_ms
 	state.erase("time_ms")
 	return ExportCode.from_save(JSON.stringify({"format": SaveCodec.FORMAT, "version": 1, "state": state}), 1)
@@ -248,3 +251,10 @@ func test_each_saved_version_imports_as_a_code() -> void:
 		assert_true(from_code.ok, "%s: %s" % [file, from_code.message])
 		if from_code.ok and from_file.ok:
 			assert_eq(from_code.simulation.snapshot(), from_file.simulation.snapshot(), file)
+
+
+func test_the_export_code_keeps_the_save_time() -> void:
+	var result := _import(ExportCode.encode(_game(), SAVED_AT_UNIX_MS))
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.saved_at_unix_ms, SAVED_AT_UNIX_MS)

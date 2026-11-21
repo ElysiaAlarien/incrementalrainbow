@@ -16,6 +16,11 @@ var progress_ms: int = 0
 ## Input color to the widgets in its input bay, in recipe order. Empty for a
 ## base factory.
 var input_bays: Dictionary[StringName, int] = {}
+## The time that the factory has made widgets up to. Inside a tick, the
+## simulation advances a factory only when an event uses it (see
+## [method Simulation._factory_state]). Outside a tick, it is the simulation
+## time. It is not in the save, because it is the simulation time there.
+var synced_ms: int = 0
 ## Input color to the count that one widget consumes. Empty for a base factory.
 var _recipe: Dictionary[StringName, int]
 
@@ -39,12 +44,13 @@ func _init(p_id: int, p_color: StringName, p_recipe: Dictionary[StringName, int]
 ## The factory can make widgets up to the free space in its output bay and up
 ## to the full recipes in its input bays. At that limit it has stopped (output
 ## bay full) or waits (an input bay is short), so it keeps no partial progress:
-## it starts a new widget when it can make one again.
-func advance(duration_ms: int, balance: FactoryBalance) -> void:
+## it starts a new widget when it can make one again. Returns the count of
+## widgets made.
+func advance(duration_ms: int, balance: FactoryBalance) -> int:
 	var limit := mini(balance.output_bay_capacity - output_bay_count, _recipes_in_bays())
 	if limit <= 0:
 		progress_ms = 0
-		return
+		return 0
 	# Compare durations, not work, so that a long tick on a large factory
 	# cannot overflow.
 	var work_to_limit := limit * balance.widget_time_ms - progress_ms
@@ -61,6 +67,7 @@ func advance(duration_ms: int, balance: FactoryBalance) -> void:
 	output_bay_count += made
 	for input in _recipe:
 		input_bays[input] -= made * _recipe[input]
+	return made
 
 
 ## How many widgets the input bays hold the inputs for. A base factory needs

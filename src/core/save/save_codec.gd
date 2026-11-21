@@ -2,9 +2,12 @@ class_name SaveCodec
 extends RefCounted
 ## Turns the core state into save text and back. See ADR-0009.
 ##
-## A save is JSON: [code]{"format": FORMAT, "version": N, "state": {...}}[/code].
-## The state is [method Simulation.snapshot]. A load makes a new [Simulation]
-## and never changes the current one.
+## A save is JSON:
+## [code]{"format": FORMAT, "version": N, "saved_at_unix_ms": T, "state": {...}}[/code].
+## The state is [method Simulation.snapshot]. The save time T is the device
+## clock time that the state is for, in Unix milliseconds. It is beside the
+## state, not in it, because the core has no clock. A load makes a new
+## [Simulation] and never changes the current one.
 ##
 ## Each change to the shape of the state (a value added, removed, renamed, or
 ## changed in meaning) adds one step to [method migrations]. The step turns the
@@ -12,6 +15,8 @@ extends RefCounted
 ## The version number is the number of steps plus one.
 
 const FORMAT := "incremental-rainbow-save"
+## The first save version with a save time. An older save has none.
+const SAVE_TIME_VERSION := 13
 
 
 ## The migration steps, in order. Step [code]i[/code] turns the state of
@@ -22,7 +27,7 @@ static func migrations() -> Array[Callable]:
 	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
 		_v5_add_mixed_factories, _v6_add_demand_events,
 		_v7_add_markets, _v8_add_warehouses, _v9_add_transport_tier, _v10_add_research,
-		_v11_add_splits]
+		_v11_add_splits, _v12_add_save_time]
 
 
 ## Version 2 (#3) adds links and their shipments. A version 1 game had none.
@@ -149,16 +154,25 @@ static func _v11_add_splits(state: Dictionary) -> Dictionary:
 	return state
 
 
+## Version 13 (#22) adds the save time, beside the state (see
+## [constant SAVE_TIME_VERSION]). The state does not change. A save of an older
+## version has no save time, so it loads with no offline progress.
+static func _v12_add_save_time(state: Dictionary) -> Dictionary:
+	return state
+
+
 ## The version that [method encode] writes.
 static func current_version(steps: Array[Callable] = migrations()) -> int:
 	return steps.size() + 1
 
 
-## The save text of the current state of [param sim].
-static func encode(sim: Simulation) -> String:
+## The save text of the current state of [param sim], which is the state at
+## the device clock time [param saved_at_unix_ms].
+static func encode(sim: Simulation, saved_at_unix_ms: int) -> String:
 	return JSON.stringify({
 		"format": FORMAT,
 		"version": current_version(),
+		"saved_at_unix_ms": saved_at_unix_ms,
 		"state": sim.snapshot(),
 	}, "\t", true, true)
 
@@ -187,6 +201,12 @@ static func decode(content: Content, text: String, steps: Array[Callable] = migr
 		return LoadResult.failure(LoadResult.Reason.NEWER_VERSION,
 			"A newer version of the game made this save (save version %d). This version reads saves up to version %d." % [
 				version, current])
+	var saved_at_unix_ms := LoadResult.NO_SAVE_TIME
+	if version >= SAVE_TIME_VERSION:
+		saved_at_unix_ms = envelope.integer("saved_at_unix_ms", 0)
+		if not envelope.errors().is_empty():
+			return LoadResult.failure(LoadResult.Reason.DAMAGED_STATE,
+				"The save is damaged: %s." % envelope.errors()[0])
 
 	var state: Variant = data.get("state")
 	for from_version in range(version, current):
@@ -204,4 +224,4 @@ static func decode(content: Content, text: String, steps: Array[Callable] = migr
 		var more := "" if problems.size() == 1 else " (and %d more problems)" % (problems.size() - 1)
 		return LoadResult.failure(LoadResult.Reason.DAMAGED_STATE,
 			"The save is damaged: %s%s." % [problems[0], more])
-	return LoadResult.success(sim)
+	return LoadResult.success(sim, saved_at_unix_ms)

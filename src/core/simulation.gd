@@ -18,6 +18,12 @@ const DemandState := preload("res://src/core/state/demand_state.gd")
 const WarehouseState := preload("res://src/core/state/warehouse_state.gd")
 const MarketState := preload("res://src/core/state/market_state.gd")
 const ResearchState := preload("res://src/core/state/research_state.gd")
+const EventQueue := preload("res://src/core/state/event_queue.gd")
+
+## Kinds of tick events, in the order they happen at one time.
+const _EVENT_ARRIVAL := 0
+const _EVENT_DEMAND_EVENT_START := 1
+const _EVENT_AUTOMATIC_START := 2
 
 ## The prestige keep set, in one place (see ADR-0012). A prestige makes a
 ## fresh run with [method Simulation.new], the same path as a new game, and
@@ -51,6 +57,8 @@ var _time_ms: int = 0
 var _money: BigNumber
 var _next_factory_id: int = 1
 var _factories: Array[FactoryState] = []
+## The same factories as [member _factories], by id.
+var _factories_by_id: Dictionary[int, FactoryState] = {}
 var _next_link_id: int = 1
 var _links: Array[LinkState] = []
 var _next_warehouse_id: int = 1
@@ -73,6 +81,9 @@ var _labs: Array[int] = []
 ## All research state of the run. A prestige clears it with the other state of
 ## the run.
 var _research := ResearchState.new()
+## Counts what happens during [method progress_offline]. Null at other times.
+## It is not state: it does not change what the simulation does.
+var _offline_tally: OfflineSummary = null
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -112,7 +123,9 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		elif state.id >= sim._next_factory_id:
 			factory_reader.fail("id", "must be less than next_factory_id (%d)" % sim._next_factory_id)
 		ids[state.id] = true
+		state.synced_ms = sim._time_ms
 		sim._factories.append(state)
+		sim._factories_by_id[state.id] = state
 	sim._read_warehouses(reader)
 	sim._read_transport_tier(reader)
 	sim._read_labs(reader)
@@ -330,7 +343,9 @@ func build_factory(color: StringName) -> CommandResult:
 	_money = _money.sub(cost)
 	var state := FactoryState.new(_next_factory_id, color, color_def.recipe)
 	_next_factory_id += 1
+	state.synced_ms = _time_ms
 	_factories.append(state)
+	_factories_by_id[state.id] = state
 	return CommandResult.success(state.id)
 
 
@@ -719,12 +734,16 @@ func clear_split(link_id: int) -> CommandResult:
 
 ## Starts a shipment on [param state] if the rules allow it, for
 ## [method start_shipment] and, when [param automatic] is true, for automatic
-## starts. Only automatic starts follow the split.
+## starts. Only automatic starts follow the split. The failure of an
+## automatic start has no message, because no one sees it and a message costs
+## time in offline progress.
 func _start_shipment(state: LinkState, automatic: bool) -> CommandResult:
 	var available := _source_count(state)
 	var allowed := _split_allowance(state, available) if automatic else available
 	var count := _accepted_count(state, allowed)
 	if count <= 0:
+		if automatic:
+			return CommandResult.failure(CommandResult.Reason.NOTHING_TO_SHIP, "")
 		var why := _accepts_nothing_text(state)
 		if available <= 0:
 			why = "%s has no widgets." % _source_name(state)
@@ -734,6 +753,8 @@ func _start_shipment(state: LinkState, automatic: bool) -> CommandResult:
 			"Nothing to ship: %s" % why)
 	var tier := _content.transport_tier(state.vehicle)
 	if _money.is_less_than(tier.shipment_cost):
+		if automatic:
+			return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_MONEY, "")
 		return _not_enough_money("A shipment by %s" % tier.name.to_lower(), tier.shipment_cost)
 
 	_money = _money.sub(tier.shipment_cost)
@@ -848,16 +869,23 @@ func _not_enough_money(what: String, cost: BigNumber) -> CommandResult:
 ## Advances the simulation by [param duration_ms] milliseconds. Time is an
 ## integer so that one long tick gives the same state as many short ticks.
 ##
-## Inside the tick, things happen in time order. Factories make widgets until
-## the next event, then the event happens. The events are shipment arrivals,
-## which sell or go into an input bay or a warehouse, demand event starts, and automatic
-## starts. At one time, arrivals happen first, so their money and widgets can
-## serve automatic starts at that time, and they sell at the demand from
-## before a demand event that starts at that time. Then demand events start,
-## then automatic shipments. A tick that ends at a time does the arrivals at
-## that time, and the next tick does the starts at that time, so that ticks of
-## any length give the same state. A tick takes time in proportion to the size
-## of the state and the number of events.
+## Inside the tick, events happen one at a time in time order, and factories
+## make widgets up to each event that uses them. The events are shipment
+## arrivals, which sell or go into an input bay, a warehouse, or a lab, demand
+## event starts, and automatic starts. At one time, arrivals happen first, in
+## start order, so their money and widgets can serve automatic starts at that
+## time, and they sell at the demand from before a demand event that starts at
+## that time. Then demand events start, then automatic shipments, in link
+## order. A tick that ends at a time does the arrivals at that time, and the
+## next tick does the starts at that time, so that ticks of any length give the
+## same state. BigNumber sums are float sums, so this order sets the money
+## (ADR-0008).
+##
+## A tick takes time in proportion to the size of the state, plus a small
+## time for each event. To add a kind of event, add an [code]_EVENT_[/code]
+## constant in its place in the order, push its events in
+## [method _events_until] and from its handler, and handle it in the match
+## below.
 func tick(duration_ms: int) -> void:
 	assert(duration_ms >= 0, "tick duration cannot be negative")
 	if duration_ms <= 0:
@@ -865,16 +893,21 @@ func tick(duration_ms: int) -> void:
 	var end_ms := _time_ms + duration_ms
 	# A save from before demand events has no next start yet.
 	_demand.schedule_events(_time_ms, _rng, _content)
-	while true:
-		var event_ms := mini(end_ms, _next_event_ms())
-		for state in _factories:
-			state.advance(event_ms - _time_ms, _content.factory_balance)
-		_time_ms = event_ms
-		_deliver_arrived_shipments()
-		if _time_ms == end_ms:
-			break
-		_demand.start_due_events(_time_ms, _rng, _content)
-		_start_automatic_shipments()
+	var events := _events_until(end_ms)
+	while not events.is_empty():
+		var event := events.pop()
+		_time_ms = event[0]
+		match event[1]:
+			_EVENT_ARRIVAL:
+				_deliver(event[3], event[4])
+			_EVENT_DEMAND_EVENT_START:
+				_demand.start_due_events(_time_ms, _rng, _content)
+				_push_demand_event_start(events, end_ms)
+			_EVENT_AUTOMATIC_START:
+				_start_automatic_shipment(event[3], event[2], events, end_ms)
+	_time_ms = end_ms
+	for state in _factories:
+		_sync(state)
 	for state in _links:
 		state.forget_old_starts(_time_ms)
 	_demand.prune(_time_ms)
@@ -882,28 +915,89 @@ func tick(duration_ms: int) -> void:
 		state.forget_old_periods(_time_ms, _content.market_balance)
 
 
-## The time of the next event: the earliest arrival after now, or demand
-## event start or automatic start from now on. A large time when there is
-## none.
-func _next_event_ms() -> int:
-	var next_ms := 9223372036854775807
-	if _demand.next_event_ms != DemandState.UNSCHEDULED:
-		next_ms = _demand.next_event_ms
-	for state in _links:
-		if state.is_automatic():
-			next_ms = mini(next_ms, state.next_automatic_ms)
+## The time of offline progress for [param time_away_ms] (see
+## [method LoadResult.time_away_ms]): the time away, up to
+## [member Content.max_offline_ms]. Time away above it gives no progress.
+func offline_progress_ms(time_away_ms: int) -> int:
+	return clampi(time_away_ms, 0, _content.max_offline_ms)
+
+
+## The most time away that offline progress applies.
+func max_offline_ms() -> int:
+	return _content.max_offline_ms
+
+
+## Applies offline progress for [param duration_ms], which
+## [method offline_progress_ms] gives for the time that the player was away.
+## It is a normal [method tick], with no other rule. Manual transport is off
+## by its nature, because only the [method start_shipment] command starts a
+## manual shipment, and no command comes while the player is away. So only
+## automatic links start shipments, and shipments that are on their way
+## arrive. Offline progress for a time gives the same state as ticks for the
+## same time. Each rule that a later ticket adds to the tick works offline
+## with no change. Returns what happened. Call it in parts, such as one part
+## each frame, and add the summaries with [method OfflineSummary.add]: the
+## state is the same as for one call.
+func progress_offline(duration_ms: int) -> OfflineSummary:
+	assert(duration_ms >= 0, "offline progress cannot be negative")
+	var tally := OfflineSummary.new()
+	tally.duration_ms = maxi(duration_ms, 0)
+	_offline_tally = tally
+	tick(tally.duration_ms)
+	_offline_tally = null
+	return tally
+
+
+## The events of a tick that ends at [param end_ms]: the arrivals up to and at
+## [param end_ms], and the demand event start and automatic starts before it.
+## An event's order is the shipment id for an arrival, and the link index for
+## an automatic start.
+func _events_until(end_ms: int) -> EventQueue:
+	var events := EventQueue.new()
+	for i in _links.size():
+		var state := _links[i]
 		for shipment in state.shipments:
-			next_ms = mini(next_ms, shipment.arrives_at_ms)
-	return next_ms
+			_push_arrival(events, end_ms, state, shipment)
+		if state.is_automatic():
+			_push_automatic_start(events, end_ms, state, i)
+	_push_demand_event_start(events, end_ms)
+	return events
 
 
-## Does each automatic start that is due now, in link order.
-func _start_automatic_shipments() -> void:
-	for state in _links:
-		if not state.is_automatic() or state.next_automatic_ms != _time_ms:
-			continue
-		var result := _start_shipment(state, true)
-		state.record_automatic_start(result, _content.transport_tier(state.vehicle).transit_time_ms)
+## Adds the arrival of [param shipment] on [param state] to [param events] if
+## it is in the tick that ends at [param end_ms].
+func _push_arrival(events: EventQueue, end_ms: int, state: LinkState, shipment: ShipmentState) -> void:
+	if shipment.arrives_at_ms <= end_ms:
+		events.push(shipment.arrives_at_ms, _EVENT_ARRIVAL, shipment.id, state, shipment)
+
+
+## Adds the next automatic start of [param state], at [param index] in the
+## links, to [param events] if it is before [param end_ms]. A tick that ends
+## at a time leaves the starts at that time to the next tick.
+func _push_automatic_start(events: EventQueue, end_ms: int, state: LinkState, index: int) -> void:
+	if state.next_automatic_ms < end_ms:
+		events.push(state.next_automatic_ms, _EVENT_AUTOMATIC_START, index, state)
+
+
+## Adds the next demand event start to [param events] if it is before
+## [param end_ms].
+func _push_demand_event_start(events: EventQueue, end_ms: int) -> void:
+	var next_ms := _demand.next_event_ms
+	if next_ms != DemandState.UNSCHEDULED and next_ms < end_ms:
+		events.push(next_ms, _EVENT_DEMAND_EVENT_START, 0)
+
+
+## Does the automatic start of [param state], at [param index] in the links,
+## that is due now. Adds the events that it makes to [param events] when they
+## are in the tick that ends at [param end_ms]: the arrival of its shipment and
+## the next start.
+func _start_automatic_shipment(state: LinkState, index: int, events: EventQueue, end_ms: int) -> void:
+	var shipment_count := state.shipments.size()
+	var result := _start_shipment(state, true)
+	state.record_automatic_start(result, _content.transport_tier(state.vehicle).transit_time_ms)
+	if state.shipments.size() > shipment_count:
+		_push_arrival(events, end_ms, state, state.shipments[-1])
+	_push_automatic_start(events, end_ms, state, index)
 
 
 # --- Queries ------------------------------------------------------------------
@@ -1298,37 +1392,22 @@ func _source_count(state: LinkState) -> int:
 	return _factory_state(state.source_factory_id).output_bay_count
 
 
-## Delivers every shipment that has arrived by now: a market sells it, a mixed
-## factory puts it into the input bay of its color, a warehouse holds it, and a
-## lab consumes it to pay for the selected research. Arrivals happen in
-## arrival order (then start order), so one long tick adds money in the same
-## order as many short ticks. BigNumber sums are float sums, so the order
-## matters.
-func _deliver_arrived_shipments() -> void:
-	var arrived: Array[Dictionary] = []
-	for state in _links:
-		var in_transit: Array[ShipmentState] = []
-		for shipment in state.shipments:
-			if shipment.arrives_at_ms <= _time_ms:
-				arrived.append({"link": state, "shipment": shipment})
-			else:
-				in_transit.append(shipment)
-		state.shipments = in_transit
-	arrived.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return a.shipment.arrives_before(b.shipment))
-	for entry in arrived:
-		var state: LinkState = entry.link
-		match state.destination_kind:
-			LinkView.Destination.FACTORY:
-				_factory_state(state.destination_factory_id).deliver(state.color, entry.shipment.count,
-					_content.factory_balance)
-			LinkView.Destination.WAREHOUSE:
-				_warehouse_state(state.destination_warehouse_id).deliver(entry.shipment.count,
-					_content.warehouse_balance.space)
-			LinkView.Destination.LAB:
-				_research.deliver(state.color, entry.shipment.count, _content)
-			_:
-				_sell(state, entry.shipment)
+## Delivers [param shipment] of [param state], which arrives now: a market
+## sells it, a mixed factory puts it into the input bay of its color, a
+## warehouse holds it, and a lab consumes it to pay for the selected research.
+func _deliver(state: LinkState, shipment: ShipmentState) -> void:
+	state.shipments.erase(shipment)
+	match state.destination_kind:
+		LinkView.Destination.FACTORY:
+			_factory_state(state.destination_factory_id).deliver(state.color, shipment.count,
+				_content.factory_balance)
+		LinkView.Destination.WAREHOUSE:
+			_warehouse_state(state.destination_warehouse_id).deliver(shipment.count,
+				_content.warehouse_balance.space)
+		LinkView.Destination.LAB:
+			_research.deliver(state.color, shipment.count, _content)
+		_:
+			_sell(state, shipment)
 
 
 ## The market at the end of [param state] buys [param shipment] at its price
@@ -1342,7 +1421,11 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 	var at_ms := shipment.arrives_at_ms
 	var def := _content.market(market_id)
 	var price := _price(def, state.color, _demand.demand(market_id, state.color, at_ms, _content.demand_balance))
-	_money = _money.add(price.mul(BigNumber.from_int(shipment.count)))
+	var earned := price.mul(BigNumber.from_int(shipment.count))
+	_money = _money.add(earned)
+	if _offline_tally != null:
+		_offline_tally.money_earned = _offline_tally.money_earned.add(earned)
+		_offline_tally.widgets_sold += shipment.count
 	_demand.record_sale(market_id, state.color, shipment.count, at_ms, _content.demand_balance)
 	_markets[market_id].record_sale(shipment.count, at_ms, _content.market_balance)
 
@@ -1362,11 +1445,27 @@ func _prism_price() -> BigNumber:
 	return _content.prism_balance.price(_prisms_bought)
 
 
+## The factory with [param id], or null, with its widgets made up to now.
+## Inside a tick, a factory makes widgets only when an event uses it, and the
+## events use it through this function. Its production is exact for any
+## duration, so this gives the same state as advancing every factory at each
+## event, at a cost for each event that does not grow with the factory count.
+## Rules that read or change a factory inside a tick must get it here.
 func _factory_state(id: int) -> FactoryState:
-	for state in _factories:
-		if state.id == id:
-			return state
-	return null
+	var state: FactoryState = _factories_by_id.get(id)
+	if state != null:
+		_sync(state)
+	return state
+
+
+## Makes widgets in [param state] up to now.
+func _sync(state: FactoryState) -> void:
+	if state.synced_ms == _time_ms:
+		return
+	var made := state.advance(_time_ms - state.synced_ms, _content.factory_balance)
+	state.synced_ms = _time_ms
+	if _offline_tally != null:
+		_offline_tally.widgets_made += made
 
 
 func _warehouse_state(id: int) -> WarehouseState:

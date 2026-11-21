@@ -1,6 +1,6 @@
 # The save is versioned JSON of the snapshot, with strict loads and migrations
 
-The save is JSON: `{"format": "incremental-rainbow-save", "version": N, "state": ...}`. The state is `Simulation.snapshot()`. `SaveCodec` (in `src/core/save/`) writes and reads the save. `SaveFile` (in `src/platform/`) keeps it in `user://save.json`.
+The save is JSON: `{"format": "incremental-rainbow-save", "version": N, "saved_at_unix_ms": T, "state": ...}`. The state is `Simulation.snapshot()`. The save time T (from version 13, #22) is the device clock time that the state is for. It gives the time away for offline progress. It is beside the state, not in it, because the core has no clock. Migrations change only the state, so the load reads T only from a save of version 13 or later, and an older save has no time away. `SaveCodec` (in `src/core/save/`) writes and reads the save. `SaveFile` (in `src/platform/`) keeps it in `user://save.json`.
 
 We chose JSON, as for content (ADR-0007). It is engine-neutral, and it is easy to read when a player reports a bad save. It is also safe to parse from an untrusted export code later. We rejected `var_to_str` and `var_to_bytes`, because they tie the format to Godot's Variant encoding, and `str_to_var` can make objects. JSON has one number type, so whole numbers are exact only up to 2^53. The load rejects a number that is not whole and exact.
 

@@ -41,6 +41,10 @@ var starting_money: BigNumber:
 var automatic_transport_cost: BigNumber:
 	get:
 		return _automatic_transport_cost
+## The most time away that offline progress applies, in milliseconds.
+var max_offline_ms: int:
+	get:
+		return _max_offline_ms
 var prism_balance: PrismBalance:
 	get:
 		return _prism_balance
@@ -61,6 +65,7 @@ var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
 var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0, 1, 1)
 var _starting_money := BigNumber.ZERO
+var _max_offline_ms := 0
 var _automatic_transport_cost := BigNumber.ZERO
 var _prism_balance := PrismBalance.new(BigNumber.from_int(1), 2.0)
 var _market_balance := MarketBalance.new(1, 1.0, 1.0, BigNumber.ZERO, 1.0, 1, 1)
@@ -260,6 +265,11 @@ func _parse_balance(data: Dictionary) -> void:
 	_parse_prism_balance(data.get("prism", {}))
 	_parse_market_balance(data.get("market", {}))
 	_parse_warehouse_balance(data.get("warehouse", {}))
+	var offline: Variant = data.get("offline", {})
+	if offline is Dictionary:
+		_max_offline_ms = _read_positive_int(offline, "max_time_away_ms", "offline")
+	else:
+		_errors.append("balance.json: \"offline\" must be an object")
 	var factory: Variant = data.get("factory", {})
 	if not factory is Dictionary:
 		_errors.append("balance.json: \"factory\" must be an object")
