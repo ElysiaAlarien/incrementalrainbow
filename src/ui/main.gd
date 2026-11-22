@@ -703,8 +703,7 @@ func _refresh_links() -> void:
 
 ## The market section: the forecast, and the stats, prices, demand, and
 ## forecast of the market that the picker shows. When [param all_rows] is
-## true, it shows the rows of all markets, and adds a row and a picker item
-## for each new market.
+## true, it also adds a row and a picker item for each new market.
 func _refresh_markets(all_rows: bool) -> void:
 	_markets_shown_at_ms = _sim.time_ms()
 	var forecast := _sim.forecast(_sim.forecast_horizon_ms())
@@ -728,7 +727,10 @@ func _show_market_row(view: MarketView, forecast: ForecastView) -> void:
 		_market_list.add_child(market_row)
 		_market_picker.add_item(view.name)
 		_market_picker.set_item_metadata(_market_picker.item_count - 1, view.id)
-	market_row.show_state(view, _needed_tier_plural(view), forecast)
+	# Only the row that the picker shows is on the screen. The others show
+	# their state when the player picks them.
+	if view.id == _shown_market:
+		market_row.show_state(view, _needed_tier_plural(view), forecast)
 
 
 ## Shows the row of the market [param id] and hides the others.

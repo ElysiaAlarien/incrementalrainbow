@@ -113,7 +113,8 @@ func _price_cell(color: ColorDef) -> HBoxContainer:
 	return item
 
 
-## Shows [param view] and the demand in [param forecast]. [param needed_tier_plural]
+## Shows [param view] and the demand in [param forecast]. The prices show only
+## while the row is on the screen. [param needed_tier_plural]
 ## is the plural name of the transport tier that the market needs, such as
 ## "Trucks", or "" when no tier reaches it.
 func show_state(view: MarketView, needed_tier_plural: String, forecast: ForecastView) -> void:
@@ -134,6 +135,11 @@ func show_state(view: MarketView, needed_tier_plural: String, forecast: Forecast
 		_invest_buttons[goal].text = "%s (%s)" % [
 			"Grow population" if goal == MarketView.Investment.POPULATION else "Grow income",
 			view.investment_cost(goal).format()]
+	# The prices are most of the labels of the market section, so a row
+	# shows them only while it is on the screen. The screen shows the row
+	# again when it opens it.
+	if not is_visible_in_tree():
+		return
 	for color_id in _price_labels:
 		_price_labels[color_id].text = view.price(color_id).format()
 		_demand_labels[color_id].text = format_demand(view.demand(color_id))

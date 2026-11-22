@@ -44,6 +44,18 @@ func _show(main: Control, id: StringName) -> void:
 	await wait_process_frames(1)
 
 
+## Opens the markets section and picks the market [param id], as the player
+## does. Only the picked market shows its state. Returns its row.
+func _pick_market(main: Control, id: StringName) -> MarketRow:
+	main.show_section(&"markets")
+	var picker: OptionButton = main.find_child("MarketPicker", true, false)
+	for i in picker.item_count:
+		if picker.get_item_metadata(i) == id:
+			picker.select(i)
+			picker.item_selected.emit(i)
+	return main.find_child("Market_%s" % id, true, false)
+
+
 func _rows(main: Control) -> Array[Node]:
 	return main.find_children("Factory*", "FactoryRow", true, false)
 
@@ -374,6 +386,7 @@ func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -
 	# No frame ticks, so that the game time stays at the time of the screen.
 	# A command shows the market section at once.
 	main.set_process(false)
+	main.show_section(&"markets")
 	main.find_child("Build_red", true, false).pressed.emit()
 	var sim: Simulation = main.simulation()
 	var rows := main.find_children("Market_*", "MarketRow", true, false)
@@ -994,7 +1007,8 @@ func test_the_screen_shows_each_market_remoteness_and_the_tier_it_needs() -> voi
 	var sim: Simulation = main.simulation()
 	var content := Content.load_dir(Content.DEFAULT_DIR)
 
-	for row: MarketRow in main.find_children("Market_*", "MarketRow", true, false):
+	for found: MarketRow in main.find_children("Market_*", "MarketRow", true, false):
+		var row := _pick_market(main, found.market_id)
 		var view := sim.market(row.market_id)
 		var text := row.reach_label_text()
 		assert_string_contains(text, "Remoteness %d" % view.remoteness)
@@ -1021,7 +1035,7 @@ func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> vo
 	assert_gt(generated.size(), 0, "the tier before the portal shows closed generated markets")
 	for view: MarketView in generated:
 		assert_eq(view.needed_tier, &"portal")
-		var row: MarketRow = main.find_child("Market_%s" % view.id, true, false)
+		var row := _pick_market(main, view.id)
 		assert_eq(row.reach_label_text(), "Remoteness %d, needs portals" % view.remoteness)
 	var destinations: OptionButton = main.find_child("NewLinkDestination", true, false)
 	var first: MarketView = generated[0]
@@ -1040,7 +1054,7 @@ func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> vo
 	assert_eq(label.text, "Transport tier: Portal, reaches any distance")
 	assert_eq(button.text, "Highest tier")
 	assert_true(button.disabled)
-	var first_row: MarketRow = main.find_child("Market_%s" % first.id, true, false)
+	var first_row := _pick_market(main, first.id)
 	assert_eq(first_row.reach_label_text(), "Remoteness %d, open to portals" % first.remoteness)
 	item = range(destinations.item_count).filter(func(i: int) -> bool:
 		return destinations.get_item_metadata(i) == [&"market", first.id])
@@ -1084,8 +1098,9 @@ func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
 
 	assert_eq(sim.transport_tier().id, &"truck")
 	assert_eq(label.text, "Transport tier: Truck, reaches remoteness 2")
-	var brightwater: MarketRow = main.find_child("Market_brightwater", true, false)
+	var brightwater := _pick_market(main, &"brightwater")
 	assert_eq(brightwater.reach_label_text(), "Remoteness 2, open to trucks")
+	await _show(main, &"links")
 	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
 	assert_string_contains(row.text(), "Vehicle: Cart")
 	var truck := sim.transport_tier()
