@@ -16,6 +16,10 @@ enum Automatic {
 	## The last automatic start sent nothing, because the player had less
 	## money than the shipment costs.
 	NOT_ENOUGH_MONEY,
+	## The last automatic start sent nothing, because the link goes from a
+	## warehouse to a market whose demand was below the warehouse's sell
+	## threshold.
+	HELD,
 }
 
 ## What kind of place a link goes to.

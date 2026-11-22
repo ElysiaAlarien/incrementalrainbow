@@ -1,8 +1,8 @@
 extends Control
 ## The first screen: money, prisms, each color with its recipe and a button to
 ## build it, factories with their production lines, output bays, and input
-## bays, warehouses with their widgets and throughput, the transport tier with
-## a button to buy the next one, links from factories and warehouses to
+## bays, warehouses with their widgets, throughput, and sell thresholds, the
+## transport tier with a button to buy the next one, links from factories and warehouses to
 ## markets, mixed factories, warehouses, and labs, with their vehicles, manual
 ## shipments, automatic transport, and throughput, labs and research with its
 ## progress and unlocks, the split of each source with automatic links, the
@@ -430,6 +430,14 @@ func _on_clear_split_pressed(link_id: int) -> void:
 	_show_result(_sim.clear_split(link_id))
 
 
+func _on_set_sell_threshold_pressed(warehouse_id: int, percent: int) -> void:
+	_show_result(_sim.set_sell_threshold(warehouse_id, percent))
+
+
+func _on_clear_sell_threshold_pressed(warehouse_id: int) -> void:
+	_show_result(_sim.clear_sell_threshold(warehouse_id))
+
+
 func _show_result(result: CommandResult) -> void:
 	_show_message("" if result.ok else result.message)
 	_refresh()
@@ -543,9 +551,14 @@ func _refresh_warehouses() -> void:
 		var row: WarehouseRow = _warehouse_rows.get(view.id)
 		if row == null:
 			row = WarehouseRow.new(view.id, _content.color(view.color))
+			row.set_threshold_pressed.connect(_on_set_sell_threshold_pressed)
+			row.clear_threshold_pressed.connect(_on_clear_sell_threshold_pressed)
 			_warehouse_rows[view.id] = row
 			_warehouse_list.add_child(row)
-		row.show_state(view)
+		var held_names := PackedStringArray()
+		for market_id in view.held_market_ids:
+			held_names.append(_content.market(market_id).name)
+		row.show_state(view, held_names)
 	_warehouses_empty_label.visible = _warehouse_rows.is_empty()
 
 

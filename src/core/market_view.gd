@@ -53,6 +53,12 @@ var demands: Dictionary[StringName, float] = {}
 var prices: Dictionary[StringName, BigNumber] = {}
 
 
+## [param demand] as a whole percent of normal demand, rounded, such as 87.
+## The screen shows demand this way, and a sell threshold compares it.
+static func demand_percent(demand: float) -> int:
+	return roundi(demand * 100.0)
+
+
 ## The demand of [param color] now, or NAN for an unknown color.
 func demand(color: StringName) -> float:
 	return demands.get(color, NAN)

@@ -732,12 +732,50 @@ func clear_split(link_id: int) -> CommandResult:
 	return CommandResult.success()
 
 
+## Sets the sell threshold of the warehouse [param warehouse_id] to
+## [param percent], a whole percent of normal demand of at least 1 (100 is
+## normal demand; see [method MarketView.demand_percent]). From now on, while the demand
+## for the warehouse's color in a market is below the threshold, the automatic
+## starts of the links from the warehouse to that market send nothing. When
+## demand goes up to the threshold or above, the next automatic start sends
+## widgets again. Links to factories and labs do not hold, and a shipment by
+## hand is outside the hold (ADR-0016).
+func set_sell_threshold(warehouse_id: int, percent: int) -> CommandResult:
+	var state := _warehouse_state(warehouse_id)
+	if state == null:
+		return _unknown_warehouse(warehouse_id)
+	if percent < 1:
+		return CommandResult.failure(CommandResult.Reason.BAD_SELL_THRESHOLD,
+			"A sell threshold must be a whole percentage of at least 1%%, but it is %d%%." % percent)
+
+	state.sell_threshold = percent
+	return CommandResult.success()
+
+
+## Removes the sell threshold of the warehouse [param warehouse_id]. Then its
+## links send at any demand.
+func clear_sell_threshold(warehouse_id: int) -> CommandResult:
+	var state := _warehouse_state(warehouse_id)
+	if state == null:
+		return _unknown_warehouse(warehouse_id)
+	if state.sell_threshold == WarehouseView.NO_SELL_THRESHOLD:
+		return CommandResult.failure(CommandResult.Reason.NO_SELL_THRESHOLD,
+			"%s has no sell threshold." % _warehouse_name(state))
+
+	state.sell_threshold = WarehouseView.NO_SELL_THRESHOLD
+	return CommandResult.success()
+
+
 ## Starts a shipment on [param state] if the rules allow it, for
 ## [method start_shipment] and, when [param automatic] is true, for automatic
-## starts. Only automatic starts follow the split. The failure of an
+## starts. Only automatic starts follow the split and the sell threshold. A
+## held start ships nothing, so a held link of a split keeps its share
+## (ADR-0013). The failure of an
 ## automatic start has no message, because no one sees it and a message costs
 ## time in offline progress.
 func _start_shipment(state: LinkState, automatic: bool) -> CommandResult:
+	if automatic and _is_held(state):
+		return CommandResult.failure(CommandResult.Reason.HELD, "")
 	var available := _source_count(state)
 	var allowed := _split_allowance(state, available) if automatic else available
 	var count := _accepted_count(state, allowed)
@@ -1416,6 +1454,22 @@ func _widgets_in_transit_to_labs(color: StringName) -> int:
 	return count
 
 
+## The sell threshold rule, in one place: true when [param state] is an
+## automatic link from a warehouse with a sell threshold to a market, and the
+## demand for its color there now, as a whole percent, is below the threshold.
+## The percent is rounded as the screen shows it, so the player sees the hold
+## start and end at the number they set. A manual link never holds.
+func _is_held(state: LinkState) -> bool:
+	if state.source_kind != LinkView.Source.WAREHOUSE or state.destination_kind != LinkView.Destination.MARKET \
+			or not state.is_automatic():
+		return false
+	var threshold := _warehouse_state(state.source_warehouse_id).sell_threshold
+	if threshold == WarehouseView.NO_SELL_THRESHOLD:
+		return false
+	var demand := _demand.demand(state.destination_market_id, state.color, _time_ms, _content.demand_balance)
+	return MarketView.demand_percent(demand) < threshold
+
+
 ## Widgets that the source of [param state] has to ship now.
 func _source_count(state: LinkState) -> int:
 	if state.source_kind == LinkView.Source.WAREHOUSE:
@@ -1578,6 +1632,8 @@ func _warehouse_view(state: WarehouseState) -> WarehouseView:
 			view.inflow_per_minute += link_state.widgets_per_minute(_time_ms)
 		elif link_state.comes_from_warehouse(state.id):
 			view.outflow_per_minute += link_state.widgets_per_minute(_time_ms)
+			if _is_held(link_state):
+				view.held_market_ids.append(link_state.destination_market_id)
 	return view
 
 

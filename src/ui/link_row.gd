@@ -17,6 +17,8 @@ const MUTED_COLOR := Color(0.7, 0.72, 0.8)
 const AUTOMATIC_COLOR := Color(0.6, 0.85, 0.6)
 const BLOCKED_COLOR := Color(1.0, 0.55, 0.45)
 const UPGRADE_COLOR := Color(0.98, 0.85, 0.45)
+## For a link that its warehouse holds, here and in [WarehouseRow].
+const HELD_COLOR := Color(0.98, 0.85, 0.45)
 
 var link_id: int
 
@@ -183,6 +185,8 @@ static func transport_text(view: LinkView) -> String:
 			return "Automatic: nothing to ship, next try in %s" % next
 		LinkView.Automatic.NOT_ENOUGH_MONEY:
 			return "Automatic: not enough money, next try in %s" % next
+		LinkView.Automatic.HELD:
+			return "Automatic: held by the sell threshold, next try in %s" % next
 	return ""
 
 
@@ -192,6 +196,8 @@ static func _transport_color(automatic: LinkView.Automatic) -> Color:
 			return MUTED_COLOR
 		LinkView.Automatic.NOT_ENOUGH_MONEY:
 			return BLOCKED_COLOR
+		LinkView.Automatic.HELD:
+			return HELD_COLOR
 	return AUTOMATIC_COLOR
 
 

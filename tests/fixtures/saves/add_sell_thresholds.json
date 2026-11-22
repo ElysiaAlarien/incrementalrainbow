@@ -1,0 +1,127 @@
+{
+	"applied": [
+		"add_links",
+		"add_automatic_transport",
+		"add_demand",
+		"add_prisms",
+		"add_mixed_factories",
+		"add_demand_events",
+		"add_markets",
+		"add_warehouses",
+		"add_transport_tier",
+		"add_research",
+		"add_splits",
+		"add_save_time",
+		"add_sell_thresholds"
+	],
+	"format": "incremental-rainbow-save",
+	"saved_at_unix_ms": 1795000000000,
+	"state": {
+		"completed_research": [],
+		"demand_events": [
+			{
+				"ends_at_ms": 38301,
+				"event_id": "yellow_crash",
+				"started_at_ms": 8301
+			}
+		],
+		"drift_key": 637689016,
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			}
+		],
+		"lab_stock": [],
+		"labs": [],
+		"links": [
+			{
+				"automatic_status": "manual",
+				"color": "red",
+				"destination_kind": "warehouse",
+				"destination_warehouse_id": 1,
+				"id": 1,
+				"next_automatic_ms": 0,
+				"recent_starts": [
+					{
+						"count": 6,
+						"started_at_ms": 5000
+					}
+				],
+				"shipments": [],
+				"source_factory_id": 1,
+				"source_kind": "factory",
+				"split_percent": -1,
+				"split_shipped": 0,
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "held",
+				"color": "red",
+				"destination_kind": "market",
+				"destination_market_id": "millbrook",
+				"id": 2,
+				"next_automatic_ms": 15000,
+				"recent_starts": [],
+				"shipments": [],
+				"source_kind": "warehouse",
+				"source_warehouse_id": 1,
+				"split_percent": -1,
+				"split_shipped": 0,
+				"vehicle": "cart"
+			}
+		],
+		"markets": [
+			{
+				"capacity_used": 0,
+				"id": "millbrook",
+				"income": 100,
+				"income_investments": 0,
+				"population": 1000,
+				"population_investments": 0
+			}
+		],
+		"money": [
+			8.0,
+			0
+		],
+		"next_demand_event_ms": 18287,
+		"next_factory_id": 2,
+		"next_lab_id": 1,
+		"next_link_id": 3,
+		"next_shipment_id": 2,
+		"next_warehouse_id": 3,
+		"prisms": 0,
+		"prisms_bought": 0,
+		"research_progress": [],
+		"rng": [
+			3515608954,
+			4109458821,
+			3583503179,
+			1420239218
+		],
+		"saturation": [],
+		"selected_research": "",
+		"time_ms": 10001,
+		"transport_tier": "cart",
+		"warehouses": [
+			{
+				"color": "red",
+				"count": 6,
+				"id": 1,
+				"sell_threshold": 150
+			},
+			{
+				"color": "red",
+				"count": 0,
+				"id": 2,
+				"sell_threshold": 80
+			}
+		]
+	},
+	"version": 14
+}
