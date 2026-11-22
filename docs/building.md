@@ -49,11 +49,11 @@ You can also export from the editor: **Project > Export**, select the preset, th
 tools/start_check.sh build/linux/IncrementalRainbow.x86_64
 ```
 
-On Windows, run it in Git Bash. On macOS, unzip the build, then give the path of the executable in the app: `"build/macos/Incremental Rainbow.app/Contents/MacOS/Incremental Rainbow"`. If you copied an ad-hoc signed build from another computer, macOS can block it. Then remove the quarantine flag first: `xattr -dr com.apple.quarantine "build/macos/Incremental Rainbow.app"`.
+On Windows, run it in Git Bash. On macOS, unzip the build, then give the path of the executable in the app: `"build/macos/Incremental Rainbow.app/Contents/MacOS/Incremental Rainbow"`. If macOS blocks an ad-hoc signed build that you copied from another computer, remove the quarantine flag: `xattr -dr com.apple.quarantine "build/macos/Incremental Rainbow.app"`.
 
 ## The builds in CI
 
-The **Builds** workflow (`.github/workflows/builds.yml`) is apart from the **CI** workflow, so that "Import and test" stays fast. It runs on each pull request and each push to `main`, because a change to `src/`, `data/`, or `addons/` can break an exported build when the tests still pass. To run it at other times, go to **Actions > Builds > Run workflow**.
+The **Builds** workflow (`.github/workflows/builds.yml`) is apart from the **CI** workflow, so that "Import and test" stays fast. It runs on each pull request and each push to `main` that changes more than the docs. A change to `src/` or `data/`, or a new addon, can break an exported build when the tests still pass. To run it at other times, go to **Actions > Builds > Run workflow**.
 
 It does these steps:
 
@@ -116,13 +116,13 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
    1. Download the Steamworks SDK from the Steamworks partner site. Use `sdk/tools/ContentBuilder/builder_linux/steamcmd.sh` (or `builder/steamcmd.exe` on Windows, `builder_osx/steamcmd.sh` on macOS).
    2. In the Steamworks app admin, make one depot for each operating system, and set the operating system of each depot. Set a launch option for each: `IncrementalRainbow.x86_64` for Linux, `IncrementalRainbow.exe` for Windows, and `Incremental Rainbow.app` for macOS.
    3. Put the builds in a content folder, one folder for each depot. Unzip the macOS build there, so that the folder has `Incremental Rainbow.app`.
-   4. Write an app build script, `app_build.vdf`, next to the content folder. Change `<APP_ID>` and the depot ids to yours.
+   4. Write an app build script, `app_build.vdf`, next to the content folder. Change `<APP_ID>` and the depot ids to yours, and `<VERSION>` to `application/config/version`.
 
       ```text
       "AppBuild"
       {
       	"AppID" "<APP_ID>"
-      	"Desc" "Incremental Rainbow 1.0.0"
+      	"Desc" "Incremental Rainbow <VERSION>"
       	"ContentRoot" "./content/"
       	"BuildOutput" "./output/"
       	"Depots"
@@ -135,8 +135,8 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
       ```
 
    5. Upload: `steamcmd.sh +login <your Steam build account> +run_app_build "$PWD/app_build.vdf" +quit`. Use a Steam account that has only the rights to upload builds. Steam Guard asks for a code at the first login.
-   7. In the Steamworks app admin, go to **SteamPipe > Builds**, and set the new build live on a beta branch first. Install it from that branch with the Steam client on each operating system, and do the checks in [Before each release](#before-each-release). Then set it live on the default branch.
-   8. In the store page setup, add no DLC and no in-game purchases.
+   6. In the Steamworks app admin, go to **SteamPipe > Builds**, and set the new build live on a beta branch first. Install it from that branch with the Steam client on each operating system, and do the checks in [Before each release](#before-each-release). Then set it live on the default branch.
+   7. In the store page setup, add no DLC and no in-game purchases.
 
 ### Android on Google Play
 
@@ -148,13 +148,13 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
    ```
 
 3. Set the Android release variables in [Secrets](#secrets) to the keystore path, the alias, and the password.
-4. Google Play wants an Android App Bundle (`.aab`). Godot makes an `.aab` only with a Gradle build:
+4. Make a debug APK with `tools/build.sh --debug Android`. Install it on a device with `adb install build/android/IncrementalRainbow.apk`, and play the game for some minutes.
+5. Google Play wants an Android App Bundle (`.aab`). Godot makes an `.aab` only with a Gradle build:
    1. In the editor, use **Project > Install Android Build Template**. This makes `android/`, which git ignores.
    2. In the Android preset, set `gradle_build/use_gradle_build=true`.
    3. Set `gradle_build/export_format=1` (AAB).
    4. Change `export_path` to end in `.aab`.
    5. CI checks the permissions only in the debug APK. Before each upload, check the permissions of the AAB in the Play Console (**App bundle explorer**).
-5. Before you change to an AAB, make a debug APK with `tools/build.sh --debug Android`. Install it on a device with `adb install build/android/IncrementalRainbow.apk`, and play the game for some minutes.
 6. Make the release AAB with `tools/build.sh Android`.
 7. Upload the `.aab` in the Play Console. Use Play App Signing. In the store listing, set "Contains ads" to **No**, and add no in-app products.
 
@@ -162,19 +162,19 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
 
 1. Join the Apple Developer Program, and register the bundle id.
 2. Set `application/app_store_team_id` in the iOS preset to your team id (10 characters). A team id is not a secret.
-3. On a Mac with Xcode, make the build with `tools/build.sh iOS`. Godot makes the Xcode project and the `.ipa`. For an App Store build, the preset uses export method 0 (App Store) for a release build.
-4. Set the provisioning profile variables in [Secrets](#secrets), or let Xcode manage the signing.
-5. Install the debug build on a device from Xcode, and play the game for some minutes.
+3. Set the provisioning profile variables in [Secrets](#secrets), or let Xcode manage the signing.
+4. On a Mac with Xcode, make a debug build with `tools/build.sh --debug iOS`. The preset uses export method 1 (Development) for a debug build. Connect a device, register it in your Apple developer account, then install `build/ios/IncrementalRainbow.ipa` from the Xcode **Devices and Simulators** window. Play the game for some minutes.
+5. Make the release build with `tools/build.sh iOS`. Godot makes the Xcode project and the `.ipa`. The preset uses export method 0 (App Store) for a release build.
 6. Upload the `.ipa` with Xcode or Transporter. In App Store Connect, add no in-app purchases.
 
 ## Before each release
 
-CI starts the desktop builds headless only. Before each release, do these checks by hand on each platform, with the build that you will upload:
+Before each release, do these checks by hand on each platform, with the build that you will upload:
 
 1. Start the game on a clean install, with no save. The guided start shows.
 2. Play for some minutes: build a factory, sell widgets, and close the game.
-3. Wait some minutes, then start the game again. The game loads the save, and shows what happened while you were away.
-4. Look for an ad, a store, a purchase button, or a request for a permission. There must be none.
+3. Wait some minutes, then start the game again. The game loads the save, applies the offline progress, and shows a summary of the time away.
+4. Look for an ad, a shop, a purchase button, or a request for a permission. There must be none.
 
 | Platform | Where | How to get the build there |
 | --- | --- | --- |

@@ -1,16 +1,18 @@
 name: Builds
 
 # Exports the builds that need no signing, and starts the desktop builds.
-# See docs/building.md. This workflow is apart from CI, so that "Import and
-# test" stays fast. It runs on each pull request and each push to main,
-# because a change to src/, data/, or addons/ can break an exported build
-# when the tests still pass. To run it at other times, use
-# Actions > Builds > Run workflow.
+# See docs/building.md for why it runs on each change.
 on:
   workflow_dispatch:
   pull_request:
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
   push:
     branches: [main]
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
 
 concurrency:
   group: builds-${{ github.ref }}
