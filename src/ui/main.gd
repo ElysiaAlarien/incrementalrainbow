@@ -509,15 +509,15 @@ func _refresh() -> void:
 			_market_list.add_child(market_row)
 		market_row.show_state(view, _needed_tier_plural(view), forecast)
 
+	for view in _sim.prestige_upgrades():
+		_prestige_upgrade_rows[view.id].show_state(view)
+
 
 ## The plural name of the transport tier that [param view] needs, such as
 ## "Trucks", or "" when no tier reaches it.
 func _needed_tier_plural(view: MarketView) -> String:
 	var tier := _content.transport_tier(view.needed_tier)
 	return "" if tier == null else tier.plural_name
-
-	for view in _sim.prestige_upgrades():
-		_prestige_upgrade_rows[view.id].show_state(view)
 
 
 func _refresh_research() -> void:
