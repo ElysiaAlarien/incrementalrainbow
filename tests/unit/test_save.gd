@@ -1064,11 +1064,8 @@ static func _drop_comment(state: Dictionary) -> Dictionary:
 
 ## The real migrations and the two test migrations, which run last.
 func _with_test_migrations() -> SaveMigrations:
-	var list: Array[SaveMigration] = SaveMigrations.found().missing([])
-	var last := SaveCodec.NUMBERED_MIGRATIONS[-1]
-	list.append(MigrationFixture.new(&"rename_clock", _rename_clock, [last] as Array[StringName]))
-	list.append(MigrationFixture.new(&"drop_comment", _drop_comment, [last] as Array[StringName]))
-	return SaveMigrations.new(list)
+	return MigrationFixture.after_the_game([MigrationFixture.new(&"rename_clock", _rename_clock),
+		MigrationFixture.new(&"drop_comment", _drop_comment)])
 
 
 func _save_with(applied: Array[StringName], state: Dictionary) -> String:
@@ -1120,11 +1117,9 @@ func test_the_save_lists_the_migrations_that_the_game_has() -> void:
 
 func test_a_migration_that_gives_damaged_state_fails() -> void:
 	var state: Dictionary = _save_data().state
-	var list: Array[SaveMigration] = SaveMigrations.found().missing([])
-	list.append(MigrationFixture.new(&"rename_clock", _rename_clock,
-		[SaveCodec.NUMBERED_MIGRATIONS[-1]] as Array[StringName]))
+	var migrations := MigrationFixture.after_the_game([MigrationFixture.new(&"rename_clock", _rename_clock)])
 
-	var result := _load(_save_with(SaveMigrations.found().names(), state), SaveMigrations.new(list))
+	var result := _load(_save_with(SaveMigrations.found().names(), state), migrations)
 
 	assert_false(result.ok)
 	assert_true(result.migrated)

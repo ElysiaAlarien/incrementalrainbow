@@ -22,6 +22,14 @@ func apply(state: Dictionary) -> Dictionary:
 	return _apply.call(state)
 
 
-## The migrations of [param list], for [method SaveCodec.decode].
-static func set_of(list: Array[SaveMigration]) -> SaveMigrations:
+## The migrations of the game and [param later]. Each one of [param later]
+## that needs nothing gets the need of a later migration of the game: the last
+## numbered migration.
+static func after_the_game(later: Array[SaveMigration]) -> SaveMigrations:
+	var last: Array[StringName] = [SaveCodec.NUMBERED_MIGRATIONS[-1]]
+	var list := SaveMigrations.found().all()
+	for migration in later:
+		if migration is MigrationFixture and migration.needs().is_empty():
+			(migration as MigrationFixture)._needs = last
+		list.append(migration)
 	return SaveMigrations.new(list)

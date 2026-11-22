@@ -142,7 +142,7 @@ func _independent_pairs(migrations: SaveMigrations) -> Array[Array]:
 
 
 func _migration(migrations: SaveMigrations, migration_name: StringName) -> SaveMigration:
-	for migration in migrations.missing([]):
+	for migration in migrations.all():
 		if migration.name == migration_name:
 			return migration
 	return null

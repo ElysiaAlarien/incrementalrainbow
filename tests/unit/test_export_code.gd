@@ -223,10 +223,7 @@ static func _lose_time(state: Dictionary) -> Dictionary:
 ## The real migrations and [param apply] as a migration named "rename_clock",
 ## which runs last.
 func _with_rename_clock(apply: Callable) -> SaveMigrations:
-	var list: Array[SaveMigration] = SaveMigrations.found().missing([])
-	list.append(MigrationFixture.new(&"rename_clock", apply,
-		[SaveCodec.NUMBERED_MIGRATIONS[-1]] as Array[StringName]))
-	return SaveMigrations.new(list)
+	return MigrationFixture.after_the_game([MigrationFixture.new(&"rename_clock", apply)])
 
 
 ## The code of a save from before "rename_clock", in which time is named

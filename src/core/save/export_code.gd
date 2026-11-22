@@ -7,9 +7,9 @@ extends RefCounted
 ## with a version and a checksum:
 ## [code]IR<version>.<base64 of the deflated save text>.<checksum>[/code].
 ## The version is the save format version, [constant SaveCodec.VERSION]. The
-## checksum is the first
-## [constant CHECKSUM_LENGTH] hex digits of the SHA-256 of all the text before
-## the last dot, so a code that a typo or a cut damages fails before it loads.
+## checksum is the first [constant CHECKSUM_LENGTH] hex digits of the SHA-256
+## of all the text before the last dot, so a code that a typo or a cut damages
+## fails before it loads.
 ##
 ## An import makes a new [Simulation] through [method SaveCodec.decode], with
 ## the same migrations as a save on the device, and never changes the current
@@ -31,8 +31,9 @@ static func encode(sim: Simulation, saved_at_unix_ms: int) -> String:
 	return from_save(SaveCodec.encode(sim, saved_at_unix_ms), SaveCodec.VERSION)
 
 
-## The export code of [param save_text], a save of version [param version]. [method encode] is the entry point for the game; this
-## one is for tests that need a code of another version.
+## The export code of [param save_text], a save of version [param version].
+## [method encode] is the entry point for the game; this one is for tests that
+## need a code of another version.
 static func from_save(save_text: String, version: int) -> String:
 	var compressed := save_text.to_utf8_buffer().compress(FileAccess.COMPRESSION_DEFLATE)
 	var body := "%s%d%s%s" % [PREFIX, version, SEPARATOR, Marshalls.raw_to_base64(compressed)]

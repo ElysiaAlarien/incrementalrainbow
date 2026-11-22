@@ -3,9 +3,10 @@ extends RefCounted
 ## The migrations that the game knows, and the order to run them. See ADR-0014.
 ##
 ## [method found] reads each script in [constant FOLDER], so a new migration is
-## a new file and no shared list changes. The run order respects
-## [method SaveMigration.needs]. Between migrations that do not need each other,
-## the order is by name, so a load always runs the same steps in the same order.
+## a new file and no shared list changes. In the run order, each migration
+## comes after the migrations in its [method SaveMigration.needs]. Between
+## migrations that do not need each other, the order is by name. Each load runs
+## the same migrations in the same order.
 
 const FOLDER := "res://src/core/save/migrations/"
 
@@ -85,6 +86,11 @@ func all_needs(migration_name: StringName) -> Array[StringName]:
 				found.append(need)
 				to_visit.append(need)
 	return found
+
+
+## All the migrations, in run order.
+func all() -> Array[SaveMigration]:
+	return missing([])
 
 
 ## The migrations that are not in [param applied], in run order.
