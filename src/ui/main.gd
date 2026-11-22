@@ -536,7 +536,8 @@ func _refresh_research() -> void:
 
 func _refresh_transport() -> void:
 	var tier := _sim.transport_tier()
-	_transport_label.text = "Transport tier: %s, reaches remoteness %d" % [tier.name, tier.max_remoteness]
+	_transport_label.text = "Transport tier: %s, reaches %s" % [tier.name,
+		"any distance" if tier.reaches_any_distance else "remoteness %d" % tier.max_remoteness]
 	var next := _sim.next_transport_tier()
 	_buy_transport_tier_button.disabled = next == null
 	_buy_transport_tier_button.text = "Highest tier" if next == null else "Buy %s (%s)" % [

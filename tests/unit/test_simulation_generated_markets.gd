@@ -224,6 +224,28 @@ func test_the_game_data_has_a_market_generator() -> void:
 		"a new game has enough closed hand-made markets")
 
 
+func test_with_the_game_data_each_tier_after_planes_opens_generated_markets() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	# A save gives the game enough money to buy every tier.
+	var save: Dictionary = JSON.parse_string(SaveCodec.encode(Simulation.new(content, SEED), 0))
+	save.state.money = BigNumber.from_int(1_000_000_000).to_data()
+	var sim := SaveCodec.decode(content, JSON.stringify(save)).simulation
+	var open_count := func() -> int:
+		return sim.markets().filter(func(v: MarketView) -> bool: return v.is_open).size()
+	while sim.transport_tier().id != &"plane":
+		assert_true(sim.buy_transport_tier().ok)
+	assert_eq(open_count.call(), content.markets().size(), "planes reach only the hand-made markets")
+
+	while sim.next_transport_tier() != null:
+		var before: int = open_count.call()
+		var tier := sim.next_transport_tier().id
+		assert_true(sim.buy_transport_tier().ok)
+		assert_gt(open_count.call(), before, "%s opens generated markets" % tier)
+
+	assert_eq(sim.transport_tier().id, &"portal")
+	assert_eq(open_count.call(), sim.markets().size(), "the portal opens every market")
+
+
 func test_the_forecast_has_each_color_of_each_generated_market() -> void:
 	var content := _content(5)
 	var sim := Simulation.new(content, SEED)

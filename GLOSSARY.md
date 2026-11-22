@@ -81,6 +81,10 @@ _Avoid_: Trucks, shipping, bandwidth
 The level of vehicle technology the player has bought, such as carts, trucks, or trains. A higher tier reaches more remote markets.
 _Avoid_: Vehicle level, transport tech
 
+**Portal**:
+The last transport tier. It reaches a market at any remoteness, so every generated market can open.
+_Avoid_: Teleporter, max tier
+
 **Vehicle**:
 The transport tier that one link uses. A new link gets the player's transport tier as its vehicle. A link keeps its vehicle until the player pays to upgrade it to the player's transport tier.
 _Avoid_: Carrier, truck
@@ -141,7 +145,7 @@ How hard a market is to reach. A market is open only when the player's transport
 _Avoid_: Distance, range
 
 **Generated market**:
-A market that the game makes after the hand-made markets, from rules in the data and the run's seed, so that the game has no end. The game makes the next one when too few markets are closed to the player's transport tier. Each one is more remote than the one before it.
+A market that the game makes after the hand-made markets, from rules in the data and the run's seed, so that the game has no end. The game makes the next one when too few markets are closed to the player's transport tier. With a portal, no market is closed, so the game makes the next one when too few markets have no link to them. Each one is more remote than the one before it.
 _Avoid_: Random market, procedural market
 
 **Capacity**:

@@ -26,9 +26,16 @@ var shipment_cost: BigNumber:
 var rank: int:
 	get:
 		return _rank
-## The highest market remoteness that the tier reaches.
+## True if the tier reaches a market at any remoteness, such as a portal.
+## Then the tier has no [member max_remoteness].
+var reaches_any_distance: bool:
+	get:
+		return _reaches_any_distance
+## The highest market remoteness that the tier reaches. Only for a tier that
+## does not [member reaches_any_distance].
 var max_remoteness: int:
 	get:
+		assert(not _reaches_any_distance, "%s reaches any distance, so it has no max_remoteness" % _id)
 		return _max_remoteness
 ## The money to buy the tier. Zero for the first tier.
 var price: BigNumber:
@@ -46,6 +53,7 @@ var _transit_time_ms: int
 var _shipment_cost: BigNumber
 var _rank: int
 var _max_remoteness: int
+var _reaches_any_distance: bool
 var _price: BigNumber
 var _vehicle_upgrade_cost: BigNumber
 var _plural_name: String
@@ -53,7 +61,7 @@ var _plural_name: String
 
 func _init(p_id: StringName, p_name: String, p_transit_time_ms: int, p_shipment_cost: BigNumber,
 		p_rank: int, p_max_remoteness: int, p_price: BigNumber, p_vehicle_upgrade_cost: BigNumber,
-		p_plural_name: String) -> void:
+		p_plural_name: String, p_reaches_any_distance: bool = false) -> void:
 	_id = p_id
 	_name = p_name
 	_transit_time_ms = p_transit_time_ms
@@ -63,8 +71,9 @@ func _init(p_id: StringName, p_name: String, p_transit_time_ms: int, p_shipment_
 	_price = p_price
 	_vehicle_upgrade_cost = p_vehicle_upgrade_cost
 	_plural_name = p_plural_name
+	_reaches_any_distance = p_reaches_any_distance
 
 
 ## True if the tier reaches a market of [param remoteness].
 func reaches(remoteness: int) -> bool:
-	return remoteness <= _max_remoteness
+	return _reaches_any_distance or remoteness <= _max_remoteness
