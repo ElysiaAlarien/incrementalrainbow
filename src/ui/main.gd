@@ -34,6 +34,10 @@ extends Control
 ## does this in parts over many frames, behind a screen that shows how far it
 ## is, so that a long time away does not stop the game from drawing. Then it
 ## shows a summary.
+##
+## Platform achievements react to the milestones of the core (see
+## [AchievementTracker]). The screen attaches the tracker to each game that it
+## loads, starts, or imports.
 
 ## Seconds between saves while the game runs.
 const AUTOSAVE_INTERVAL_S := 30.0
@@ -78,6 +82,9 @@ var cloud_save: CloudSave
 ## The device clock in Unix milliseconds. Tests set it before the screen
 ## enters the tree.
 var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0)
+## The achievement service. Null picks the service of this device (see
+## [AchievementServices]). Tests set it before the screen enters the tree.
+var achievement_service: AchievementService = null
 
 @onready var _color_cards: CardGrid = %ColorCards
 @onready var _factory_list: VBoxContainer = %FactoryList
@@ -128,6 +135,7 @@ var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0
 }
 
 var _sim: Simulation
+var _achievements: AchievementTracker
 var _save_file: SaveFile
 ## False when a save that could not load is still at the save path, so that a
 ## save does not destroy it.
@@ -230,6 +238,8 @@ func _ready() -> void:
 	_summary_dialog = OfflineSummaryDialog.new()
 	add_child(_summary_dialog)
 	_sim = _load_or_start_game()
+	_achievements = _make_achievements()
+	_achievements.attach(_sim)
 	_guided_start_banner = GuidedStartBanner.new()
 	_message_label.add_sibling(_guided_start_banner)
 	_message_label.get_parent().move_child(_guided_start_banner, _message_label.get_index())
@@ -250,7 +260,7 @@ func _ready() -> void:
 		_show_market(_market_picker.get_item_metadata(index)))
 	_make_link_button.pressed.connect(_on_make_link_pressed)
 	_export_code_dialog = ExportCodeDialog.new(_content)
-	_export_code_dialog.import_confirmed.connect(_replace_game)
+	_export_code_dialog.import_confirmed.connect(_import_game)
 	add_child(_export_code_dialog)
 	_export_code_button.pressed.connect(func() -> void:
 		_export_code_dialog.open(_sim, _state_unix_ms()))
@@ -282,6 +292,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if _achievements != null:
+		_achievements.poll()
 	if _paused_at_unix_ms >= 0:
 		# In the background until NOTIFICATION_APPLICATION_RESUMED. Its time
 		# goes to offline progress then, so frames now do not tick.
@@ -500,6 +512,16 @@ func _fit_header() -> void:
 	_title.visible = needed <= room
 
 
+## The achievement tracker, with the achievements of the data. Data with
+## errors gives no achievements, and the game runs on.
+func _make_achievements() -> AchievementTracker:
+	var service := achievement_service if achievement_service != null else AchievementServices.for_this_device()
+	var list := AchievementList.load_file(AchievementList.DEFAULT_PATH, _content)
+	if not list.errors.is_empty():
+		push_warning("The achievement data has errors, so no achievement unlocks:\n" + "\n".join(list.errors))
+	return AchievementTracker.new(list, service)
+
+
 ## Loads the save, or starts a new game when there is no save. A save that
 ## cannot load is kept in a separate file, so that the next save does not
 ## destroy it.
@@ -525,10 +547,21 @@ func _load_or_start_game() -> Simulation:
 	return Simulation.new(_content, randi())
 
 
-## Replaces the game with the game of [param imported], from an imported code,
-## and saves it at once. Offline progress runs from the time of the code.
+## Replaces the game with the game of an export code that the player imported.
+## Its milestones came from the code, so they grant no platform achievement
+## (ADR-0019). A load from the cloud save does not come here: it is the
+## player's own game.
+func _import_game(imported: LoadResult) -> void:
+	imported.simulation.mark_milestones_imported()
+	_replace_game(imported)
+
+
+## Replaces the game with the game of [param imported]: an imported code, the
+## cloud save, or the kept save. It saves it at once. Offline progress runs
+## from the time of the save.
 func _replace_game(imported: LoadResult) -> void:
 	_sim = imported.simulation
+	_achievements.attach(_sim)
 	_offline_pending_ms = 0
 	_offline_summary = OfflineSummary.new()
 	_catch_up_screen.hide()

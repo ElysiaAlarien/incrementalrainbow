@@ -8,6 +8,8 @@ extends RefCounted
 ##   not allowed fails with a reason and does not change state.
 ## [br]- [method tick] advances time by a duration in integer milliseconds.
 ## [br]- Queries read state. They return copies, never the live state.
+## [br]- [signal milestone_reached] tells when a milestone goes up, so that
+##   platform achievements can react (see ADR-0019).
 ## [br][br]
 ## The same content, seed, commands, and ticks always give the same state.
 
@@ -19,6 +21,12 @@ const WarehouseState := preload("res://src/core/state/warehouse_state.gd")
 const MarketState := preload("res://src/core/state/market_state.gd")
 const ResearchState := preload("res://src/core/state/research_state.gd")
 const EventQueue := preload("res://src/core/state/event_queue.gd")
+
+## Sent when the milestone [param id] goes up to [param value] (see
+## [Milestones]). Commands and ticks send it, also the ticks of offline
+## progress. A load does not send it: read [method milestones] after a load.
+## Do not call a command of this simulation from a listener.
+signal milestone_reached(id: StringName, value: int)
 
 ## Kinds of tick events, in the order they happen at one time.
 const _EVENT_ARRIVAL := 0
@@ -37,6 +45,7 @@ const _PRESTIGE_KEEPS: Dictionary[String, Array] = {
 	"Prism price": [&"_prisms_bought"],
 	"Prestige upgrades and their unlocks": [&"_prestige_upgrades"],
 	"Guided start, when done or skipped": [&"_guided_start"],
+	"Achievement progress": [&"_milestones", &"_imported_milestones"],
 }
 ## What a prestige clears, as names for the player. A prestige clears all
 ## state that [constant _PRESTIGE_KEEPS] does not name, so this list only
@@ -108,6 +117,15 @@ var _offline_tally: OfflineSummary = null
 ## save carries it to another device. A prestige keeps it, and ends it first if
 ## it is not over (see [method prestige]).
 var _guided_start := GuidedStartView.Step.BUILD_FACTORY
+## Milestone id to its value (see [Milestones]). An id that is not here has the
+## value 0. A prestige keeps it.
+var _milestones: Dictionary[StringName, int] = {}
+## Milestone id to the value that it had when the player imported this game
+## from an export code (see [method mark_milestones_imported]). An id that is
+## not here has the value 0. A value is never above the value in
+## [member _milestones]. It is in the save, so that a cloud save carries it to
+## each device of the player. A prestige keeps it.
+var _imported_milestones: Dictionary[StringName, int] = {}
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -171,7 +189,70 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 	sim._add_generated_markets()
 	sim._check_warehouse_space(reader)
 	sim._read_guided_start(reader)
+	sim._read_milestones(reader)
 	return sim
+
+
+## Reads the milestones for [method from_snapshot]. Then it raises each
+## milestone to the value that the rest of the state shows, such as the first
+## factory of each color that the run has. For a save that the game made, this
+## changes nothing. A save from before milestones gets each milestone that its
+## state shows (see the add_milestones migration).
+func _read_milestones(reader: SnapshotReader) -> void:
+	var known := Milestones.ids(_content)
+	for milestone_reader in reader.objects("milestones"):
+		var id := milestone_reader.text_id("id")
+		var value := milestone_reader.integer("value", 1)
+		var imported := milestone_reader.integer("imported", 0, value)
+		if id.is_empty():
+			continue
+		if not known.has(id):
+			milestone_reader.fail("id", "there is no milestone \"%s\"" % id)
+		elif _milestones.has(id):
+			milestone_reader.fail("id", "\"%s\" is in the list more than once" % id)
+		else:
+			_milestones[id] = value
+			if imported > 0:
+				_imported_milestones[id] = imported
+	# A damaged state does not load, and its values can be of no use here.
+	if reader.errors().is_empty():
+		_raise_milestones_from_state()
+
+
+## Raises each milestone that the state shows to at least that value, and
+## sends nothing. See [method _read_milestones].
+func _raise_milestones_from_state() -> void:
+	var shown: Dictionary[StringName, int] = {}
+	for state in _factories:
+		shown[Milestones.factory(state.color)] = 1
+		if not _content.color(state.color).recipe.is_empty():
+			shown[Milestones.FIRST_MIXED_FACTORY] = 1
+	if not _factories.is_empty():
+		shown[Milestones.FACTORIES] = _factories.size()
+	for state in _links:
+		if state.is_automatic():
+			shown[Milestones.FIRST_AUTOMATIC_TRANSPORT] = 1
+		if state.split_percent != LinkView.NO_SPLIT:
+			shown[Milestones.FIRST_SPLIT] = 1
+	if not _warehouses.is_empty():
+		shown[Milestones.FIRST_WAREHOUSE] = 1
+	for state: MarketState in _markets.values():
+		if state.population_investments > 0 or state.income_investments > 0:
+			shown[Milestones.FIRST_COMMUNITY_INVESTMENT] = 1
+	var tiers := _content.transport_tiers()
+	var tier_index := tiers.find(_content.transport_tier(_transport_tier.id))
+	for i in range(1, tier_index + 1):
+		shown[Milestones.transport_tier(tiers[i].id)] = 1
+	for id in _research.completed():
+		shown[Milestones.research(id)] = 1
+		shown[Milestones.FIRST_RESEARCH] = 1
+	if _prisms_bought > 0:
+		shown[Milestones.PRISMS_BOUGHT] = _prisms_bought
+	for id in _prestige_upgrades:
+		shown[Milestones.prestige_upgrade(id)] = 1
+	for id in shown:
+		if shown[id] > _milestones.get(id, 0):
+			_milestones[id] = shown[id]
 
 
 ## Reads the owned prestige upgrades for [method from_snapshot], and keeps
@@ -439,6 +520,10 @@ func build_factory(color: StringName) -> CommandResult:
 	_factories.append(state)
 	_factories_by_id[state.id] = state
 	_reach_guided_start(GuidedStartView.Step.MAKE_LINK)
+	_reach(Milestones.factory(color))
+	if not color_def.recipe.is_empty():
+		_reach(Milestones.FIRST_MIXED_FACTORY)
+	_reach(Milestones.FACTORIES, _factories.size())
 	return CommandResult.success(state.id)
 
 
@@ -535,6 +620,7 @@ func build_warehouse(color: StringName) -> CommandResult:
 	var state := WarehouseState.new(_next_warehouse_id, color)
 	_next_warehouse_id += 1
 	_warehouses.append(state)
+	_reach(Milestones.FIRST_WAREHOUSE)
 	return CommandResult.success(state.id)
 
 
@@ -658,6 +744,7 @@ func select_research(research_id: StringName) -> CommandResult:
 			"%s needs research first: %s." % [def.name, ", ".join(_content.research_names(missing))])
 
 	_research.select(research_id, _content)
+	_reach_research(research_id)
 	return CommandResult.success()
 
 
@@ -741,6 +828,7 @@ func buy_automatic_transport(link_id: int) -> CommandResult:
 
 	_money = _money.sub(cost)
 	state.make_automatic(_time_ms)
+	_reach(Milestones.FIRST_AUTOMATIC_TRANSPORT)
 	return CommandResult.success()
 
 
@@ -759,6 +847,7 @@ func buy_transport_tier() -> CommandResult:
 	_money = _money.sub(tier.price)
 	_transport_tier = tier
 	_add_generated_markets()
+	_reach(Milestones.transport_tier(tier.id))
 	return CommandResult.success(tier.id)
 
 
@@ -821,6 +910,7 @@ func set_split(shares: Dictionary) -> CommandResult:
 
 	for state in _split_group(first):
 		state.set_split(shares.get(state.id, 0))
+	_reach(Milestones.FIRST_SPLIT)
 	return CommandResult.success()
 
 
@@ -927,6 +1017,7 @@ func buy_prism() -> CommandResult:
 	_money = _money.sub(price)
 	_prisms += 1
 	_prisms_bought += 1
+	_reach(Milestones.PRISMS_BOUGHT, _prisms_bought)
 	return CommandResult.success(_prisms)
 
 
@@ -947,6 +1038,33 @@ func skip_guided_start() -> CommandResult:
 func _reach_guided_start(step: GuidedStartView.Step) -> void:
 	if _guided_start < step and _guided_start < GuidedStartView.Step.DONE:
 		_guided_start = step
+
+
+## Raises the milestone [param id] to [param value], and sends
+## [signal milestone_reached] when it goes up. A milestone never goes down.
+func _reach(id: StringName, value: int = 1) -> void:
+	if value > _milestones.get(id, 0):
+		_milestones[id] = value
+		milestone_reached.emit(id, value)
+
+
+## Reaches the milestones of the research [param id] if it is complete now.
+## [param id] is the research that was selected before a payment, or empty.
+func _reach_research(id: StringName) -> void:
+	if id != &"" and _research.selected == &"" and _research.is_complete(id):
+		_reach(Milestones.research(id))
+		_reach(Milestones.FIRST_RESEARCH)
+
+
+## Records that the player imported this game from an export code: each
+## milestone that the game has now came from the import (ADR-0019). The screen
+## calls it after an import, and not after a load from the cloud save, which is
+## the same player's own game. It sends nothing, and it changes no rule of
+## play. A milestone that goes up later is still the player's own. It cannot
+## fail.
+func mark_milestones_imported() -> CommandResult:
+	_imported_milestones = _milestones.duplicate()
+	return CommandResult.success()
 
 
 ## Ends this run and starts a fresh one. A prestige keeps only the set in
@@ -974,6 +1092,7 @@ func prestige() -> CommandResult:
 	# A new game has no prestige upgrades, so the fresh run has the starting
 	# money of the content. The kept upgrades add their bonus to it.
 	_money = _starting_money()
+	_reach(Milestones.PRESTIGES, _milestones.get(Milestones.PRESTIGES, 0) + 1)
 	return CommandResult.success()
 
 
@@ -1005,6 +1124,7 @@ func buy_prestige_upgrade(upgrade_id: StringName) -> CommandResult:
 	owned[upgrade_id] = true
 	_set_prestige_upgrades(owned)
 	_money = _money.add(def.starting_money)
+	_reach(Milestones.prestige_upgrade(upgrade_id))
 	return CommandResult.success(_prisms)
 
 
@@ -1040,6 +1160,7 @@ func make_community_investment(market_id: StringName, goal: MarketView.Investmen
 
 	_money = _money.sub(cost)
 	state.invest(goal, _content.market_balance)
+	_reach(Milestones.FIRST_COMMUNITY_INVESTMENT)
 	return CommandResult.success(state.population if goal == MarketView.Investment.POPULATION else state.income)
 
 
@@ -1553,6 +1674,20 @@ func has_factory_link(source_id: int, destination_id: int) -> bool:
 	return false
 
 
+## Each milestone that is above 0, with its value (see [Milestones]). A
+## platform achievement layer reads it after a load, to grant what the player
+## did while it was not listening.
+func milestones() -> Dictionary[StringName, int]:
+	return _milestones.duplicate()
+
+
+## Each milestone that came from an imported export code, with the value that
+## it had at the import (see [method mark_milestones_imported]). A platform
+## achievement layer does not grant what only an import gave.
+func imported_milestones() -> Dictionary[StringName, int]:
+	return _imported_milestones.duplicate()
+
+
 ## The full state as plain data. Two simulations with equal snapshots behave
 ## the same from here on. Use it to compare states, not to read single values.
 func snapshot() -> Dictionary:
@@ -1582,7 +1717,20 @@ func snapshot() -> Dictionary:
 		"next_lab_id": _next_lab_id,
 		"labs": _labs.map(func(id: int) -> Dictionary: return {"id": id}),
 		"guided_start": GuidedStartView.Step.find_key(_guided_start).to_lower(),
+		"milestones": _milestones_to_dicts(),
 	}.merged(_demand.to_dict()).merged(_research.to_dict(_content))
+
+
+## The milestones for [method snapshot], in the order of their ids, so that
+## equal states give equal snapshots.
+func _milestones_to_dicts() -> Array[Dictionary]:
+	var ids := _milestones.keys()
+	ids.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
+	var dicts: Array[Dictionary] = []
+	for id: StringName in ids:
+		dicts.append({"id": String(id), "value": _milestones[id],
+			"imported": _imported_milestones.get(id, 0)})
+	return dicts
 
 
 ## The markets for [method snapshot], in the order of [method markets].
@@ -1812,7 +1960,9 @@ func _deliver(state: LinkState, shipment: ShipmentState) -> void:
 			_warehouse_state(state.destination_warehouse_id).deliver(shipment.count,
 				_content.warehouse_balance.space)
 		LinkView.Destination.LAB:
+			var selected := _research.selected
 			_research.deliver(state.color, shipment.count, _content)
+			_reach_research(selected)
 		_:
 			_sell(state, shipment)
 
@@ -1836,6 +1986,8 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 	_demand.record_sale(market_id, state.color, shipment.count, at_ms, _content.demand_balance)
 	_markets[market_id].record_sale(shipment.count, at_ms, _content.market_balance)
 	_reach_guided_start(GuidedStartView.Step.DONE)
+	if not _milestones.has(Milestones.FIRST_SALE):
+		_reach(Milestones.FIRST_SALE)
 
 
 ## The price of one widget of [param color] in [param def] at [param demand]:
