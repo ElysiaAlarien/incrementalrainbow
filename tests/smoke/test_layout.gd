@@ -148,6 +148,16 @@ func test_each_dialog_fits_each_device() -> void:
 		await wait_process_frames(2)
 		_assert_dialog_fits(summary_dialog, size, "%s, summary" % where)
 		summary_dialog.hide()
+
+		var cloud_dialog: CloudSaveDialog = main.find_child("CloudSaveDialog", true, false)
+		var conflict := CloudSyncPlan.make(CloudSyncPlan.Action.USE_CLOUD, CloudSyncPlan.Notice.CONFLICT)
+		conflict.picked_cloud = true
+		conflict.used_saved_at_unix_ms = SAVED_AT_UNIX_MS
+		conflict.kept_saved_at_unix_ms = SAVED_AT_UNIX_MS - 86_400_000
+		cloud_dialog.show_conflict(conflict, "Steam Cloud")
+		await wait_process_frames(2)
+		_assert_dialog_fits(cloud_dialog, size, "%s, cloud conflict" % where)
+		cloud_dialog.hide()
 		_close(main)
 
 
