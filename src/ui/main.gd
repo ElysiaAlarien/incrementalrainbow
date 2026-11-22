@@ -97,9 +97,10 @@ var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0
 @onready var _export_code_button: Button = %ExportCodeButton
 @onready var _prestige_button: Button = %PrestigeButton
 @onready var _margin: MarginContainer = %Margin
-@onready var _header: HBoxContainer = %Header
+@onready var _header: HFlowContainer = %Header
 @onready var _title: Label = %Title
 @onready var _rail: VBoxContainer = %Rail
+@onready var _rail_scroll: ScrollContainer = _rail.get_parent()
 @onready var _scroll: ScrollContainer = %Scroll
 @onready var _market_picker: OptionButton = %MarketPicker
 @onready var _section_nodes: Dictionary[StringName, Control] = {
@@ -176,6 +177,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	get_tree().node_added.connect(_let_drags_scroll)
+	for node in find_children("*", "Control", true, false):
+		_let_drags_scroll(node)
 	_make_rail()
 	resized.connect(_fit_header)
 	if get_tree().current_scene == self:
@@ -270,6 +274,8 @@ func _process(delta: float) -> void:
 
 
 func _exit_tree() -> void:
+	if get_tree().node_added.is_connected(_let_drags_scroll):
+		get_tree().node_added.disconnect(_let_drags_scroll)
 	# The scene tree removes this screen when the game quits by any path.
 	write_save()
 
@@ -398,31 +404,56 @@ func _make_rail() -> void:
 		_rail_buttons[id] = button
 
 
+## Lets a drag that starts on a button or a row in a scroll area scroll it, as
+## a finger does on a phone. The control passes the press on to the scroll
+## container. A tap still presses the button, and a drag does not.
+func _let_drags_scroll(node: Node) -> void:
+	if not (node is Button or node is PanelContainer):
+		return
+	var control := node as Control
+	if control.mouse_filter == Control.MOUSE_FILTER_STOP and is_ancestor_of(control) \
+			and control.get_viewport() == get_viewport():
+		var parent := control.get_parent()
+		while parent != self and parent != null:
+			if parent is ScrollContainer:
+				control.mouse_filter = Control.MOUSE_FILTER_PASS
+				return
+			parent = parent.get_parent()
+
+
 ## Sets the scale of the window for this device, and keeps the layout inside
-## the safe area of the screen.
+## the safe area of the screen of a phone or a tablet.
 func _fit_to_window() -> void:
 	var window := get_window()
 	var scale := UiScale.apply(window)
-	var margins := UiScale.safe_margins(Rect2(window.position, window.size),
-		Rect2(DisplayServer.get_display_safe_area()), scale, SCREEN_MARGIN)
+	var margins := Vector4.ONE * SCREEN_MARGIN
+	# On a computer, the safe area is the screen less the task bar, which
+	# a full-screen window covers on purpose.
+	if UiScale.is_mobile():
+		margins = UiScale.safe_margins(Rect2(window.position, window.size),
+			Rect2(DisplayServer.get_display_safe_area()), scale, SCREEN_MARGIN)
 	_margin.add_theme_constant_override(&"margin_left", int(margins.x))
 	_margin.add_theme_constant_override(&"margin_top", int(margins.y))
 	_margin.add_theme_constant_override(&"margin_right", int(margins.z))
 	_margin.add_theme_constant_override(&"margin_bottom", int(margins.w))
 
 
-## Shows the title only when the header has room for it, so that money and
-## prisms always fit.
+## Shows the title only when the header has room for it on one line with
+## money and prisms. The header wraps, so a very long money number moves the
+## Export button to a second line instead of past the screen.
 func _fit_header() -> void:
 	if not is_node_ready():
 		return
-	var gap := float(_header.get_theme_constant(&"separation"))
+	var gap := float(_header.get_theme_constant(&"h_separation"))
 	var without_title := 0.0
 	for child: Control in _header.get_children():
 		if child != _title and child.visible:
 			without_title += child.get_combined_minimum_size().x + gap
 	var needed := without_title + _title.get_minimum_size().x
-	var room := size.x - float(_margin.get_theme_constant(&"margin_left") + _margin.get_theme_constant(&"margin_right"))
+	# The header is beside the rail.
+	var body := _rail_scroll.get_parent() as HBoxContainer
+	var room := size.x - float(_margin.get_theme_constant(&"margin_left") + _margin.get_theme_constant(&"margin_right")) \
+		- _rail_scroll.get_combined_minimum_size().x - float(body.get_theme_constant(&"separation"))
 	_title.visible = needed <= room
 
 

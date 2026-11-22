@@ -36,8 +36,15 @@ func test_each_device_has_at_least_the_minimum_logical_size() -> void:
 
 func test_a_touch_target_is_about_7_mm_on_each_phone_and_tablet() -> void:
 	for profile in DeviceProfiles.all():
-		if profile.mobile:
+		if profile.mobile and not profile.is_below_floor():
 			assert_almost_eq(profile.millimeters(UiScale.MIN_TOUCH_TARGET), 7.0, 0.2, profile.name)
+
+
+func test_a_phone_below_the_smallest_logical_size_gets_the_smallest_logical_size() -> void:
+	var profile := DeviceProfiles.named("smallest phone")
+	assert_true(profile.is_below_floor())
+	assert_eq(profile.logical_size(), UiScale.MIN_LOGICAL_SIZE)
+	assert_gt(profile.millimeters(UiScale.MIN_TOUCH_TARGET), 6.0, "a touch target is still about 6 mm")
 
 
 func test_the_safe_area_moves_the_margins_away_from_a_notch() -> void:

@@ -20,24 +20,32 @@ const EPSILON := 0.5
 const MIN_TOUCH_MM := 6.8
 
 var _viewport: SubViewport
+## The save text of [LayoutGame], made once.
+var _save_text: String
 
 
 func before_all() -> void:
+	_save_text = LayoutGame.save_text(SAVED_AT_UNIX_MS)
 	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	file.store_string(LayoutGame.save_text(SAVED_AT_UNIX_MS))
-	file.close()
 
 
 func after_all() -> void:
+	_remove_save()
+
+
+func _remove_save() -> void:
 	for path in [SAVE_PATH, SAVE_PATH + SaveFile.TEMP_SUFFIX]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
 
 
-## Opens the screen in a viewport of [param size] logical pixels. The screen
-## does not save, so that each test starts from the same game.
+## Opens the screen in a viewport of [param size] logical pixels, with a new
+## copy of the game, so that a save of an earlier screen does not change it.
 func _open_main(size: Vector2) -> Control:
+	_remove_save()
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	file.store_string(_save_text)
+	file.close()
 	_viewport = SubViewport.new()
 	_viewport.size = Vector2i(size)
 	_viewport.gui_embed_subwindows = true
@@ -52,13 +60,8 @@ func _open_main(size: Vector2) -> Control:
 
 
 func _close(main: Control) -> void:
-	# A copy of the save, so that the exit save does not change the game of
-	# the next test.
-	var exit_path := "user://test_saves/layout_exit.json"
-	main.save_path = exit_path
 	_viewport.remove_child(main)
 	main.free()
-	DirAccess.remove_absolute(exit_path)
 
 
 func test_the_layout_game_fills_the_screen() -> void:
@@ -81,13 +84,33 @@ func test_each_section_fits_each_device() -> void:
 	for profile in DeviceProfiles.all():
 		var size := profile.logical_size()
 		var main := await _open_main(size)
-		# A message makes the top of the screen as tall as it can be.
-		main.find_child("BuyTransportTier", true, false).pressed.emit()
+		_show_long_message(main)
+		var smallest := INF
 		for section: StringName in main.SECTIONS:
 			main.show_section(section)
 			await wait_process_frames(2)
 			_assert_fits(main, size, "%s, %s" % [profile.name, section])
+			for control in _pressables(main):
+				smallest = minf(smallest, minf(control.size.x, control.size.y))
+		# A screen below the smallest logical size has a smaller scale, so its
+		# touch targets are smaller too.
+		if profile.mobile and not profile.is_below_floor():
+			assert_gte(profile.millimeters(smallest), MIN_TOUCH_MM,
+				"%s: the smallest touch target is about 7 mm" % profile.name)
 		_close(main)
+
+
+## Shows the reason of a failed command, which makes the top of the screen
+## as tall as it can be: a link from a warehouse to a warehouse.
+func _show_long_message(main: Control) -> void:
+	for choice_name: String in ["NewLinkSource", "NewLinkDestination"]:
+		var choice: OptionButton = main.find_child(choice_name, true, false)
+		for i in choice.item_count:
+			if choice.get_item_metadata(i)[0] == &"warehouse":
+				choice.select(i)
+				break
+	main.find_child("MakeLink", true, false).pressed.emit()
+	assert_true((main.find_child("MessageLabel", true, false) as Control).visible, "a message shows")
 
 
 func test_each_dialog_fits_each_device() -> void:
@@ -125,21 +148,6 @@ func test_each_dialog_fits_each_device() -> void:
 		await wait_process_frames(2)
 		_assert_dialog_fits(summary_dialog, size, "%s, summary" % where)
 		summary_dialog.hide()
-		_close(main)
-
-
-func test_touch_targets_are_at_least_7_mm_on_each_phone_and_tablet() -> void:
-	for profile in DeviceProfiles.all():
-		if not profile.mobile:
-			continue
-		var main := await _open_main(profile.logical_size())
-		var smallest := INF
-		for section: StringName in main.SECTIONS:
-			main.show_section(section)
-			await wait_process_frames(2)
-			for control in _pressables(main):
-				smallest = minf(smallest, minf(control.size.x, control.size.y))
-		assert_gte(profile.millimeters(smallest), MIN_TOUCH_MM, "%s: the smallest touch target" % profile.name)
 		_close(main)
 
 
@@ -245,6 +253,23 @@ func test_each_item_of_a_list_is_large_enough_to_touch() -> void:
 	var item_height := font.get_height(popup.get_theme_font_size(&"font_size")) \
 		+ popup.get_theme_constant(&"v_separation")
 	assert_gte(item_height, UiScale.MIN_TOUCH_TARGET)
+	_close(main)
+
+
+func test_a_drag_on_a_phone_scrolls_and_does_not_press() -> void:
+	# A phone has a touch screen, and a scroll container drags only there.
+	Input.emulate_touch_from_mouse = true
+	var main := await _open_main(DeviceProfiles.named("phone").logical_size())
+	var before: int = main.simulation().factories().size()
+	var scroll: ScrollContainer = main.find_child("Scroll", true, false)
+	var start := _center(main.find_child("Build_red", true, false))
+
+	_drag(start, Vector2(0, -200))
+	await wait_process_frames(2)
+
+	Input.emulate_touch_from_mouse = false
+	assert_gt(scroll.scroll_vertical, 100, "the colors scrolled with the finger")
+	assert_eq(main.simulation().factories().size(), before, "the drag did not build")
 	_close(main)
 
 
@@ -354,20 +379,48 @@ func _click(at: Vector2) -> void:
 		_viewport.push_input(click)
 
 
+## A finger that moves by [param by] from [param at], as a phone sends it:
+## touch events, and the mouse events that Godot makes from them.
+func _drag(at: Vector2, by: Vector2) -> void:
+	_pointer(at, true, Vector2.ZERO)
+	const STEPS := 10
+	for i in STEPS:
+		_pointer(at + by * (i + 1) / STEPS, true, by / STEPS)
+	_pointer(at + by, false, Vector2.ZERO)
+
+
+## One event of a finger at [param at]: a press, a move when [param moved] is
+## not zero, or a release when [param down] is false.
+func _pointer(at: Vector2, down: bool, moved: Vector2) -> void:
+	if moved != Vector2.ZERO:
+		var motion := InputEventMouseMotion.new()
+		motion.device = InputEvent.DEVICE_ID_EMULATION
+		motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+		motion.position = at
+		motion.global_position = at
+		motion.relative = moved
+		_viewport.push_input(motion)
+		var drag := InputEventScreenDrag.new()
+		drag.position = at
+		drag.relative = moved
+		_viewport.push_input(drag)
+		return
+	var emulated := InputEventMouseButton.new()
+	emulated.device = InputEvent.DEVICE_ID_EMULATION
+	emulated.button_index = MOUSE_BUTTON_LEFT
+	emulated.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+	emulated.position = at
+	emulated.global_position = at
+	emulated.pressed = down
+	_viewport.push_input(emulated)
+	var touch := InputEventScreenTouch.new()
+	touch.position = at
+	touch.pressed = down
+	_viewport.push_input(touch)
+
+
 ## A tap at [param at], as a phone sends it: a touch, and the mouse click that
 ## Godot makes from it (input_devices/pointing/emulate_mouse_from_touch).
 func _tap(at: Vector2) -> void:
-	for pressed in [true, false]:
-		var emulated := InputEventMouseButton.new()
-		emulated.device = InputEvent.DEVICE_ID_EMULATION
-		emulated.button_index = MOUSE_BUTTON_LEFT
-		emulated.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
-		emulated.position = at
-		emulated.global_position = at
-		emulated.pressed = pressed
-		_viewport.push_input(emulated)
-		var touch := InputEventScreenTouch.new()
-		touch.index = 0
-		touch.position = at
-		touch.pressed = pressed
-		_viewport.push_input(touch)
+	_pointer(at, true, Vector2.ZERO)
+	_pointer(at, false, Vector2.ZERO)

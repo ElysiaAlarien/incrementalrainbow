@@ -9,9 +9,6 @@ extends RefCounted
 const FONT_SIZE := 18
 const SMALL_FONT_SIZE := 15
 const HEADING_FONT_SIZE := 22
-const TITLE_FONT_SIZE := 26
-## The font size of money and prisms at the top of the screen.
-const CURRENCY_FONT_SIZE := 22
 
 const BACKGROUND_COLOR := Color(0.11, 0.12, 0.17)
 const PANEL_COLOR := Color(0.155, 0.17, 0.225)

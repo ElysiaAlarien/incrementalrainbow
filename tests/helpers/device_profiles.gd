@@ -26,6 +26,11 @@ class Profile:
 	func scale() -> float:
 		return UiScale.factor(window_px, UiScale.device_density(window_px, dpi, os_scale, mobile))
 
+	## Whether the screen is smaller than [constant UiScale.MIN_LOGICAL_SIZE]
+	## at its density, so that [UiScale] gives it a smaller scale.
+	func is_below_floor() -> bool:
+		return scale() < UiScale.device_density(window_px, dpi, os_scale, mobile)
+
 	## The logical size of the screen at [method scale].
 	func logical_size() -> Vector2:
 		return UiScale.logical_size(window_px, scale())
@@ -39,6 +44,9 @@ static func all() -> Array[Profile]:
 	return [
 		# A small phone with a 16:9 screen, such as an iPhone SE.
 		Profile.new("small phone", Vector2(1334, 750), 326, 2.0, true),
+		# A small, old phone with a screen smaller than the smallest logical
+		# size, such as an iPhone 5, at the floor of the layout.
+		Profile.new("smallest phone", Vector2(1136, 640), 326, 2.0, true),
 		# A phone with a 20:9 screen.
 		Profile.new("phone", Vector2(2400, 1080), 400, 1.0, true),
 		# A large phone with a 19.5:9 screen.
