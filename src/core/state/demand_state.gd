@@ -29,6 +29,9 @@ const DemandEventState := preload("res://src/core/state/demand_event_state.gd")
 const _MASK32 := 0xFFFFFFFF
 const _FNV_OFFSET := 0x811C9DC5
 const _FNV_PRIME := 0x01000193
+## Mixed into the pair hash of the forecast noise, so that the noise of a
+## market and color has knot values of its own, not those of its drift.
+const _FORECAST_DOMAIN := "forecast"
 
 ## The value of [member next_event_ms] when no start is set: when the content
 ## has no demand events, or after a load of a save from before demand events.
@@ -58,6 +61,23 @@ func _init(p_drift_key: int) -> void:
 ## The demand of [param color] in [param market_id] at [param at_ms].
 func demand(market_id: StringName, color: StringName, at_ms: int, balance: DemandBalance) -> float:
 	return drift(market_id, color, at_ms, balance) * saturation_factor(market_id, color, at_ms, balance) \
+		* event_factor(color, at_ms)
+
+
+## The forecast of the demand of [param color] in [param market_id] at
+## [param at_ms], with [param accuracy] from 0 to 1. It is [method demand] at
+## that time with the state of now, except drift: the forecast drift is the
+## real drift by [param accuracy] and forecast noise by the rest. The noise is
+## a second drift with knot values of its own. It is a pure function of the
+## drift key, the ids, and the time, so the forecast draws nothing from the
+## simulation's random number generator, and it is the same each time. A
+## demand event that has not started is not in the forecast, because the
+## generator chooses it only at its start.
+func forecast(market_id: StringName, color: StringName, at_ms: int, accuracy: float,
+		balance: DemandBalance) -> float:
+	var real := drift(market_id, color, at_ms, balance)
+	var noise := _drift_of_pair(_forecast_pair_hash(market_id, color), at_ms, balance)
+	return lerpf(noise, real, accuracy) * saturation_factor(market_id, color, at_ms, balance) \
 		* event_factor(color, at_ms)
 
 
@@ -111,10 +131,25 @@ func drift(market_id: StringName, color: StringName, at_ms: int, balance: Demand
 	@warning_ignore("integer_division")
 	var knot := at_ms / balance.drift_period_ms
 	var knots := _knots(market_id, color, knot)
+	return _between_knots(knots[2], knots[3], knot, at_ms, balance)
+
+
+## A drift value, as in [method drift], from knot values of [param pair],
+## with no cache.
+func _drift_of_pair(pair: int, at_ms: int, balance: DemandBalance) -> float:
+	if balance.drift_amplitude == 0.0:
+		return 1.0
+	@warning_ignore("integer_division")
+	var knot := at_ms / balance.drift_period_ms
+	return _between_knots(_knot_value(pair, knot), _knot_value(pair, knot + 1), knot, at_ms, balance)
+
+
+## The drift at [param at_ms], from the values [param a] of [param knot] and
+## [param b] of the knot after it: a smooth move from a to b.
+static func _between_knots(a: float, b: float, knot: int, at_ms: int, balance: DemandBalance) -> float:
 	var t := float(at_ms - knot * balance.drift_period_ms) / balance.drift_period_ms
 	var smooth := t * t * (3.0 - 2.0 * t)
-	var value := lerpf(knots[2], knots[3], smooth)
-	return 1.0 + balance.drift_amplitude * (2.0 * value - 1.0)
+	return 1.0 + balance.drift_amplitude * (2.0 * lerpf(a, b, smooth) - 1.0)
 
 
 ## The saturation part of demand: 1 with no recent sales, 0.5 after
@@ -283,6 +318,12 @@ func _knot_value(pair: int, knot: int) -> float:
 	for i in 3:
 		rng.next_u32()
 	return rng.randf()
+
+
+## The pair hash of the forecast noise of [param market_id] and
+## [param color]: a hash of other text than [method _pair_hash] hashes.
+static func _forecast_pair_hash(market_id: StringName, color: StringName) -> int:
+	return _pair_hash(StringName(_FORECAST_DOMAIN + "\n" + String(market_id)), color)
 
 
 ## A 32-bit FNV-1a hash of the market and color ids. We own it, because

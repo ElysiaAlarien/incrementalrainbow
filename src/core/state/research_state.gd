@@ -86,6 +86,7 @@ func to_view(def: ResearchDef, in_transit: Dictionary[StringName, int]) -> Resea
 	view.cost = def.cost
 	view.requires = def.requires
 	view.unlock_colors = def.unlock_colors
+	view.forecast_accuracy = def.forecast_accuracy
 	var complete := is_complete(def.id)
 	for color in view.cost:
 		view.paid[color] = view.cost[color] if complete else paid(def.id, color)

@@ -367,9 +367,14 @@ func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -
 	assert_eq(rows.size(), sim.markets().size())
 	var row: MarketRow = rows[0]
 	var view := sim.market(row.market_id)
+	var forecast := sim.forecast(sim.forecast_horizon_ms())
 	for color in Content.load_dir(Content.DEFAULT_DIR).colors():
-		assert_eq(row.color_text(color.id), "Price %s, demand %s" % [view.price(color.id).format(),
-			MarketRow.format_demand(view.demand(color.id))])
+		assert_eq(row.color_text(color.id), "Price %s, demand %s, forecast %s" % [
+			view.price(color.id).format(), MarketRow.format_demand(view.demand(color.id)),
+			MarketRow.format_demand(forecast.demand(row.market_id, color.id))])
+	var forecast_label: Label = main.find_child("ForecastLabel", true, false)
+	assert_eq(forecast_label.text,
+		"Forecast: the demand in 60s, 10% accurate. Forecast research makes it more accurate.")
 
 	# A sale of red lowers its demand on the screen.
 	main.find_child("Build_red", true, false).pressed.emit()
@@ -379,9 +384,11 @@ func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -
 	sim.tick(sim.link(1).transit_time_ms)
 	await wait_process_frames(1)
 	view = sim.market(row.market_id)
+	forecast = sim.forecast(sim.forecast_horizon_ms())
 	assert_eq(sim.snapshot().saturation.size(), 1, "the sale saturated red")
-	assert_eq(row.color_text(&"red"), "Price %s, demand %s" % [view.price(&"red").format(),
-		MarketRow.format_demand(view.demand(&"red"))])
+	assert_eq(row.color_text(&"red"), "Price %s, demand %s, forecast %s" % [view.price(&"red").format(),
+		MarketRow.format_demand(view.demand(&"red")),
+		MarketRow.format_demand(forecast.demand(row.market_id, &"red"))])
 	assert_lte(row.get_global_rect().end.x, main.get_viewport_rect().size.x, "the row fits the screen")
 
 
@@ -444,6 +451,19 @@ func test_format_demand_shows_a_whole_percent() -> void:
 	assert_eq(MarketRow.format_demand(1.0), "100%")
 	assert_eq(MarketRow.format_demand(0.874), "87%")
 	assert_eq(MarketRow.format_demand(1.296), "130%")
+
+
+func test_the_forecast_text_shows_the_time_ahead_and_the_accuracy() -> void:
+	var forecast := ForecastView.new()
+	forecast.ahead_ms = 30_000
+	forecast.accuracy = 0.6
+	assert_eq(MarketRow.forecast_text(forecast),
+		"Forecast: the demand in 30s, 60% accurate. Forecast research makes it more accurate.")
+	forecast.accuracy = 1.0
+	assert_eq(MarketRow.forecast_text(forecast), "Forecast: the demand in 30s, 100% accurate.")
+	assert_eq(ResearchRow.unlocks_text("Brown", 0.0), "Brown")
+	assert_eq(ResearchRow.unlocks_text("", 0.25), "Forecast accuracy +25%")
+	assert_eq(ResearchRow.unlocks_text("Brown", 0.3), "Brown, Forecast accuracy +30%")
 
 
 # --- Demand events -------------------------------------------------------------
@@ -890,6 +910,8 @@ func test_a_lab_pays_for_research_that_unlocks_a_color() -> void:
 	var row: ResearchRow = main.find_child("Research_earth_tones", true, false)
 	assert_string_contains(row.text(), "Not selected")
 	assert_string_contains(row.text(), "Unlocks: Brown")
+	var surveys: ResearchRow = main.find_child("Research_market_surveys", true, false)
+	assert_string_contains(surveys.text(), "Unlocks: Forecast accuracy +30%")
 	row.select_button().pressed.emit()
 	var sim: Simulation = main.simulation()
 	sim.tick(10_000)
