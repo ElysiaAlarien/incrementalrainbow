@@ -4,6 +4,8 @@
 	"upgrades": [
 		{"id": "quick_lines", "name": "Quick lines", "price": 1, "bonuses": {"production_speed": 1.25}},
 		{"id": "seed_money", "name": "Seed money", "price": 1, "bonuses": {"starting_money": 200}},
-		{"id": "quicker_lines", "name": "Quicker lines", "price": 3, "bonuses": {"production_speed": 1.5}}
+		{"id": "quicker_lines", "name": "Quicker lines", "price": 3, "bonuses": {"production_speed": 1.5}},
+		{"id": "white_light", "name": "White light", "price": 2, "unlocks": {"colors": ["white", "red_tint", "yellow_tint", "blue_tint", "green_tint", "orange_tint", "purple_tint", "red_orange_tint", "yellow_orange_tint", "yellow_green_tint", "blue_green_tint", "blue_purple_tint", "red_purple_tint"]}},
+		{"id": "black_ink", "name": "Black ink", "price": 2, "unlocks": {"colors": ["black", "red_shade", "yellow_shade", "blue_shade", "green_shade", "orange_shade", "purple_shade", "red_orange_shade", "yellow_orange_shade", "yellow_green_shade", "blue_green_shade", "blue_purple_shade", "red_purple_shade"]}}
 	]
 }

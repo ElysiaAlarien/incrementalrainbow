@@ -1,5 +1,5 @@
 {
-	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, recipe (input color id to the count consumed to make one widget; empty for a base color), and unlock (\"start\": available from the start of each run, the default; \"research\": research in a run unlocks it; \"prestige_upgrade\": a prestige upgrade unlocks it).",
+	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, recipe (input color id to the count consumed to make one widget; empty for a base color), and unlock (\"start\": available from the start of each run, the default; \"research\": research in a run unlocks it; \"prestige_upgrade\": a prestige upgrade unlocks it). symbol_mark (optional): \"tint\" or \"shade\", a mark drawn on the symbol; a tint and a shade have the symbol of their hue with a mark. The symbol and its mark together must be different for each color. The 12 hues (the primary, secondary, and tertiary colors) each have one tint (1 hue widget and 1 white widget) and one shade (1 hue widget and 1 black widget). Brown has no tint and no shade.",
 	"colors": [
 		{"id": "red", "name": "Red", "symbol": "square", "display": "#d64545", "recipe": {}},
 		{"id": "yellow", "name": "Yellow", "symbol": "triangle", "display": "#f2c230", "recipe": {}},
@@ -13,6 +13,32 @@
 		{"id": "blue_green", "name": "Blue-green", "symbol": "arrow", "display": "#2a9c94", "recipe": {"blue": 1, "green": 1}, "unlock": "research"},
 		{"id": "blue_purple", "name": "Blue-purple", "symbol": "crescent", "display": "#5a55cc", "recipe": {"blue": 1, "purple": 1}, "unlock": "research"},
 		{"id": "red_purple", "name": "Red-purple", "symbol": "heart", "display": "#b8418a", "recipe": {"red": 1, "purple": 1}, "unlock": "research"},
-		{"id": "brown", "name": "Brown", "symbol": "star", "display": "#8b5a33", "recipe": {"red": 1, "yellow": 1, "blue": 1}, "unlock": "research"}
+		{"id": "brown", "name": "Brown", "symbol": "star", "display": "#8b5a33", "recipe": {"red": 1, "yellow": 1, "blue": 1}, "unlock": "research"},
+		{"id": "white", "name": "White", "symbol": "octagon", "display": "#f4f4f4", "recipe": {}, "unlock": "prestige_upgrade"},
+		{"id": "black", "name": "Black", "symbol": "hourglass", "display": "#1e1e22", "recipe": {}, "unlock": "prestige_upgrade"},
+		{"id": "red_tint", "name": "Red tint", "symbol": "square", "symbol_mark": "tint", "display": "#eaa2a2", "recipe": {"red": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "yellow_tint", "name": "Yellow tint", "symbol": "triangle", "symbol_mark": "tint", "display": "#f8e098", "recipe": {"yellow": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_tint", "name": "Blue tint", "symbol": "circle", "symbol_mark": "tint", "display": "#9cb7ec", "recipe": {"blue": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "green_tint", "name": "Green tint", "symbol": "diamond", "symbol_mark": "tint", "display": "#9fd1a6", "recipe": {"green": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "orange_tint", "name": "Orange tint", "symbol": "pentagon", "symbol_mark": "tint", "display": "#f6c494", "recipe": {"orange": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "purple_tint", "name": "Purple tint", "symbol": "hexagon", "symbol_mark": "tint", "display": "#c4a7e2", "recipe": {"purple": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "red_orange_tint", "name": "Red-orange tint", "symbol": "triangle_down", "symbol_mark": "tint", "display": "#f0b09c", "recipe": {"red_orange": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "yellow_orange_tint", "name": "Yellow-orange tint", "symbol": "trapezoid", "symbol_mark": "tint", "display": "#fad294", "recipe": {"yellow_orange": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "yellow_green_tint", "name": "Yellow-green tint", "symbol": "cross", "symbol_mark": "tint", "display": "#cee29c", "recipe": {"yellow_green": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_green_tint", "name": "Blue-green tint", "symbol": "arrow", "symbol_mark": "tint", "display": "#94ceca", "recipe": {"blue_green": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_purple_tint", "name": "Blue-purple tint", "symbol": "crescent", "symbol_mark": "tint", "display": "#acaae6", "recipe": {"blue_purple": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "red_purple_tint", "name": "Red-purple tint", "symbol": "heart", "symbol_mark": "tint", "display": "#dca0c4", "recipe": {"red_purple": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "red_shade", "name": "Red shade", "symbol": "square", "symbol_mark": "shade", "display": "#762626", "recipe": {"red": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "yellow_shade", "name": "Yellow shade", "symbol": "triangle", "symbol_mark": "shade", "display": "#856b1a", "recipe": {"yellow": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_shade", "name": "Blue shade", "symbol": "circle", "symbol_mark": "shade", "display": "#203d77", "recipe": {"blue": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "green_shade", "name": "Green shade", "symbol": "diamond", "symbol_mark": "shade", "display": "#235a2a", "recipe": {"green": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "orange_shade", "name": "Orange shade", "symbol": "pentagon", "symbol_mark": "shade", "display": "#834c17", "recipe": {"orange": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "purple_shade", "name": "Purple shade", "symbol": "hexagon", "symbol_mark": "shade", "display": "#4c2b6c", "recipe": {"purple": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "red_orange_shade", "name": "Red-orange shade", "symbol": "triangle_down", "symbol_mark": "shade", "display": "#7c3520", "recipe": {"red_orange": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "yellow_orange_shade", "name": "Yellow-orange shade", "symbol": "trapezoid", "symbol_mark": "shade", "display": "#865b17", "recipe": {"yellow_orange": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "yellow_green_shade", "name": "Yellow-green shade", "symbol": "cross", "symbol_mark": "shade", "display": "#566d20", "recipe": {"yellow_green": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_green_shade", "name": "Blue-green shade", "symbol": "arrow", "symbol_mark": "shade", "display": "#175651", "recipe": {"blue_green": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_purple_shade", "name": "Blue-purple shade", "symbol": "crescent", "symbol_mark": "shade", "display": "#322f70", "recipe": {"blue_purple": 1, "black": 1}, "unlock": "prestige_upgrade"},
+		{"id": "red_purple_shade", "name": "Red-purple shade", "symbol": "heart", "symbol_mark": "shade", "display": "#65244c", "recipe": {"red_purple": 1, "black": 1}, "unlock": "prestige_upgrade"}
 	]
 }

@@ -90,6 +90,36 @@ static func prestige_colors_data() -> Dictionary:
 	return data
 
 
+## The test colors, plus white and black (base colors that prestige upgrades
+## unlock), a red tint (1 red and 1 white), and a blue shade (1 blue and 1
+## black). Use it with [method tints_and_shades_upgrades_data].
+static func tints_and_shades_colors_data() -> Dictionary:
+	var data := colors_data()
+	data.colors.append_array([
+		{"id": "white", "name": "White", "symbol": "octagon", "display": "#f4f4f4",
+			"recipe": {}, "unlock": "prestige_upgrade"},
+		{"id": "black", "name": "Black", "symbol": "hourglass", "display": "#1c1c1c",
+			"recipe": {}, "unlock": "prestige_upgrade"},
+		{"id": "red_tint", "name": "Red tint", "symbol": "square", "symbol_mark": "tint",
+			"display": "#eba2a2", "recipe": {"red": 1, "white": 1}, "unlock": "prestige_upgrade"},
+		{"id": "blue_shade", "name": "Blue shade", "symbol": "circle", "symbol_mark": "shade",
+			"display": "#203d77", "recipe": {"blue": 1, "black": 1}, "unlock": "prestige_upgrade"},
+	])
+	return data
+
+
+## Prestige upgrades for [method tints_and_shades_colors_data]: "white_light"
+## unlocks white and the red tint, and "black_ink" unlocks black and the blue
+## shade. Each costs 1 prism.
+static func tints_and_shades_upgrades_data() -> Dictionary:
+	return {"upgrades": [
+		{"id": "white_light", "name": "White light", "price": 1,
+			"unlocks": {"colors": ["white", "red_tint"]}},
+		{"id": "black_ink", "name": "Black ink", "price": 1,
+			"unlocks": {"colors": ["black", "blue_shade"]}},
+	]}
+
+
 ## Balance data: 100 starting money, factories that cost 10, input bays
 ## of 10, a flat
 ## production line cost of 10, prisms that cost 20, then 40, 80, and so on, and

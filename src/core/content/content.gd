@@ -268,12 +268,20 @@ func _parse_colors(data: Dictionary) -> void:
 		if color_name.is_empty():
 			_errors.append("%s: name is missing" % id)
 		var symbol := StringName(str(entry.get("symbol", "")))
+		var mark_name := str(entry.get("symbol_mark", "none"))
+		var mark: ColorDef.SymbolMark = ColorDef.SYMBOL_MARK_NAMES.get(mark_name, ColorDef.SymbolMark.NONE)
+		if not ColorDef.SYMBOL_MARK_NAMES.has(mark_name):
+			_errors.append("%s: symbol_mark must be one of %s, but it is %s" % [
+				id, ", ".join(ColorDef.SYMBOL_MARK_NAMES.keys()), mark_name])
+		# The symbol with its mark, such as "square" or "square with the tint mark".
+		var shown := String(symbol) if mark == ColorDef.SymbolMark.NONE \
+			else "%s with the %s mark" % [symbol, mark_name]
 		if symbol == &"":
 			_errors.append("%s: symbol is missing" % id)
-		elif symbol_owner.has(symbol):
-			_errors.append("%s: symbol %s is already used by %s" % [id, symbol, symbol_owner[symbol]])
+		elif symbol_owner.has(shown):
+			_errors.append("%s: symbol %s is already used by %s" % [id, shown, symbol_owner[shown]])
 		else:
-			symbol_owner[symbol] = id
+			symbol_owner[shown] = id
 		var display := str(entry.get("display", ""))
 		var display_color := Color.BLACK
 		if Color.html_is_valid(display):
@@ -286,7 +294,7 @@ func _parse_colors(data: Dictionary) -> void:
 			_errors.append("%s: unlock must be one of %s, but it is %s" % [
 				id, ", ".join(ColorDef.UNLOCK_NAMES.keys()), unlock_name])
 		var def := ColorDef.new(id, color_name, symbol, display_color,
-			_parse_recipe(id, entry.get("recipe", {})), unlock)
+			_parse_recipe(id, entry.get("recipe", {})), unlock, mark)
 		_colors.append(def)
 		_colors_by_id[id] = def
 	# Inputs can name colors later in the file, so check them after all are read.

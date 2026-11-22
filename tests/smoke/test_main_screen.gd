@@ -362,6 +362,10 @@ func test_a_bad_code_shows_the_reason_and_does_not_change_the_game() -> void:
 
 func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -> void:
 	var main := await _open_main()
+	# No frame ticks, so that the game time stays at the time of the screen.
+	# A command shows the market section at once.
+	main.set_process(false)
+	main.find_child("Build_red", true, false).pressed.emit()
 	var sim: Simulation = main.simulation()
 	var rows := main.find_children("Market_*", "MarketRow", true, false)
 	assert_eq(rows.size(), sim.markets().size())
@@ -377,12 +381,11 @@ func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -
 		"Forecast: the demand in 60s, 10% accurate. Forecast research makes it more accurate.")
 
 	# A sale of red lowers its demand on the screen.
-	main.find_child("Build_red", true, false).pressed.emit()
 	main.find_child("MakeLink", true, false).pressed.emit()
 	sim.tick(10_000)
 	sim.start_shipment(1)
 	sim.tick(sim.link(1).transit_time_ms)
-	await wait_process_frames(1)
+	main.find_child("Build_blue", true, false).pressed.emit()
 	view = sim.market(row.market_id)
 	forecast = sim.forecast(sim.forecast_horizon_ms())
 	assert_eq(sim.snapshot().saturation.size(), 1, "the sale saturated red")
@@ -715,9 +718,24 @@ func test_each_color_shows_its_symbol_and_recipe() -> void:
 		assert_eq(symbol.symbol, color.symbol)
 		assert_false(ColorSymbol.shape_points(color.symbol, Rect2(0, 0, 20, 20)).is_empty(),
 			"the screen can draw the %s symbol" % color.symbol)
+		assert_eq(symbol.mark, color.symbol_mark, "the mark of %s" % color.id)
+		if color.symbol_mark != ColorDef.SymbolMark.NONE:
+			assert_true(ColorSymbol.mark_dot(color.symbol_mark, Rect2(0, 0, 20, 20)).has_area(),
+				"the screen can draw the mark of %s" % color.id)
 	assert_eq(_card(main, &"red").recipe_text(), "no inputs")
 	assert_eq(_card(main, &"green").recipe_text(), "Yellow + Blue")
 	assert_eq(_card(main, &"brown").recipe_text(), "Red + Yellow + Blue")
+	assert_eq(_card(main, &"white").recipe_text(), "no inputs")
+	assert_eq(_card(main, &"red_orange_tint").recipe_text(), "Red-orange + White")
+	assert_eq(_card(main, &"blue_shade").recipe_text(), "Blue + Black")
+
+
+func test_the_tint_and_shade_marks_differ_by_place() -> void:
+	var box := Rect2(0, 0, 20, 20)
+	var tint := ColorSymbol.mark_dot(ColorDef.SymbolMark.TINT, box)
+	var shade := ColorSymbol.mark_dot(ColorDef.SymbolMark.SHADE, box)
+	assert_false(tint.intersects(shade), "the dots do not overlap")
+	assert_false(ColorSymbol.mark_dot(ColorDef.SymbolMark.NONE, box).has_area(), "no mark, no dot")
 
 
 func test_a_color_that_needs_research_shows_it_instead_of_a_build_button() -> void:
@@ -729,6 +747,15 @@ func test_a_color_that_needs_research_shows_it_instead_of_a_build_button() -> vo
 	var red_orange := _card(main, &"red_orange")
 	assert_true(red_orange.is_locked())
 	assert_false(red_orange.build_button().visible)
+
+
+func test_white_black_tints_and_shades_name_their_prestige_upgrade_in_a_new_game() -> void:
+	var main := await _open_main()
+
+	for id: StringName in [&"white", &"red_tint", &"black", &"red_purple_shade"]:
+		assert_true(_card(main, id).is_locked(), "%s is locked" % id)
+	assert_eq(_card(main, &"red_tint").locked_text(), "Needs a prestige upgrade:\nWhite light")
+	assert_eq(_card(main, &"black").locked_text(), "Needs a prestige upgrade:\nBlack ink")
 
 
 func test_a_color_that_needs_a_prestige_upgrade_names_the_upgrade() -> void:

@@ -21,8 +21,37 @@ func test_each_color_has_its_own_symbol() -> void:
 	var content := Content.load_dir(Content.DEFAULT_DIR)
 	var symbols := {}
 	for color in content.colors():
-		assert_false(symbols.has(color.symbol), "symbol %s is used twice" % color.symbol)
-		symbols[color.symbol] = true
+		var shown := [color.symbol, color.symbol_mark]
+		assert_false(symbols.has(shown), "symbol %s is used twice" % [shown])
+		symbols[shown] = true
+
+
+func test_reads_a_symbol_mark() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.tints_and_shades_colors_data(),
+		ContentFixture.balance_data(), null, ContentFixture.transport_data(), {"events": []}, null,
+		ContentFixture.tints_and_shades_upgrades_data()))
+
+	assert_eq(content.color(&"red").symbol_mark, ColorDef.SymbolMark.NONE, "no mark is the default")
+	assert_eq([content.color(&"red_tint").symbol, content.color(&"red_tint").symbol_mark],
+		[&"square", ColorDef.SymbolMark.TINT])
+	assert_eq([content.color(&"blue_shade").symbol, content.color(&"blue_shade").symbol_mark],
+		[&"circle", ColorDef.SymbolMark.SHADE])
+
+
+func test_a_symbol_with_a_mark_must_be_unique_too() -> void:
+	var colors := ContentFixture.colors_data()
+	colors.colors.append_array([
+		{"id": "pink", "name": "Pink", "symbol": "square", "symbol_mark": "tint", "display": "#ffaaaa", "recipe": {}},
+		{"id": "rose", "name": "Rose", "symbol": "square", "symbol_mark": "tint", "display": "#ff8888", "recipe": {}},
+		{"id": "rust", "name": "Rust", "symbol": "square", "symbol_mark": "shade", "display": "#882222", "recipe": {}},
+		{"id": "teal", "name": "Teal", "symbol": "star", "symbol_mark": "glow", "display": "#00aaaa", "recipe": {}},
+	])
+	var text := "\n".join(Content.from_data(ContentFixture.data(colors)).errors)
+
+	assert_string_contains(text, "rose: symbol square with the tint mark is already used by pink")
+	assert_string_contains(text, "teal: symbol_mark must be one of none, tint, shade, but it is glow")
+	assert_false(text.contains("pink: symbol"), "a mark makes a symbol different from the plain one")
+	assert_false(text.contains("rust: symbol"), "the tint mark and the shade mark are different")
 
 
 func test_reads_balance_values_as_ints() -> void:
@@ -311,6 +340,77 @@ func test_research_unlocks_the_tertiary_colors_and_brown() -> void:
 			&"red_purple", &"brown"]:
 		assert_eq(content.color(id).unlock, ColorDef.Unlock.RESEARCH, "%s needs research" % id)
 		assert_false(content.research_unlocking(id).is_empty(), "research in the data unlocks %s" % id)
+
+
+const HUES: Array[StringName] = [&"red", &"yellow", &"blue", &"green", &"orange", &"purple",
+	&"red_orange", &"yellow_orange", &"yellow_green", &"blue_green", &"blue_purple", &"red_purple"]
+
+
+func test_the_game_data_has_white_and_black_base_colors_that_prestige_upgrades_unlock() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	for id in [&"white", &"black"]:
+		var color := content.color(id)
+		assert_not_null(color, "missing color %s" % id)
+		if color != null:
+			assert_true(color.is_base(), "%s needs no inputs" % id)
+			assert_eq(color.unlock, ColorDef.Unlock.PRESTIGE_UPGRADE)
+			assert_false(content.prestige_upgrades_unlocking(id).is_empty(), "an upgrade unlocks %s" % id)
+
+
+func test_each_hue_has_one_tint_and_one_shade_and_brown_has_none() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	# Each recipe with white or black, by the other input.
+	var mixes := {&"white": {}, &"black": {}}
+	for color in content.colors():
+		var recipe := color.recipe
+		for base: StringName in mixes:
+			if recipe.has(base):
+				assert_eq(recipe.size(), 2, "%s has a hue and %s" % [color.id, base])
+				assert_true(recipe.values().all(func(n: int) -> bool: return n == 1),
+					"%s takes 1 of each input" % color.id)
+				for hue: StringName in recipe:
+					if hue != base:
+						mixes[base][hue] = color
+	for base: StringName in mixes:
+		assert_eq(mixes[base].size(), 12, "12 colors mix %s with a hue" % base)
+		assert_false(mixes[base].has(&"brown"), "brown has nothing with %s" % base)
+	for hue in HUES:
+		var tint: ColorDef = mixes[&"white"].get(hue)
+		var shade: ColorDef = mixes[&"black"].get(hue)
+		assert_not_null(tint, "a tint of %s" % hue)
+		assert_not_null(shade, "a shade of %s" % hue)
+		if tint == null or shade == null:
+			continue
+		var hue_def := content.color(hue)
+		assert_eq([tint.symbol, tint.symbol_mark], [hue_def.symbol, ColorDef.SymbolMark.TINT],
+			"the tint of %s has its symbol with the tint mark" % hue)
+		assert_eq([shade.symbol, shade.symbol_mark], [hue_def.symbol, ColorDef.SymbolMark.SHADE],
+			"the shade of %s has its symbol with the shade mark" % hue)
+		for color: ColorDef in [tint, shade]:
+			assert_eq(color.unlock, ColorDef.Unlock.PRESTIGE_UPGRADE)
+			assert_false(content.prestige_upgrades_unlocking(color.id).is_empty(), "an upgrade unlocks %s" % color.id)
+
+
+func test_the_upgrade_that_unlocks_white_or_black_unlocks_the_colors_made_with_it() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	for color in content.colors():
+		for base: StringName in [&"white", &"black"]:
+			if color.recipe.has(base):
+				var unlockers := content.prestige_upgrades_unlocking(color.id)
+				var base_unlockers := content.prestige_upgrades_unlocking(base)
+				assert_eq(unlockers, base_unlockers, "%s unlocks with %s" % [color.id, base])
+
+
+func test_every_market_of_the_game_data_has_a_price_for_tints_and_shades() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	var markets := content.markets()
+	for index in range(1, 4):
+		markets.append(content.market_generator.generate(21, index))
+	for market in markets:
+		for hue in HUES:
+			for kind in ["tint", "shade"]:
+				var id := StringName("%s_%s" % [hue, kind])
+				assert_true(market.prices.has(id) and not market.prices[id].is_zero(), "%s pays for %s" % [market.id, id])
 
 
 func test_reads_research_and_the_lab_cost() -> void:

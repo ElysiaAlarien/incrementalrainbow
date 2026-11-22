@@ -1,10 +1,19 @@
 class_name ColorSymbol
 extends Control
 ## Draws a color's symbol: a flat shape filled with the color, with an outline,
-## so that colorblind players can tell colors apart by shape.
+## so that colorblind players can tell colors apart by shape. A tint or a shade
+## also has its mark: a small dot, white at the top right for a tint, and
+## black at the bottom right for a shade.
 
 const OUTLINE_COLOR := Color(0.06, 0.07, 0.1)
+## The outline of a dark fill, such as black, so that it shows on the dark
+## background.
+const LIGHT_OUTLINE_COLOR := Color(0.86, 0.87, 0.9)
 const OUTLINE_WIDTH := 2.0
+## A fill with a luminance below this gets the light outline.
+const DARK_FILL_LUMINANCE := 0.2
+const TINT_MARK_FILL := Color(1, 1, 1)
+const SHADE_MARK_FILL := Color(0, 0, 0)
 
 var symbol: StringName = &"":
 	set(value):
@@ -13,6 +22,10 @@ var symbol: StringName = &"":
 var fill: Color = Color.WHITE:
 	set(value):
 		fill = value
+		queue_redraw()
+var mark: ColorDef.SymbolMark = ColorDef.SymbolMark.NONE:
+	set(value):
+		mark = value
 		queue_redraw()
 
 
@@ -24,6 +37,7 @@ func _init() -> void:
 func setup(color: ColorDef) -> ColorSymbol:
 	symbol = color.symbol
 	fill = color.display_color
+	mark = color.symbol_mark
 	tooltip_text = color.name
 	return self
 
@@ -40,7 +54,36 @@ func _draw() -> void:
 	draw_colored_polygon(points, fill)
 	var closed := points.duplicate()
 	closed.append(points[0])
-	draw_polyline(closed, OUTLINE_COLOR, OUTLINE_WIDTH, true)
+	draw_polyline(closed, ColorSymbol.outline_color(fill), OUTLINE_WIDTH, true)
+	if mark != ColorDef.SymbolMark.NONE:
+		var dot := ColorSymbol.mark_dot(mark, box)
+		var dot_fill := ColorSymbol.mark_fill(mark)
+		draw_circle(dot.get_center(), dot.size.x / 2.0, dot_fill)
+		draw_circle(dot.get_center(), dot.size.x / 2.0, ColorSymbol.outline_color(dot_fill), false,
+			OUTLINE_WIDTH * 0.75, true)
+
+
+## The outline color for a shape filled with [param p_fill]: dark, or light
+## for a dark fill.
+static func outline_color(p_fill: Color) -> Color:
+	return LIGHT_OUTLINE_COLOR if p_fill.get_luminance() < DARK_FILL_LUMINANCE else OUTLINE_COLOR
+
+
+## The box of the dot of [param p_mark] on a symbol in [param box]: at the top
+## right for a tint, and at the bottom right for a shade, so that the two
+## marks differ by place and not only by color. Empty for no mark.
+static func mark_dot(p_mark: ColorDef.SymbolMark, box: Rect2) -> Rect2:
+	var side := box.size.x * 0.42
+	match p_mark:
+		ColorDef.SymbolMark.TINT:
+			return Rect2(Vector2(box.end.x - side, box.position.y), Vector2(side, side))
+		ColorDef.SymbolMark.SHADE:
+			return Rect2(box.end - Vector2(side, side), Vector2(side, side))
+	return Rect2()
+
+
+static func mark_fill(p_mark: ColorDef.SymbolMark) -> Color:
+	return SHADE_MARK_FILL if p_mark == ColorDef.SymbolMark.SHADE else TINT_MARK_FILL
 
 
 ## The outline of [param symbol] inside [param box], or an empty array for an
@@ -93,6 +136,15 @@ static func shape_points(symbol: StringName, box: Rect2) -> PackedVector2Array:
 			return _crescent(c, r)
 		&"heart":
 			return _heart(c, r)
+		&"octagon":
+			return _regular_polygon(c, r, 8, PI / 8.0)
+		&"hourglass":
+			# Two triangles that meet at a narrow waist.
+			var waist := r * 0.16
+			var inset := r * 0.1
+			return PackedVector2Array([box.position + Vector2(inset, 0), Vector2(box.end.x - inset, box.position.y),
+				Vector2(c.x + waist, c.y), box.end - Vector2(inset, 0), Vector2(box.position.x + inset, box.end.y),
+				Vector2(c.x - waist, c.y)])
 	return PackedVector2Array()
 
 
