@@ -10,6 +10,9 @@ extends SaveMigration
 ## starting money can buy one.
 ##
 ## The count of prestiges is not in an older state at all, so it starts at 0.
+##
+## An older game has no record of an import, so each milestone has
+## "imported" 0: the player gets its achievements (see ADR-0019).
 
 
 func needs() -> Array[StringName]:
@@ -19,7 +22,7 @@ func needs() -> Array[StringName]:
 func apply(state: Dictionary) -> Dictionary:
 	var milestones: Array = []
 	if _has_sold(state):
-		milestones.append({"id": "first_sale", "value": 1})
+		milestones.append({"id": "first_sale", "value": 1, "imported": 0})
 	state.milestones = milestones
 	return state
 

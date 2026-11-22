@@ -1,6 +1,6 @@
 class_name AchievementTracker
 extends RefCounted
-## Grants platform achievements from the milestones of the core (ADR-0018).
+## Grants platform achievements from the milestones of the core (ADR-0019).
 ##
 ## It listens to [signal Simulation.milestone_reached] and unlocks each
 ## achievement that a milestone grants. When it attaches to a simulation, it
@@ -8,6 +8,10 @@ extends RefCounted
 ## player gets the achievements of play from before this feature, of a save
 ## from another device, and of a time when the platform was not available.
 ## Offline progress is normal ticks, so its events come as in play.
+##
+## It does not grant what only an imported export code gave (see
+## [method AchievementDef.is_earned]). A cloud save is the player's own game,
+## so it grants all that its milestones grant.
 
 var _list: AchievementList
 var _service: AchievementService
@@ -42,8 +46,9 @@ func sync() -> void:
 	if _sim == null:
 		return
 	var milestones := _sim.milestones()
+	var imported := _sim.imported_milestones()
 	for def in _list.all():
-		if def.is_met(milestones):
+		if def.is_earned(milestones.get(def.milestone, 0), imported.get(def.milestone, 0)):
 			_unlock(def)
 
 
@@ -53,8 +58,9 @@ func poll() -> void:
 
 
 func _on_milestone_reached(id: StringName, value: int) -> void:
+	var imported: int = _sim.imported_milestones().get(id, 0)
 	for def in _list.for_milestone(id):
-		if value >= def.at_least:
+		if def.is_earned(value, imported):
 			_unlock(def)
 
 

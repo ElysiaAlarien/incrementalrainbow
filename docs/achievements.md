@@ -1,14 +1,18 @@
 # Platform achievements: how to finish the adapters
 
-Read this to finish #25 on a platform. ADR-0018 has the design. The code is in `src/platform/achievements/`, and the achievements are in `data/achievements.json`.
+Read this to finish #25 on a platform. ADR-0019 has the design. The code is in `src/platform/achievements/`, and the achievements are in `data/achievements.json`.
 
 ## What is done
 
 - The core records milestones and sends `Simulation.milestone_reached` (`src/core/milestones.gd`).
 - `data/achievements.json` maps 12 sample achievements to milestones. The names, the descriptions, and the ids are placeholders.
-- `AchievementTracker` unlocks achievements through one `AchievementService`. It unlocks all that the milestones grant at each start, after each import, and when the service becomes available.
+- `AchievementTracker` unlocks achievements through one `AchievementService`. It unlocks all that the milestones grant at each start, after each import and cloud load, and when the service becomes available. It does not unlock what only an imported export code gave (ADR-0019, "An imported code grants nothing that only the import gave").
 - `TestAchievementService` lets the game run with no platform service. `AchievementServices.for_this_device()` picks it when the device has no SDK or plugin.
 - The Steam, Game Center, and Google Play Games adapters are skeletons. They find the SDK or plugin at run time and do nothing when it is not there. The method names in them are from memory: **no one checked them** against the documentation of the SDK or plugin, or ran them.
+
+## Plugin names
+
+The user decided: check the method names of each adapter against its plugin when a person adds that SDK or plugin to the build (step 4). Nothing needs a change before then.
 
 ## Steps for each platform
 
@@ -18,7 +22,7 @@ Each platform needs the same five steps:
 2. Add the SDK or plugin to the build. Do not add SDK binaries to this repository until the user decides how the build gets them (see #28).
 3. Make each achievement in the platform's dashboard, and put its id in `platform_ids` in `data/achievements.json`.
 4. Check each method name, signal name, and result shape in the adapter against the version of the SDK or plugin. Fix the adapter where they differ, and remove its "NOT VERIFIED" notes.
-5. Do the smoke test: start a new game, make the first sale, and see "First sale" unlock on the platform. Then close the game, reset the achievement in the dashboard, and start the game again: the tracker must unlock it again from the save.
+5. Do the smoke test: start a new game, make the first sale, and see "First sale" unlock on the platform. Then close the game, reset the achievement in the dashboard, and start the game again: the tracker must unlock it again from the save. Then import an export code of another game that has the first sale, reset the achievement again, and start the game again: it must not unlock.
 
 ### Steam (`steam_achievement_service.gd`)
 

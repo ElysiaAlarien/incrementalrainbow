@@ -1,6 +1,6 @@
 extends GutTest
 ## Milestones (#25): the core records what the player did across all runs and
-## sends an event when a milestone goes up (see ADR-0018). Platform
+## sends an event when a milestone goes up (see ADR-0019). Platform
 ## achievements react to the events outside the core.
 
 const SEED := 25
@@ -226,7 +226,7 @@ func test_a_load_raises_the_milestones_that_the_state_shows() -> void:
 
 func test_a_milestone_that_does_not_exist_fails_the_load() -> void:
 	var state := _sim().snapshot()
-	state.milestones = [{"id": "dance", "value": 1}]
+	state.milestones = [{"id": "dance", "value": 1, "imported": 0}]
 	state = JSON.parse_string(JSON.stringify(state))
 
 	var reader := SnapshotReader.new(state)
@@ -238,7 +238,8 @@ func test_a_milestone_that_does_not_exist_fails_the_load() -> void:
 
 func test_a_milestone_twice_fails_the_load() -> void:
 	var state := _sim().snapshot()
-	state.milestones = [{"id": "first_sale", "value": 1}, {"id": "first_sale", "value": 2}]
+	state.milestones = [{"id": "first_sale", "value": 1, "imported": 0},
+		{"id": "first_sale", "value": 2, "imported": 0}]
 	state = JSON.parse_string(JSON.stringify(state))
 
 	var reader := SnapshotReader.new(state)
@@ -250,7 +251,7 @@ func test_a_milestone_twice_fails_the_load() -> void:
 
 func test_a_milestone_below_1_fails_the_load() -> void:
 	var state := _sim().snapshot()
-	state.milestones = [{"id": "first_sale", "value": 0}]
+	state.milestones = [{"id": "first_sale", "value": 0, "imported": 0}]
 	state = JSON.parse_string(JSON.stringify(state))
 
 	var reader := SnapshotReader.new(state)
@@ -258,6 +259,66 @@ func test_a_milestone_below_1_fails_the_load() -> void:
 
 	assert_eq(reader.errors().size(), 1)
 	assert_string_contains(reader.errors()[0], "state.milestones[0].value")
+
+
+func test_an_imported_value_above_the_value_fails_the_load() -> void:
+	var state := _sim().snapshot()
+	state.milestones = [{"id": "prisms_bought", "value": 2, "imported": 3}]
+	state = JSON.parse_string(JSON.stringify(state))
+
+	var reader := SnapshotReader.new(state)
+	Simulation.from_snapshot(_content(), reader)
+
+	assert_eq(reader.errors().size(), 1)
+	assert_string_contains(reader.errors()[0], "state.milestones[0].imported")
+
+
+# --- Imported milestones (ADR-0019) ---------------------------------------------
+
+func test_a_new_game_has_no_imported_milestones() -> void:
+	var sim := _sim()
+	_sell_once(sim)
+
+	assert_eq(sim.imported_milestones(), {} as Dictionary[StringName, int])
+
+
+func test_marking_an_import_records_each_milestone_and_sends_nothing() -> void:
+	var sim := _sim()
+	_sell_once(sim)
+	_ok(sim.buy_prism())
+	_sent = []
+
+	_ok(sim.mark_milestones_imported())
+
+	assert_eq(sim.imported_milestones(), sim.milestones())
+	assert_eq(_sent, [])
+
+
+func test_a_milestone_goes_up_after_an_import_and_the_imported_value_stays() -> void:
+	var sim := _sim()
+	_ok(sim.buy_prism())
+	_ok(sim.mark_milestones_imported())
+	_sent = []
+
+	_ok(sim.buy_prism())
+
+	assert_eq(sim.milestones()[Milestones.PRISMS_BOUGHT], 2)
+	assert_eq(sim.imported_milestones()[Milestones.PRISMS_BOUGHT], 1)
+	assert_eq(_sent, [[Milestones.PRISMS_BOUGHT, 2]])
+
+
+func test_a_save_and_a_prestige_keep_the_imported_milestones() -> void:
+	var sim := _sim()
+	_ok(sim.buy_prism())
+	_ok(sim.mark_milestones_imported())
+	var imported := sim.imported_milestones()
+
+	var loaded := SaveCodec.decode(_content(), SaveCodec.encode(sim, 0))
+	assert_true(loaded.ok, loaded.message)
+	assert_eq(loaded.simulation.imported_milestones(), imported)
+	assert_eq(loaded.simulation.snapshot(), sim.snapshot())
+	_ok(loaded.simulation.prestige())
+	assert_eq(loaded.simulation.imported_milestones(), imported)
 
 
 func test_the_ids_have_one_for_each_item_of_the_content() -> void:

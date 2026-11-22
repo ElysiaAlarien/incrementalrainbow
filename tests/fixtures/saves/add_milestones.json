@@ -60,30 +60,37 @@
 		"milestones": [
 			{
 				"id": "factories",
+				"imported": 0,
 				"value": 3
 			},
 			{
 				"id": "factory.blue",
+				"imported": 0,
 				"value": 1
 			},
 			{
 				"id": "factory.red",
+				"imported": 0,
 				"value": 1
 			},
 			{
 				"id": "factory.yellow",
+				"imported": 0,
 				"value": 1
 			},
 			{
 				"id": "first_sale",
+				"imported": 0,
 				"value": 1
 			},
 			{
 				"id": "prestiges",
+				"imported": 0,
 				"value": 1
 			},
 			{
 				"id": "prisms_bought",
+				"imported": 0,
 				"value": 1
 			}
 		],

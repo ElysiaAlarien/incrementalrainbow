@@ -260,7 +260,7 @@ func _ready() -> void:
 		_show_market(_market_picker.get_item_metadata(index)))
 	_make_link_button.pressed.connect(_on_make_link_pressed)
 	_export_code_dialog = ExportCodeDialog.new(_content)
-	_export_code_dialog.import_confirmed.connect(_replace_game)
+	_export_code_dialog.import_confirmed.connect(_import_game)
 	add_child(_export_code_dialog)
 	_export_code_button.pressed.connect(func() -> void:
 		_export_code_dialog.open(_sim, _state_unix_ms()))
@@ -547,8 +547,18 @@ func _load_or_start_game() -> Simulation:
 	return Simulation.new(_content, randi())
 
 
-## Replaces the game with the game of [param imported], from an imported code,
-## and saves it at once. Offline progress runs from the time of the code.
+## Replaces the game with the game of an export code that the player imported.
+## Its milestones came from the code, so they grant no platform achievement
+## (ADR-0019). A load from the cloud save does not come here: it is the
+## player's own game.
+func _import_game(imported: LoadResult) -> void:
+	imported.simulation.mark_milestones_imported()
+	_replace_game(imported)
+
+
+## Replaces the game with the game of [param imported]: an imported code, the
+## cloud save, or the kept save. It saves it at once. Offline progress runs
+## from the time of the save.
 func _replace_game(imported: LoadResult) -> void:
 	_sim = imported.simulation
 	_achievements.attach(_sim)

@@ -1,6 +1,6 @@
 class_name Milestones
 extends RefCounted
-## The milestones that the core records and sends (see ADR-0018).
+## The milestones that the core records and sends (see ADR-0019).
 ##
 ## A milestone is a lifetime record of something the player did: the first
 ## time they did it, or the highest count they reached. Each one is a whole

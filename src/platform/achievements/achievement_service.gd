@@ -1,6 +1,6 @@
 class_name AchievementService
 extends RefCounted
-## The one achievement interface (ADR-0018): it tells one platform's service
+## The one achievement interface (ADR-0019): it tells one platform's service
 ## that the player earned an achievement. Each platform has an adapter that
 ## extends this script. [AchievementServices] picks the adapter of the device.
 ##

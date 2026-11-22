@@ -1,7 +1,9 @@
 extends GutTest
 ## Smoke tests: the main screen unlocks platform achievements through the test
 ## adapter (#25). A sale that the player makes unlocks the first sale, and a
-## save from earlier play unlocks its achievements when the game starts.
+## save from earlier play unlocks its achievements when the game starts. An
+## imported code of another player unlocks nothing, and a cloud save of the
+## player's own game does (ADR-0019).
 
 const MainScene := preload("res://src/ui/main.tscn")
 ## A save path of its own, so that tests never touch the player's save.
@@ -9,11 +11,16 @@ const SAVE_PATH := "user://test_saves/achievements_screen.json"
 ## The device clock of the tests: a time in November 2026.
 const NOW_UNIX_MS := 1_795_000_000_000
 
+## The cloud save of the screen, so that tests never touch a platform cloud.
+var _cloud: TestCloudSave
+
 
 func before_each() -> void:
-	for path in [SAVE_PATH, SAVE_PATH + SaveFile.DAMAGED_SUFFIX, SAVE_PATH + SaveFile.TEMP_SUFFIX]:
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(path)
+	_cloud = TestCloudSave.new()
+	for suffix in ["", SaveFile.DAMAGED_SUFFIX, SaveFile.TEMP_SUFFIX, CloudSyncRecord.SUFFIX,
+			CloudSaveSession.KEPT_SUFFIX]:
+		if FileAccess.file_exists(SAVE_PATH + suffix):
+			DirAccess.remove_absolute(SAVE_PATH + suffix)
 
 
 func after_all() -> void:
@@ -25,9 +32,22 @@ func _open_main(service: AchievementService) -> Control:
 	main.save_path = SAVE_PATH
 	main.clock = func() -> int: return NOW_UNIX_MS
 	main.achievement_service = service
+	main.cloud_save = _cloud
 	add_child_autofree(main)
-	await wait_process_frames(1)
+	await wait_process_frames(2)
 	return main
+
+
+## The export code of a game with a red factory and a prism. With
+## [param imported] true, that game came from an import of another player's
+## code on another device.
+func _code_with_a_prism(imported: bool) -> String:
+	var sim := Simulation.new(Content.load_dir(Content.DEFAULT_DIR), 2)
+	sim.build_factory(&"red")
+	sim.buy_prism()
+	if imported:
+		sim.mark_milestones_imported()
+	return ExportCode.encode(sim, NOW_UNIX_MS - 60_000)
 
 
 func test_the_first_sale_on_the_screen_unlocks_its_achievement() -> void:
@@ -60,18 +80,43 @@ func test_a_save_from_earlier_play_unlocks_its_achievements_on_start() -> void:
 	assert_false(service.unlocked.has(&"first_sale"))
 
 
-func test_an_import_unlocks_the_achievements_of_the_code() -> void:
+func test_an_import_of_a_code_unlocks_nothing_also_at_the_next_start() -> void:
 	var service := TestAchievementService.new()
 	var main := await _open_main(service)
-	var other := Simulation.new(Content.load_dir(Content.DEFAULT_DIR), 2)
-	other.build_factory(&"red")
-	other.buy_prism()
-	var imported := SaveCodec.decode(Content.load_dir(Content.DEFAULT_DIR), SaveCodec.encode(other, NOW_UNIX_MS))
+	var imported := ExportCode.decode(Content.load_dir(Content.DEFAULT_DIR), _code_with_a_prism(false))
 	assert_true(imported.ok, imported.message)
 
 	var dialog: ExportCodeDialog = main.find_children("*", "ExportCodeDialog", true, false)[0]
 	dialog.import_confirmed.emit(imported)
 	# The rows of the last run go at the end of the frame.
 	await wait_process_frames(1)
+	assert_eq(main.simulation().milestones().get(Milestones.PRISMS_BOUGHT, 0), 1)
+	assert_false(service.unlocked.has(&"first_prism"))
+	main.queue_free()
+	await wait_process_frames(1)
 
+	var next_start := TestAchievementService.new()
+	main = await _open_main(next_start)
+
+	assert_eq(main.simulation().milestones().get(Milestones.PRISMS_BOUGHT, 0), 1, "the save has the import")
+	assert_false(next_start.unlocked.has(&"first_prism"))
+
+
+func test_a_cloud_save_of_the_players_own_game_unlocks_its_achievements() -> void:
+	_cloud.put(_code_with_a_prism(false))
+	var service := TestAchievementService.new()
+
+	var main := await _open_main(service)
+
+	assert_eq(main.simulation().milestones().get(Milestones.PRISMS_BOUGHT, 0), 1, "the cloud save loaded")
 	assert_true(service.unlocked.has(&"first_prism"))
+
+
+func test_a_cloud_save_of_an_imported_game_unlocks_nothing() -> void:
+	_cloud.put(_code_with_a_prism(true))
+	var service := TestAchievementService.new()
+
+	var main := await _open_main(service)
+
+	assert_eq(main.simulation().milestones().get(Milestones.PRISMS_BOUGHT, 0), 1, "the cloud save loaded")
+	assert_false(service.unlocked.has(&"first_prism"))

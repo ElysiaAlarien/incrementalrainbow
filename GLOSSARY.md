@@ -234,8 +234,12 @@ _Avoid_: Offline limit, max idle time
 The device clock time that a save's state is for. It is in the save, beside the state.
 
 **Milestone**:
-A lifetime record of something the player did: the first time they did it, or the highest count they reached, such as the prisms bought. It only goes up, and a prestige keeps it. The core sends an event when a milestone goes up. See ADR-0018.
+A lifetime record of something the player did: the first time they did it, or the highest count they reached, such as the prisms bought. It only goes up, and a prestige keeps it. The core sends an event when a milestone goes up. See ADR-0019.
 _Avoid_: Stat, record, achievement
+
+**Imported milestone**:
+The value that a milestone had when the player imported the game from an export code. An achievement that the imported value already grants is not granted on the platform. A cloud load is not an import.
+_Avoid_: Foreign milestone, borrowed achievement
 
 **Achievement**:
 A goal on the platform (Steam, Game Center, or Google Play Games) that a milestone grants. The achievements are data outside the core.
@@ -252,7 +256,7 @@ The save as text that the player copies to another device and imports there, wit
 _Avoid_: Save string, save key, backup code
 
 **Cloud save**:
-The save in the platform's cloud (Steam Cloud, iCloud, or Google Play), kept as the export code, so that the player's game moves between their devices. See ADR-0018.
+The save in the platform's cloud (Steam Cloud, iCloud, or Google Play), kept as the export code, so that the player's game moves between their devices. See ADR-0019.
 _Avoid_: Cloud sync file, remote save
 
 **Sync**:

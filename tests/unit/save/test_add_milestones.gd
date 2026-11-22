@@ -1,5 +1,5 @@
 extends GutTest
-## The save keeps the milestones (#25, ADR-0018). An older save gets each
+## The save keeps the milestones (#25, ADR-0019). An older save gets each
 ## milestone that its state shows, and the first sale when a trace of a sale is
 ## in the state.
 
@@ -84,7 +84,15 @@ func test_an_older_save_with_no_trace_of_a_sale_has_no_first_sale() -> void:
 
 func test_a_saved_milestone_above_what_the_state_shows_stays() -> void:
 	var result := _load(_fixture_with("add_milestones.json",
-		{"milestones": [{"id": "factories", "value": 40}]}))
+		{"milestones": [{"id": "factories", "value": 40, "imported": 0}]}))
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.milestones()[Milestones.FACTORIES], 40)
+
+
+func test_an_older_save_has_no_imported_milestones() -> void:
+	var result := _fixture("v14.json")
+	assert_true(result.ok, result.message)
+
+	assert_eq(result.simulation.imported_milestones(), {} as Dictionary[StringName, int],
+		"an older game gets the achievements of its milestones")

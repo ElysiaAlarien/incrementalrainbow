@@ -49,7 +49,11 @@ func platform_id(platform: StringName) -> String:
 	return _platform_ids.get(platform, "")
 
 
-## True when [param milestones] (from [method Simulation.milestones]) grant
-## the achievement.
-func is_met(milestones: Dictionary[StringName, int]) -> bool:
-	return milestones.get(_milestone, 0) >= _at_least
+## True when the milestone [param value] grants the achievement on the
+## platform. [param imported] is the value that the milestone had when the
+## player imported the game from an export code (see
+## [method Simulation.imported_milestones]), or 0. An import that already
+## had the value [member at_least] does not grant it: only the player's own
+## progress after the import does (ADR-0019).
+func is_earned(value: int, imported: int) -> bool:
+	return value >= _at_least and _at_least > imported

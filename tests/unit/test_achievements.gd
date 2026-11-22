@@ -1,5 +1,5 @@
 extends GutTest
-## Platform achievements (#25, ADR-0018): the achievement data, and the tracker
+## Platform achievements (#25, ADR-0019): the achievement data, and the tracker
 ## that unlocks achievements from the milestones of the core through the test
 ## adapter.
 
@@ -175,6 +175,92 @@ func test_a_loaded_save_unlocks_its_achievements() -> void:
 	AchievementTracker.new(_sample_list(), service).attach(loaded.simulation)
 
 	assert_eq(service.unlocked, [&"first_sale"] as Array[StringName])
+
+
+# --- Imported export codes (ADR-0019) ------------------------------------------
+
+## A list with the first sale, the first prism, and two prisms.
+func _prism_list() -> AchievementList:
+	var list := _list([
+		_entry("first_sale", "first_sale"),
+		_entry("first_prism", "prisms_bought"),
+		_entry("two_prisms", "prisms_bought", {"at_least": 2}),
+	])
+	assert_eq(list.errors, PackedStringArray())
+	return list
+
+
+## A game of another player with a sale and one prism, as the screen has it
+## after an import of its code.
+func _imported_game() -> Simulation:
+	var other := Simulation.new(_content(), SEED)
+	_sell_once(other)
+	_ok(other.buy_prism())
+	var imported := SaveCodec.decode(_content(), SaveCodec.encode(other, 0))
+	assert_true(imported.ok, imported.message)
+	_ok(imported.simulation.mark_milestones_imported())
+	return imported.simulation
+
+
+func test_an_imported_game_unlocks_nothing() -> void:
+	var service := TestAchievementService.new()
+
+	AchievementTracker.new(_prism_list(), service).attach(_imported_game())
+
+	assert_eq(service.unlocked, [] as Array[StringName])
+
+
+func test_an_imported_game_unlocks_nothing_after_a_restart() -> void:
+	var restarted := SaveCodec.decode(_content(), SaveCodec.encode(_imported_game(), 0))
+	assert_true(restarted.ok, restarted.message)
+	var service := TestAchievementService.new()
+
+	AchievementTracker.new(_prism_list(), service).attach(restarted.simulation)
+
+	assert_eq(service.unlocked, [] as Array[StringName])
+
+
+func test_after_an_import_only_a_value_that_the_import_did_not_have_unlocks() -> void:
+	var sim := _imported_game()
+	var service := TestAchievementService.new()
+	var tracker := AchievementTracker.new(_prism_list(), service)
+	tracker.attach(sim)
+
+	_sell_once(sim)
+	assert_eq(service.unlocked, [] as Array[StringName], "the import had the first sale")
+	_ok(sim.buy_prism())
+	assert_eq(service.unlocked, [&"two_prisms"] as Array[StringName], "the import had one prism")
+
+	var restarted := SaveCodec.decode(_content(), SaveCodec.encode(sim, 0))
+	var after_restart := TestAchievementService.new()
+	AchievementTracker.new(_prism_list(), after_restart).attach(restarted.simulation)
+	assert_eq(after_restart.unlocked, [&"two_prisms"] as Array[StringName], "the same at the next start")
+
+
+func test_a_cloud_save_of_the_players_own_game_unlocks_its_achievements() -> void:
+	# A load from the cloud save does not mark an import.
+	var own := Simulation.new(_content(), SEED)
+	_sell_once(own)
+	_ok(own.buy_prism())
+	var from_cloud := ExportCode.decode(_content(), ExportCode.encode(own, 0))
+	assert_true(from_cloud.ok, from_cloud.message)
+	var service := TestAchievementService.new()
+
+	AchievementTracker.new(_prism_list(), service).attach(from_cloud.simulation)
+
+	assert_eq(service.unlocked, [&"first_sale", &"first_prism"] as Array[StringName])
+
+
+func test_a_cloud_save_of_an_imported_game_keeps_the_import() -> void:
+	# The other device of the player imported the code, and its cloud save
+	# carries the record of the import.
+	var from_cloud := ExportCode.decode(_content(), ExportCode.encode(_imported_game(), 0))
+	assert_true(from_cloud.ok, from_cloud.message)
+	var service := TestAchievementService.new()
+
+	AchievementTracker.new(_prism_list(), service).attach(from_cloud.simulation)
+
+	assert_eq(service.unlocked, [] as Array[StringName])
 
 
 func test_offline_progress_unlocks_its_achievements() -> void:

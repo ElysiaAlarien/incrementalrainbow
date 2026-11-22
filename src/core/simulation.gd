@@ -9,7 +9,7 @@ extends RefCounted
 ## [br]- [method tick] advances time by a duration in integer milliseconds.
 ## [br]- Queries read state. They return copies, never the live state.
 ## [br]- [signal milestone_reached] tells when a milestone goes up, so that
-##   platform achievements can react (see ADR-0018).
+##   platform achievements can react (see ADR-0019).
 ## [br][br]
 ## The same content, seed, commands, and ticks always give the same state.
 
@@ -45,7 +45,7 @@ const _PRESTIGE_KEEPS: Dictionary[String, Array] = {
 	"Prism price": [&"_prisms_bought"],
 	"Prestige upgrades and their unlocks": [&"_prestige_upgrades"],
 	"Guided start, when done or skipped": [&"_guided_start"],
-	"Achievement progress": [&"_milestones"],
+	"Achievement progress": [&"_milestones", &"_imported_milestones"],
 }
 ## What a prestige clears, as names for the player. A prestige clears all
 ## state that [constant _PRESTIGE_KEEPS] does not name, so this list only
@@ -120,6 +120,12 @@ var _guided_start := GuidedStartView.Step.BUILD_FACTORY
 ## Milestone id to its value (see [Milestones]). An id that is not here has the
 ## value 0. A prestige keeps it.
 var _milestones: Dictionary[StringName, int] = {}
+## Milestone id to the value that it had when the player imported this game
+## from an export code (see [method mark_milestones_imported]). An id that is
+## not here has the value 0. A value is never above the value in
+## [member _milestones]. It is in the save, so that a cloud save carries it to
+## each device of the player. A prestige keeps it.
+var _imported_milestones: Dictionary[StringName, int] = {}
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -197,6 +203,7 @@ func _read_milestones(reader: SnapshotReader) -> void:
 	for milestone_reader in reader.objects("milestones"):
 		var id := milestone_reader.text_id("id")
 		var value := milestone_reader.integer("value", 1)
+		var imported := milestone_reader.integer("imported", 0, value)
 		if id.is_empty():
 			continue
 		if not known.has(id):
@@ -205,6 +212,8 @@ func _read_milestones(reader: SnapshotReader) -> void:
 			milestone_reader.fail("id", "\"%s\" is in the list more than once" % id)
 		else:
 			_milestones[id] = value
+			if imported > 0:
+				_imported_milestones[id] = imported
 	# A damaged state does not load, and its values can be of no use here.
 	if reader.errors().is_empty():
 		_raise_milestones_from_state()
@@ -1047,6 +1056,17 @@ func _reach_research(id: StringName) -> void:
 		_reach(Milestones.FIRST_RESEARCH)
 
 
+## Records that the player imported this game from an export code: each
+## milestone that the game has now came from the import (ADR-0019). The screen
+## calls it after an import, and not after a load from the cloud save, which is
+## the same player's own game. It sends nothing, and it changes no rule of
+## play. A milestone that goes up later is still the player's own. It cannot
+## fail.
+func mark_milestones_imported() -> CommandResult:
+	_imported_milestones = _milestones.duplicate()
+	return CommandResult.success()
+
+
 ## Ends this run and starts a fresh one. A prestige keeps only the set in
 ## [constant _PRESTIGE_KEEPS] (see [method prestige_preview]) and clears all
 ## else to the state of a new game. The player must own at least one prism.
@@ -1661,6 +1681,13 @@ func milestones() -> Dictionary[StringName, int]:
 	return _milestones.duplicate()
 
 
+## Each milestone that came from an imported export code, with the value that
+## it had at the import (see [method mark_milestones_imported]). A platform
+## achievement layer does not grant what only an import gave.
+func imported_milestones() -> Dictionary[StringName, int]:
+	return _imported_milestones.duplicate()
+
+
 ## The full state as plain data. Two simulations with equal snapshots behave
 ## the same from here on. Use it to compare states, not to read single values.
 func snapshot() -> Dictionary:
@@ -1701,7 +1728,8 @@ func _milestones_to_dicts() -> Array[Dictionary]:
 	ids.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
 	var dicts: Array[Dictionary] = []
 	for id: StringName in ids:
-		dicts.append({"id": String(id), "value": _milestones[id]})
+		dicts.append({"id": String(id), "value": _milestones[id],
+			"imported": _imported_milestones.get(id, 0)})
 	return dicts
 
 

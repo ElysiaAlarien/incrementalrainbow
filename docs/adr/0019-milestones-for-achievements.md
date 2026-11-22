@@ -2,11 +2,11 @@
 
 Platform achievements (#25) for Steam, Game Center, and Google Play Games must react to core events (spec #1). They sit outside the core, behind one interface.
 
-**The core records milestones in the save.** A milestone is a lifetime record of something the player did: the first time they did it (value 1), or the highest count they reached. A milestone only goes up. `Simulation._milestones` holds them, `milestones()` reads them, and the snapshot key is `milestones` (a list of `{"id", "value"}`, sorted by id). A prestige keeps them (`_PRESTIGE_KEEPS`, ADR-0012). `src/core/milestones.gd` has the ids. Some ids have one id for each item of the content, such as `factory.brown` or `research.earth_tones`.
+**The core records milestones in the save.** A milestone is a lifetime record of something the player did: the first time they did it (value 1), or the highest count they reached. A milestone only goes up. `Simulation._milestones` holds them, `milestones()` reads them, and the snapshot key is `milestones` (a list of `{"id", "value", "imported"}`, sorted by id; see "An imported code grants nothing" for `imported`). A prestige keeps them (`_PRESTIGE_KEEPS`, ADR-0012). `src/core/milestones.gd` has the ids. Some ids have one id for each item of the content, such as `factory.brown` or `research.earth_tones`.
 
 We record them, not only send events, for three reasons:
 
-- The player gets the achievements of a save that moves to another device by an export code (ADR-0010) or a cloud save. The other platform never saw the events.
+- The player gets the achievements of a save that moves to another device of the player by a cloud save (ADR-0018). The other platform never saw the events.
 - A platform that is not available (no sign-in, no network) gets the unlocks later. The tracker unlocks all that the milestones grant at each start, and when the service becomes available.
 - Counts such as the prestiges are not in the rest of the state.
 
@@ -16,7 +16,27 @@ We record them, not only send events, for three reasons:
 
 **A milestone id is kept for life.** The load checks each id against the content, as it checks colors and research. An id stays in the save after a prestige. So a content change that removes or renames a color, a transport tier, a research, or a prestige upgrade needs a migration that renames or removes its milestone. Otherwise each save that reached it fails to load.
 
-**A save carries its achievements.** An export code from another player gives their milestones, so the platform account of this device gets their achievements. A platform cannot take an achievement back.
+**An imported code grants nothing that only the import gave.** An export code (ADR-0010) can come from another player. A platform cannot take an achievement back, so the milestones of an imported code must not unlock achievements on the platform account of this device. The player's own progress after the import must still unlock them.
+
+The rule: after the player imports a code, the screen calls `Simulation.mark_milestones_imported()`. It records the value of each milestone at that time (`imported_milestones()`, the `imported` value of each entry in the snapshot, 0 when there was no import). An achievement for a milestone and a value (`at_least`) is granted only when the milestone has that value and the import did not have it:
+
+```text
+is_earned(value, imported) = value >= at_least and at_least > imported
+```
+
+The tracker uses this rule for an event and when it attaches, so a restart gives the same unlocks as play. Examples, with an imported code that has the first sale and 1 prism:
+
+- "First sale" and "First prism" are never granted on this game. A first that the import had does not go up again.
+- The player buys a second prism: "Two prisms" is granted, because the import did not have 2.
+- A prestige keeps the record of the import, as it keeps the milestones.
+
+**A cloud load is not an import.** A cloud save (ADR-0018) also uses the export code, but it is the player's own game from another device. The screen calls `mark_milestones_imported()` only for the import of the Export or import dialog, not when the cloud save replaces the game, and not when the player changes to the kept save. The record of an import is in the save, so the cloud carries it: when the other device of the player imported a code, this device does not grant its achievements either. A record beside the save, such as the cloud sync record, would not travel with the cloud save, so we keep it in the core state.
+
+The rule has costs:
+
+- The game cannot tell a code of the player's own game from a code of another player. A player who moves their own game by an export code, and not by a cloud save, does not get its achievements on the new platform account, until each milestone goes above the code.
+- Each milestone of the game on the device before the import is replaced, so it is not part of the record. The platform account has those achievements already, if the platform was available.
+- A player can edit a code to remove the record. The code has a checksum, not a signature (ADR-0010), so this does not stop a player who wants to cheat.
 
 **Achievements are data outside the core.** `data/achievements.json` maps each achievement to a milestone and a value (`at_least`), and has the id of the achievement on each platform. The core does not read it. `AchievementList` checks it against the milestone ids of the content.
 
