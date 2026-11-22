@@ -5,9 +5,15 @@ extends GutTest
 const MainScene := preload("res://src/ui/main.tscn")
 ## A save path of its own, so that tests never touch the player's save.
 const SAVE_PATH := "user://test_saves/main_screen.json"
+## The device clock at the start of each test: a time in November 2026.
+const SAVED_AT_UNIX_MS := 1_795_000_000_000
+
+## The device clock that the screen reads. Tests move it to make time away.
+var _now_ms := SAVED_AT_UNIX_MS
 
 
 func before_each() -> void:
+	_now_ms = SAVED_AT_UNIX_MS
 	for path in [SAVE_PATH, SAVE_PATH + SaveFile.DAMAGED_SUFFIX, SAVE_PATH + SaveFile.TEMP_SUFFIX]:
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
@@ -20,6 +26,7 @@ func after_all() -> void:
 func _open_main() -> Control:
 	var main: Control = MainScene.instantiate()
 	main.save_path = SAVE_PATH
+	main.clock = func() -> int: return _now_ms
 	add_child_autofree(main)
 	await wait_process_frames(1)
 	return main
@@ -241,7 +248,7 @@ func test_an_automatic_link_with_too_little_money_shows_why() -> void:
 	game.make_link(1, &"millbrook")
 	game.buy_automatic_transport(1)
 	game.tick(3000)
-	var save: Dictionary = JSON.parse_string(SaveCodec.encode(game))
+	var save: Dictionary = JSON.parse_string(SaveCodec.encode(game, SAVED_AT_UNIX_MS))
 	save.state.money = BigNumber.from_int(1).to_data()
 	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -777,7 +784,7 @@ func _main_with_money(money: int) -> Control:
 	var game := Simulation.new(Content.load_dir(Content.DEFAULT_DIR), 5)
 	game.build_factory(&"red")
 	game.make_link(1, &"millbrook")
-	var save: Dictionary = JSON.parse_string(SaveCodec.encode(game))
+	var save: Dictionary = JSON.parse_string(SaveCodec.encode(game, SAVED_AT_UNIX_MS))
 	save.state.money = BigNumber.from_int(money).to_data()
 	DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir())
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -953,3 +960,167 @@ func test_the_player_sets_a_split_and_sees_it() -> void:
 	await wait_process_frames(1)
 	assert_eq(main.simulation().splits().size(), 0)
 	assert_string_contains(row.text(), "No split")
+
+
+# --- Offline progress -----------------------------------------------------------
+
+## Saves a game with a red factory and an automatic link to the market, and
+## closes the screen. Returns the saved time of the game.
+func _save_an_automatic_game() -> int:
+	var main := await _main_with_red_factory()
+	main.find_child("MakeLink", true, false).pressed.emit()
+	assert_true(main.simulation().buy_automatic_transport(1).ok)
+	var time_ms: int = main.simulation().time_ms()
+	remove_child(main)
+	main.free()
+	return time_ms
+
+
+## Waits until the screen has applied all offline progress.
+func _await_caught_up(main: Control) -> void:
+	var screen: CatchUpScreen = main.find_child("CatchUpScreen", true, false)
+	for i in 1000:
+		if not screen.visible:
+			return
+		await wait_process_frames(1)
+	fail_test("the screen did not catch up")
+
+
+func _summary_dialog(main: Control) -> OfflineSummaryDialog:
+	return main.find_child("OfflineSummaryDialog", true, false)
+
+
+func test_on_return_the_screen_applies_offline_progress_and_shows_a_summary() -> void:
+	var saved_ms := await _save_an_automatic_game()
+	_now_ms += 3_600_000
+
+	var main := await _open_main()
+	await _await_caught_up(main)
+
+	assert_gte(main.simulation().time_ms(), saved_ms + 3_600_000)
+	var dialog := _summary_dialog(main)
+	assert_true(dialog.visible, "the summary shows")
+	var text := dialog.text()
+	assert_string_contains(text, "You were away for 1 h.")
+	assert_string_contains(text, "Money earned: ")
+	assert_string_contains(text, "Widgets sold: ")
+	assert_string_contains(text, "Widgets made: ")
+	assert_false(text.contains("Widgets sold: 0\n"), "the automatic link sold widgets: %s" % text)
+
+
+func test_a_clock_that_went_backward_gives_no_offline_progress() -> void:
+	var saved_ms := await _save_an_automatic_game()
+	_now_ms -= 3_600_000
+
+	var main := await _open_main()
+
+	assert_lt(main.simulation().time_ms(), saved_ms + 1000, "only the time of the frames")
+	assert_false(_summary_dialog(main).visible)
+
+
+func test_a_short_time_away_applies_offline_progress_with_no_summary() -> void:
+	var saved_ms := await _save_an_automatic_game()
+	_now_ms += 30_000
+
+	var main := await _open_main()
+	await _await_caught_up(main)
+
+	assert_gte(main.simulation().time_ms(), saved_ms + 30_000)
+	assert_false(_summary_dialog(main).visible)
+
+
+func test_a_long_time_away_catches_up_over_many_frames() -> void:
+	var saved_ms := await _save_an_automatic_game()
+	var away_ms := 20 * 3_600_000
+	_now_ms += away_ms
+
+	var main := await _open_main()
+
+	var screen: CatchUpScreen = main.find_child("CatchUpScreen", true, false)
+	assert_true(screen.visible, "the screen shows the catch-up")
+	var applied_ms: int = main.simulation().time_ms() - saved_ms
+	assert_lt(applied_ms, away_ms, "a frame applies only part of a long time away")
+	# A save now keeps the time away that is not applied yet. Frame time adds
+	# to the time away while the game catches up.
+	main.write_save()
+	var saved := _read_save()
+	assert_true(saved.ok, saved.message)
+	var saved_applied_ms: int = saved.simulation.time_ms() - saved_ms
+	assert_almost_eq(saved.saved_at_unix_ms, SAVED_AT_UNIX_MS + saved_applied_ms, 1000)
+
+
+func test_a_phone_game_back_from_the_background_applies_offline_progress() -> void:
+	var main := await _main_with_red_factory()
+	main.find_child("MakeLink", true, false).pressed.emit()
+	main.simulation().buy_automatic_transport(1)
+	main.notification(NOTIFICATION_APPLICATION_PAUSED)
+	var paused_ms: int = main.simulation().time_ms()
+	await wait_process_frames(2)
+	assert_eq(main.simulation().time_ms(), paused_ms, "the game does not tick in the background")
+	assert_true(_read_save().ok, "the game saved when it went to the background")
+
+	_now_ms += 2 * 3_600_000
+	main.notification(NOTIFICATION_APPLICATION_RESUMED)
+	await _await_caught_up(main)
+
+	assert_gte(main.simulation().time_ms(), paused_ms + 2 * 3_600_000)
+	assert_lt(main.simulation().time_ms(), paused_ms + 2 * 3_600_000 + 1000, "the time away counts once")
+	assert_string_contains(_summary_dialog(main).text(), "You were away for 2 h.")
+
+
+func test_an_imported_code_applies_offline_progress_from_the_time_of_the_code() -> void:
+	var main: Control = await _main_with_red_factory()
+	main.find_child("MakeLink", true, false).pressed.emit()
+	main.simulation().buy_automatic_transport(1)
+	var dialog := await _open_export_code_dialog(main)
+	var code := (dialog.find_child("ExportCodeText", true, false) as TextEdit).text
+	var code_ms := ExportCode.decode(Content.load_dir(Content.DEFAULT_DIR), code).simulation.time_ms()
+	_now_ms += 5 * 60_000
+
+	var confirm := await _import_code(dialog, code)
+	confirm.confirmed.emit()
+	await _await_caught_up(main)
+
+	assert_gte(main.simulation().time_ms(), code_ms + 5 * 60_000)
+	assert_string_contains(_summary_dialog(main).text(), "You were away for 5 min.")
+
+
+func test_time_away_above_the_cap_gives_no_progress_and_the_summary_says_so() -> void:
+	var saved_ms := await _save_an_automatic_game()
+	var cap_ms := 24 * 3_600_000
+	_now_ms += 3 * cap_ms
+
+	var main := await _open_main()
+	# The time away above the cap is gone: a save now has only the rest of the
+	# 24 h to apply.
+	main.write_save()
+	var saved := _read_save()
+	var left_ms := cap_ms - (saved.simulation.time_ms() - saved_ms)
+	assert_almost_eq(saved.saved_at_unix_ms, _now_ms - left_ms, 1000)
+	await _await_caught_up(main)
+
+	assert_gte(main.simulation().time_ms(), saved_ms + cap_ms)
+	assert_lt(main.simulation().time_ms(), saved_ms + cap_ms + 10_000, "no progress above the cap")
+	var text := _summary_dialog(main).text()
+	assert_string_contains(text, "You were away for 3 d.")
+	assert_string_contains(text, "Offline progress stops at 24 h, so the game advanced 24 h.")
+
+
+func test_the_summary_does_not_mention_the_cap_below_it() -> void:
+	await _save_an_automatic_game()
+	_now_ms += 3_600_000
+
+	var main := await _open_main()
+	await _await_caught_up(main)
+
+	assert_false(_summary_dialog(main).text().contains("stops at"))
+
+
+func test_format_duration_shows_the_two_largest_units() -> void:
+	assert_eq(OfflineSummaryDialog.format_duration(45_999), "45 s")
+	assert_eq(OfflineSummaryDialog.format_duration(12 * 60_000 + 5000), "12 min")
+	assert_eq(OfflineSummaryDialog.format_duration(3 * 3_600_000), "3 h")
+	assert_eq(OfflineSummaryDialog.format_duration(3 * 3_600_000 + 5 * 60_000), "3 h 5 min")
+	assert_eq(OfflineSummaryDialog.format_duration(24 * 3_600_000), "24 h")
+	assert_eq(OfflineSummaryDialog.format_duration(30 * 3_600_000), "30 h")
+	assert_eq(OfflineSummaryDialog.format_duration(2 * 86_400_000 + 4 * 3_600_000), "2 d 4 h")

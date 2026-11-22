@@ -16,12 +16,30 @@ extends Control
 ## The Export or import button exports the game as a code and imports a code.
 ## The Prestige button shows what a prestige keeps and clears, and asks the
 ## player to confirm.
+##
+## When the player returns (the game starts from a save, a code imports, or a
+## phone game comes back from the background), the screen applies offline
+## progress for the time away with [method Simulation.progress_offline]. It
+## does this in parts over many frames, behind a screen that shows how far it
+## is, so that a long time away does not stop the game from drawing. Then it
+## shows a summary.
 
 ## Seconds between saves while the game runs.
 const AUTOSAVE_INTERVAL_S := 30.0
+## The real time that offline progress can use in each frame.
+const CATCH_UP_BUDGET_MS := 12
+## The first part of offline progress, in game time. Later parts grow or
+## shrink so that each frame uses about [constant CATCH_UP_BUDGET_MS].
+const FIRST_CATCH_UP_PART_MS := 1000
+## The summary shows only for at least this much time away, so that a quick
+## restart or a short switch to another app does not show it.
+const SUMMARY_MIN_AWAY_MS := 60_000
 
 ## Where the game keeps its save. Set it before the screen enters the tree.
 var save_path := SaveFile.DEFAULT_PATH
+## The device clock in Unix milliseconds. Tests set it before the screen
+## enters the tree.
+var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0)
 
 @onready var _color_cards: HFlowContainer = %ColorCards
 @onready var _factory_list: VBoxContainer = %FactoryList
@@ -85,6 +103,19 @@ var _destination_keys: Array = []
 var _destination_keys_tier: StringName = &""
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
+## Offline progress that is not applied yet. While it is more than 0, the game
+## catches up and the player cannot act, so frame time adds to it.
+var _offline_pending_ms: int = 0
+## The offline progress applied since the player returned.
+var _offline_summary := OfflineSummary.new()
+## The game time of the next part of offline progress.
+var _catch_up_part_ms := FIRST_CATCH_UP_PART_MS
+## The device clock time when a phone game went to the background, or -1.
+var _paused_at_unix_ms: int = -1
+## True for the first frame after the background.
+var _drop_next_frame := false
+var _catch_up_screen: CatchUpScreen
+var _summary_dialog: OfflineSummaryDialog
 
 
 func _ready() -> void:
@@ -94,6 +125,10 @@ func _ready() -> void:
 		set_process(false)
 		return
 	_save_file = SaveFile.new(save_path)
+	_catch_up_screen = CatchUpScreen.new()
+	add_child(_catch_up_screen)
+	_summary_dialog = OfflineSummaryDialog.new()
+	add_child(_summary_dialog)
 	_sim = _load_or_start_game()
 	var autosave := Timer.new()
 	autosave.name = "Autosave"
@@ -111,7 +146,8 @@ func _ready() -> void:
 	_export_code_dialog = ExportCodeDialog.new(_content)
 	_export_code_dialog.import_confirmed.connect(_replace_game)
 	add_child(_export_code_dialog)
-	_export_code_button.pressed.connect(func() -> void: _export_code_dialog.open(_sim))
+	_export_code_button.pressed.connect(func() -> void:
+		_export_code_dialog.open(_sim, _state_unix_ms()))
 	_buy_prism_button.pressed.connect(_on_buy_prism_pressed)
 	_prestige_confirm.name = "PrestigeConfirm"
 	_prestige_confirm.title = "Prestige?"
@@ -130,10 +166,23 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if _paused_at_unix_ms >= 0:
+		# In the background until NOTIFICATION_APPLICATION_RESUMED. Its time
+		# goes to offline progress then, so frames now do not tick.
+		return
+	if _drop_next_frame:
+		# The first frame after the background can have the whole time away.
+		_drop_next_frame = false
+		delta = 0.0
 	_carry_ms += delta * 1000.0
 	var whole_ms := int(_carry_ms)
 	_carry_ms -= whole_ms
-	_sim.tick(whole_ms)
+	if _offline_pending_ms > 0:
+		_offline_pending_ms += whole_ms
+	else:
+		_sim.tick(whole_ms)
+	if _offline_pending_ms > 0:
+		_catch_up()
 	_refresh()
 
 
@@ -146,13 +195,82 @@ func _notification(what: int) -> void:
 	# A mobile OS can stop a game in the background with no other notice.
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		write_save()
+		_paused_at_unix_ms = clock.call()
+	elif what == NOTIFICATION_APPLICATION_RESUMED and _paused_at_unix_ms >= 0:
+		_return_from_background()
+
+
+## Starts offline progress for the time that a phone game was in the
+## background. The game does not tick there, so that time is time away.
+func _return_from_background() -> void:
+	var away_ms := maxi(clock.call() - _paused_at_unix_ms, 0)
+	_paused_at_unix_ms = -1
+	_drop_next_frame = true
+	_start_offline_progress(away_ms)
+
+
+## Adds offline progress for [param away_ms] of time away. The core limits it
+## to [method Simulation.max_offline_ms], and the summary keeps the rest.
+func _start_offline_progress(away_ms: int) -> void:
+	if away_ms <= 0:
+		return
+	if _offline_pending_ms <= 0:
+		_offline_summary = OfflineSummary.new()
+	var progress_ms := _sim.offline_progress_ms(away_ms)
+	_offline_summary.skipped_ms += away_ms - progress_ms
+	_offline_pending_ms += progress_ms
+	if _offline_pending_ms <= 0:
+		_finish_catch_up()
+		return
+	_catch_up_screen.show_progress(_offline_summary.duration_ms, _offline_pending_ms)
+
+
+## Applies offline progress in parts until the frame has used its budget. Each
+## part's game time adapts to how long the last part took. Ticks of any length
+## give the same state, so the parts do not change the result.
+func _catch_up() -> void:
+	var begin_ms := Time.get_ticks_msec()
+	var applied := OfflineSummary.new()
+	while _offline_pending_ms > 0:
+		var part_ms := mini(_catch_up_part_ms, _offline_pending_ms)
+		var part_begin_ms := Time.get_ticks_msec()
+		applied.add(_sim.progress_offline(part_ms))
+		_offline_pending_ms -= part_ms
+		var took_ms := Time.get_ticks_msec() - part_begin_ms
+		if took_ms * 4 < CATCH_UP_BUDGET_MS:
+			_catch_up_part_ms *= 2
+		elif took_ms > CATCH_UP_BUDGET_MS:
+			@warning_ignore("integer_division")
+			_catch_up_part_ms = maxi(_catch_up_part_ms / 2, 1)
+		if Time.get_ticks_msec() - begin_ms >= CATCH_UP_BUDGET_MS:
+			break
+	_offline_summary.add(applied)
+	if _offline_pending_ms > 0:
+		_catch_up_screen.show_progress(_offline_summary.duration_ms, _offline_pending_ms)
+		return
+	_finish_catch_up()
+
+
+## Hides the catch-up screen and shows the summary of the time away.
+func _finish_catch_up() -> void:
+	_catch_up_screen.hide()
+	if _offline_summary.duration_ms + _offline_summary.skipped_ms >= SUMMARY_MIN_AWAY_MS:
+		_summary_dialog.show_summary(_offline_summary, _sim.max_offline_ms())
+	_offline_summary = OfflineSummary.new()
+
+
+## The device clock time that the state of the game is for: now, less the
+## offline progress that is not applied yet. A save keeps it, so that a game
+## that closes while it catches up loses no time away.
+func _state_unix_ms() -> int:
+	return clock.call() - _offline_pending_ms
 
 
 ## Writes the current game to the device.
 func write_save() -> void:
 	if _sim == null or not _can_save:
 		return
-	var error := _save_file.write(SaveCodec.encode(_sim))
+	var error := _save_file.write(SaveCodec.encode(_sim, _state_unix_ms()))
 	if error != OK:
 		push_error("Could not save the game to %s: %s" % [_save_file.path, error_string(error)])
 		_show_message("The game could not save: %s." % error_string(error))
@@ -170,7 +288,9 @@ func _load_or_start_game() -> Simulation:
 	if _save_file.exists():
 		var result := SaveCodec.decode(_content, _save_file.read())
 		if result.ok:
-			return result.simulation
+			_sim = result.simulation
+			_start_offline_progress(result.time_away_ms(clock.call()))
+			return _sim
 		var kept_path := _save_file.keep_damaged()
 		var kept_text := "A copy of it is at %s." % ProjectSettings.globalize_path(kept_path)
 		if kept_path.is_empty():
@@ -182,10 +302,14 @@ func _load_or_start_game() -> Simulation:
 	return Simulation.new(_content, randi())
 
 
-## Replaces the game with [param simulation], from an imported code, and saves
-## it at once.
-func _replace_game(simulation: Simulation) -> void:
-	_sim = simulation
+## Replaces the game with the game of [param imported], from an imported code,
+## and saves it at once. Offline progress runs from the time of the code.
+func _replace_game(imported: LoadResult) -> void:
+	_sim = imported.simulation
+	_offline_pending_ms = 0
+	_offline_summary = OfflineSummary.new()
+	_catch_up_screen.hide()
+	_start_offline_progress(imported.time_away_ms(clock.call()))
 	_show_replaced_run()
 
 

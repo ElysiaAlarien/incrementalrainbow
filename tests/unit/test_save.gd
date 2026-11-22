@@ -1,6 +1,9 @@
 extends GutTest
 ## The save: a versioned, serialized form of the core state (see ADR-0009).
 
+## The save time of the saves that the tests write: a time in November 2026.
+const SAVED_AT_UNIX_MS := 1_795_000_000_000
+
 
 ## A game where every part of the core state has a value that is not its
 ## default. When you add core state, give it a non-default value here, so that
@@ -195,7 +198,7 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 func test_save_then_load_gives_the_same_state() -> void:
 	var sim := _rich_game()
 
-	var result := _load(SaveCodec.encode(sim))
+	var result := _load(SaveCodec.encode(sim, SAVED_AT_UNIX_MS))
 
 	assert_true(result.ok, result.message)
 	var loaded := result.simulation
@@ -271,7 +274,7 @@ func test_save_then_load_gives_the_same_state() -> void:
 
 func test_the_loaded_game_plays_on_the_same_as_the_saved_game() -> void:
 	var sim := _rich_game()
-	var loaded := _load(SaveCodec.encode(sim)).simulation
+	var loaded := _load(SaveCodec.encode(sim, SAVED_AT_UNIX_MS)).simulation
 
 	for game in [sim, loaded]:
 		game.build_factory(&"red")
@@ -294,7 +297,7 @@ func test_save_then_load_after_a_prestige_gives_the_same_state() -> void:
 	sim.build_factory(&"red")
 	sim.tick(2500)
 
-	var result := _load(SaveCodec.encode(sim))
+	var result := _load(SaveCodec.encode(sim, SAVED_AT_UNIX_MS))
 
 	assert_true(result.ok, result.message)
 	var loaded := result.simulation
@@ -315,7 +318,7 @@ func test_save_then_load_after_a_prestige_gives_the_same_state() -> void:
 
 
 func test_the_save_has_a_version_number() -> void:
-	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_rich_game()))
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
 
 	assert_eq(data.format, SaveCodec.FORMAT)
 	assert_eq(int(data.version), SaveCodec.current_version())
@@ -341,11 +344,11 @@ func _assert_load_fails(text: String, reason: LoadResult.Reason, message_part: S
 
 ## The save of the rich game as parsed JSON, to damage in tests.
 func _save_data() -> Dictionary:
-	return JSON.parse_string(SaveCodec.encode(_rich_game()))
+	return JSON.parse_string(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
 
 
 func test_a_cut_off_save_fails_as_not_json() -> void:
-	var text := SaveCodec.encode(_rich_game())
+	var text := SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS)
 	_assert_load_fails(text.substr(0, text.length() / 2), LoadResult.Reason.NOT_JSON, "not valid JSON")
 
 
@@ -1419,3 +1422,63 @@ func test_a_version_10_save_has_no_labs_or_research_after_migration() -> void:
 		assert_eq(view.total_paid(), 0)
 	assert_eq(sim.lab_stock(), {} as Dictionary[StringName, int])
 	assert_false(sim.is_color_unlocked(&"brown"))
+
+
+## A save of version 13 (#22: the save time), as the game wrote it. It is the
+## version 12 fixture, loaded and saved again at [constant SAVED_AT_UNIX_MS].
+func test_a_version_13_save_still_loads_with_its_save_time() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v13.json")
+
+	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.saved_at_unix_ms, SAVED_AT_UNIX_MS)
+	var v12 := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v12.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+	assert_eq(result.simulation.snapshot(), v12.simulation.snapshot())
+
+
+# --- Save time and time away ----------------------------------------------------
+
+func test_the_save_keeps_its_save_time() -> void:
+	var result := _load(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.saved_at_unix_ms, SAVED_AT_UNIX_MS)
+
+
+func test_the_time_away_is_from_the_save_time_to_now() -> void:
+	var result := _load(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
+
+	assert_eq(result.time_away_ms(SAVED_AT_UNIX_MS + 3_600_000), 3_600_000)
+	assert_eq(result.time_away_ms(SAVED_AT_UNIX_MS), 0)
+
+
+func test_a_clock_that_went_backward_gives_no_time_away() -> void:
+	var result := _load(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
+
+	assert_eq(result.time_away_ms(SAVED_AT_UNIX_MS - 1), 0)
+	assert_eq(result.time_away_ms(0), 0)
+
+
+func test_a_save_from_before_the_save_time_gives_no_time_away() -> void:
+	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v12.json"),
+		SaveCodec.migrations(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.saved_at_unix_ms, LoadResult.NO_SAVE_TIME)
+	assert_eq(result.time_away_ms(SAVED_AT_UNIX_MS), 0)
+
+
+func test_a_failed_load_gives_no_time_away() -> void:
+	assert_eq(_load("").time_away_ms(SAVED_AT_UNIX_MS), 0)
+
+
+func test_a_save_with_no_valid_save_time_fails() -> void:
+	var data := _save_data()
+	data.erase("saved_at_unix_ms")
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "save.saved_at_unix_ms: is missing")
+	data.saved_at_unix_ms = -5
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "save.saved_at_unix_ms: must be from 0")
+	data.saved_at_unix_ms = 12.5
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.DAMAGED_STATE, "must be a whole number")

@@ -22,9 +22,11 @@ const CHECKSUM_LENGTH := 8
 const MAX_SAVE_BYTES := 16 * 1024 * 1024
 
 
-## The export code of the current state of [param sim].
-static func encode(sim: Simulation) -> String:
-	return from_save(SaveCodec.encode(sim), SaveCodec.current_version())
+## The export code of the current state of [param sim], which is the state at
+## the device clock time [param saved_at_unix_ms]. An import gives offline
+## progress from that time, as a save on the device does.
+static func encode(sim: Simulation, saved_at_unix_ms: int) -> String:
+	return from_save(SaveCodec.encode(sim, saved_at_unix_ms), SaveCodec.current_version())
 
 
 ## The export code of [param save_text], which a game of save version

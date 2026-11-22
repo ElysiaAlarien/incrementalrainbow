@@ -117,6 +117,27 @@ func test_reports_a_missing_warehouse_section() -> void:
 	assert_string_contains("\n".join(content.errors), "warehouse.cost must be a number of at least 0")
 
 
+func test_reads_the_offline_cap() -> void:
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10, {"max_time_away_ms": 3_600_000})))
+	assert_eq(content.errors, PackedStringArray())
+	assert_eq(content.max_offline_ms, 3_600_000)
+
+
+func test_the_game_data_caps_offline_progress_at_24_hours() -> void:
+	assert_eq(Content.load_dir(Content.DEFAULT_DIR).max_offline_ms, 24 * 3_600_000)
+
+
+func test_reports_a_bad_offline_cap() -> void:
+	var content := Content.from_data(ContentFixture.data(
+		ContentFixture.colors_data(), ContentFixture.balance_data(1000, 10, {"max_time_away_ms": 0})))
+	assert_string_contains("\n".join(content.errors), "offline.max_time_away_ms must be a positive integer")
+	var balance := ContentFixture.balance_data()
+	balance.offline = "none"
+	content = Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "balance.json: \"offline\" must be an object")
+
+
 func test_reads_the_economy_values() -> void:
 	var balance := ContentFixture.balance_data(1000, 10, {"build_cost": 25, "starting_money": 120})
 	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))

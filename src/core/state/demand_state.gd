@@ -44,6 +44,11 @@ var next_event_ms: int = UNSCHEDULED
 ## The demand events that have started and that a tick has not forgotten yet,
 ## in start order.
 var _events: Array[DemandEventState] = []
+## Drift values that a sale used, so that the next sale does not compute them
+## again. It is not state: a new DemandState computes the same values. Market
+## id to color id to [code][pair, knot, a, b][/code]: the pair hash, the knot
+## index, and the values of that knot and the next one.
+var _drift_cache: Dictionary[StringName, Dictionary] = {}
 
 
 func _init(p_drift_key: int) -> void:
@@ -103,12 +108,12 @@ static func _event_interval(rng: SimRng, balance: DemandBalance) -> int:
 func drift(market_id: StringName, color: StringName, at_ms: int, balance: DemandBalance) -> float:
 	if balance.drift_amplitude == 0.0:
 		return 1.0
-	var pair := _pair_hash(market_id, color)
 	@warning_ignore("integer_division")
 	var knot := at_ms / balance.drift_period_ms
+	var knots := _knots(market_id, color, knot)
 	var t := float(at_ms - knot * balance.drift_period_ms) / balance.drift_period_ms
 	var smooth := t * t * (3.0 - 2.0 * t)
-	var value := lerpf(_knot_value(pair, knot), _knot_value(pair, knot + 1), smooth)
+	var value := lerpf(knots[2], knots[3], smooth)
 	return 1.0 + balance.drift_amplitude * (2.0 * value - 1.0)
 
 
@@ -245,6 +250,27 @@ func _read_events(reader: SnapshotReader, content: Content, now_ms: int) -> void
 func _until_ms(market_id: StringName, color: StringName) -> int:
 	var colors: Dictionary = _saturated_until_ms.get(market_id, {})
 	return colors.get(color, 0)
+
+
+## For [member _drift_cache]: [code][pair, knot, a, b][/code], with the
+## values a and b of [param knot] and the knot after it, for
+## [param market_id] and [param color].
+func _knots(market_id: StringName, color: StringName, knot: int) -> Array:
+	if not _drift_cache.has(market_id):
+		_drift_cache[market_id] = {}
+	var colors: Dictionary = _drift_cache[market_id]
+	var entry: Array = colors.get(color, [])
+	if entry.is_empty():
+		entry = [_pair_hash(market_id, color), knot, 0.0, 0.0]
+		entry[2] = _knot_value(entry[0], knot)
+		entry[3] = _knot_value(entry[0], knot + 1)
+		colors[color] = entry
+	elif entry[1] != knot:
+		var pair: int = entry[0]
+		entry[2] = entry[3] if knot == entry[1] + 1 else _knot_value(pair, knot)
+		entry[3] = _knot_value(pair, knot + 1)
+		entry[1] = knot
+	return entry
 
 
 ## The drift value of knot [param knot] for the market and color with

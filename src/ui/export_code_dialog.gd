@@ -5,11 +5,12 @@ extends AcceptDialog
 ## import replaces the game.
 ##
 ## It holds no rules: [ExportCode] makes and reads the codes. It emits
-## [signal import_confirmed] with the new game, and the screen replaces its
-## game with it.
+## [signal import_confirmed] with the load result of the new game, and the
+## screen replaces its game with it.
 
 ## The player confirmed that the game in the code replaces the current game.
-signal import_confirmed(simulation: Simulation)
+## [param imported] has the new game and the time of the code.
+signal import_confirmed(imported: LoadResult)
 
 const HINT_COLOR := Color(0.7, 0.72, 0.8)
 const ERROR_COLOR := Color(1, 0.55, 0.45)
@@ -21,8 +22,8 @@ var _import_text := TextEdit.new()
 var _import_button := Button.new()
 var _import_message := Label.new()
 var _confirm := ConfirmationDialog.new()
-## The game of the code that waits for the player to confirm the import.
-var _pending: Simulation
+## The load result of the code that waits for the player to confirm the import.
+var _pending: LoadResult
 
 
 func _init(content: Content) -> void:
@@ -80,9 +81,10 @@ func _init(content: Content) -> void:
 	add_child(_confirm)
 
 
-## Shows the dialog with the export code of [param simulation].
-func open(simulation: Simulation) -> void:
-	_export_text.text = ExportCode.encode(simulation)
+## Shows the dialog with the export code of [param simulation], whose state is
+## for the device clock time [param saved_at_unix_ms].
+func open(simulation: Simulation, saved_at_unix_ms: int) -> void:
+	_export_text.text = ExportCode.encode(simulation, saved_at_unix_ms)
 	_import_text.text = ""
 	_show_import_message("")
 	_pending = null
@@ -101,17 +103,17 @@ func _on_import_pressed() -> void:
 		_show_import_message("The code did not import, and your game did not change.\n%s" % result.message)
 		return
 	_show_import_message("")
-	_pending = result.simulation
+	_pending = result
 	_confirm.popup_centered()
 
 
 func _on_import_confirmed() -> void:
-	var simulation := _pending
+	var imported := _pending
 	_pending = null
-	if simulation == null:
+	if imported == null:
 		return
 	hide()
-	import_confirmed.emit(simulation)
+	import_confirmed.emit(imported)
 
 
 func _show_import_message(text: String) -> void:

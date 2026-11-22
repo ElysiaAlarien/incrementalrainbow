@@ -197,7 +197,18 @@ A permanent bonus or unlock bought with prisms. It lasts across all later runs.
 _Avoid_: Perk, talent, meta upgrade
 
 **Offline progress**:
-Production, logistics, and sales that happen while the game is closed, applied when the player returns.
+Production, logistics, and sales that happen while the game is closed, applied when the player returns. It is the normal simulation for the time away, with manual transport off.
+_Avoid_: Idle earnings, AFK gains
+
+**Time away**:
+The time from the save time to the current time of the device clock. It is 0 when the clock went backward. Offline progress applies at most the offline cap of it.
+
+**Offline cap**:
+The most time away that offline progress applies (24 hours). Time away above it gives no progress.
+_Avoid_: Offline limit, max idle time
+
+**Save time**:
+The device clock time that a save's state is for. It is in the save, beside the state.
 
 ## Saves
 
