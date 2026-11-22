@@ -461,6 +461,9 @@ func test_the_forecast_text_shows_the_time_ahead_and_the_accuracy() -> void:
 		"Forecast: the demand in 30s, 60% accurate. Forecast research makes it more accurate.")
 	forecast.accuracy = 1.0
 	assert_eq(MarketRow.forecast_text(forecast), "Forecast: the demand in 30s, 100% accurate.")
+
+
+func test_a_research_row_shows_the_colors_and_the_forecast_accuracy_that_it_unlocks() -> void:
 	assert_eq(ResearchRow.unlocks_text("Brown", 0.0), "Brown")
 	assert_eq(ResearchRow.unlocks_text("", 0.25), "Forecast accuracy +25%")
 	assert_eq(ResearchRow.unlocks_text("Brown", 0.3), "Brown, Forecast accuracy +30%")

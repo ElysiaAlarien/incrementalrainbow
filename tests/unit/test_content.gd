@@ -339,7 +339,7 @@ func test_reports_bad_research() -> void:
 		"bad: cost of red must be a positive integer",
 		"bad: requires later, which must be a research earlier in research.json",
 		"bad: each item of research.requires must be a text id",
-		"bad: unlocks has flight, but it can have only colors, forecast_accuracy",
+		"bad: unlocks has flight, but it can have only colors or forecast_accuracy",
 		"bad: unlocks green, but the unlock of green is not research",
 		"bad: unlocks teal, which is not a color",
 		"later: cost must be an object with at least one color",

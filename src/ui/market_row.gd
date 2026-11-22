@@ -155,13 +155,14 @@ static func capacity_text(view: MarketView) -> String:
 ## Such as "Forecast: the demand in 60s, 10% accurate. Forecast research
 ## makes it more accurate."
 static func forecast_text(forecast: ForecastView) -> String:
-	var text := "Forecast: the demand in %s, %d%% accurate." % [LinkRow.format_seconds(forecast.ahead_ms),
-		floori(forecast.accuracy * 100.0 + 1e-6)]
+	var text := "Forecast: the demand in %s, %s accurate." % [LinkRow.format_seconds(forecast.ahead_ms),
+		format_demand(forecast.accuracy)]
 	if forecast.accuracy < 1.0:
 		text += " Forecast research makes it more accurate."
 	return text
 
 
-## Demand as a whole percent of normal demand: "100%", "87%".
+## Demand as a whole percent of normal demand, or an accuracy as a whole
+## percent: "100%", "87%".
 static func format_demand(demand: float) -> String:
 	return "%d%%" % roundi(demand * 100.0)

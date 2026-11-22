@@ -60,8 +60,14 @@ func _init(p_drift_key: int) -> void:
 
 ## The demand of [param color] in [param market_id] at [param at_ms].
 func demand(market_id: StringName, color: StringName, at_ms: int, balance: DemandBalance) -> float:
-	return drift(market_id, color, at_ms, balance) * saturation_factor(market_id, color, at_ms, balance) \
-		* event_factor(color, at_ms)
+	return _with_known_factors(drift(market_id, color, at_ms, balance), market_id, color, at_ms, balance)
+
+
+## [param drift_value] times the saturation and demand event parts of the
+## demand of [param color] in [param market_id] at [param at_ms].
+func _with_known_factors(drift_value: float, market_id: StringName, color: StringName, at_ms: int,
+		balance: DemandBalance) -> float:
+	return drift_value * saturation_factor(market_id, color, at_ms, balance) * event_factor(color, at_ms)
 
 
 ## The forecast of the demand of [param color] in [param market_id] at
@@ -77,8 +83,7 @@ func forecast(market_id: StringName, color: StringName, at_ms: int, accuracy: fl
 		balance: DemandBalance) -> float:
 	var real := drift(market_id, color, at_ms, balance)
 	var noise := _drift_of_pair(_forecast_pair_hash(market_id, color), at_ms, balance)
-	return lerpf(noise, real, accuracy) * saturation_factor(market_id, color, at_ms, balance) \
-		* event_factor(color, at_ms)
+	return _with_known_factors(lerpf(noise, real, accuracy), market_id, color, at_ms, balance)
 
 
 ## The demand event part of demand: the product of the factors of the events

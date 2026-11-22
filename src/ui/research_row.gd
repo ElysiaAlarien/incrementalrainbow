@@ -112,7 +112,7 @@ static func unlocks_text(color_names: String, forecast_accuracy: float) -> Strin
 	if not color_names.is_empty():
 		parts.append(color_names)
 	if forecast_accuracy > 0.0:
-		parts.append("Forecast accuracy +%d%%" % roundi(forecast_accuracy * 100.0))
+		parts.append("Forecast accuracy +%s" % MarketRow.format_demand(forecast_accuracy))
 	return ", ".join(parts)
 
 

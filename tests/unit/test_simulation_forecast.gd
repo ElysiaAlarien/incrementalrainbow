@@ -60,8 +60,8 @@ func _content_with_research(overrides: Dictionary = {}) -> Content:
 		ContentFixture.transport_data(), {"events": []}, research))
 
 
-## A game of [param content] with a lab and a red factory linked to it.
-## Returns the link id.
+## Builds a lab and a red factory linked to it in [param sim]. Returns the
+## link id.
 func _game_with_lab(sim: Simulation) -> int:
 	assert_true(sim.build_lab().ok)
 	assert_true(sim.build_factory(&"red").ok)

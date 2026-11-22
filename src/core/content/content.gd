@@ -555,7 +555,7 @@ func _parse_unlocks(research_id: StringName, data: Variant) -> Array[StringName]
 	for key: Variant in data:
 		if not ResearchDef.UNLOCK_KINDS.has(str(key)):
 			_errors.append("%s: unlocks has %s, but it can have only %s" % [
-				research_id, key, ", ".join(ResearchDef.UNLOCK_KINDS)])
+				research_id, key, " or ".join(ResearchDef.UNLOCK_KINDS)])
 	colors = _read_id_list(research_id, data, "colors", "unlocks")
 	for color_id in colors:
 		var def := color(color_id)

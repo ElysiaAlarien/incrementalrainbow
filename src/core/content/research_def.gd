@@ -45,7 +45,7 @@ var _forecast_accuracy: float
 
 func _init(p_id: StringName, p_name: String, p_cost: Dictionary[StringName, int],
 		p_requires: Array[StringName], p_unlock_colors: Array[StringName],
-		p_forecast_accuracy: float = 0.0) -> void:
+		p_forecast_accuracy: float) -> void:
 	_id = p_id
 	_name = p_name
 	_cost = p_cost.duplicate()
