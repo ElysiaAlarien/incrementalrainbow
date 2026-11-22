@@ -26,12 +26,17 @@ const DESCRIPTION := "Incremental Rainbow"
 ## Tests replace it.
 var clock: Callable = func() -> String: return Time.get_datetime_string_from_system(false, true)
 
+enum SignIn {
+	## The plugin did not answer the sign-in check yet.
+	UNKNOWN,
+	SIGNED_IN,
+	SIGNED_OUT,
+}
+
 var _plugin: Object
-## True after the first answer of the plugin to the sign-in check.
-var _sign_in_known := false
-var _signed_in := false
-## The operations that wait for the sign-in answer, each with its start.
-var _waiting: Array[Array] = []
+var _sign_in := SignIn.UNKNOWN
+## The starts of the operations that wait for the sign-in answer.
+var _waiting: Array[Callable] = []
 var _pending_read: CloudOperation
 var _pending_write: CloudOperation
 ## The text of the saved game of [member _pending_write]. The answer of the
@@ -61,7 +66,7 @@ func service_name() -> String:
 
 
 func is_available() -> bool:
-	return _plugin != null and _signed_in
+	return _plugin != null and _sign_in == SignIn.SIGNED_IN
 
 
 func read() -> CloudOperation:
@@ -85,8 +90,11 @@ func _not_available_message() -> String:
 ## Starts [param operation] with [param start] when the player is signed in,
 ## or after the answer to the sign-in check.
 func _when_signed_in(operation: CloudOperation, start: Callable) -> void:
-	if _plugin != null and not _sign_in_known:
-		_waiting.append([operation, start])
+	if _plugin != null and _sign_in == SignIn.UNKNOWN:
+		_waiting.append(func() -> void:
+			# An operation that timed out does not start.
+			if not operation.is_done():
+				_when_signed_in(operation, start))
 	elif not is_available():
 		operation.fail(CloudOperation.Status.NOT_AVAILABLE, _not_available_message())
 	else:
@@ -106,6 +114,8 @@ func _start_write(operation: CloudOperation, text: String) -> void:
 		operation.fail(CloudOperation.Status.FAILED, "Google Play is still writing the save.")
 		return
 	_pending_write = operation
+	# A late answer to an earlier write has an earlier time: that write
+	# started at least one timeout before this one.
 	_pending_write_description = "%s, saved %s" % [DESCRIPTION, clock.call()]
 	# The played time and the progress are 0: the game makes its own choice in
 	# a conflict (ADR-0018).
@@ -113,15 +123,11 @@ func _start_write(operation: CloudOperation, text: String) -> void:
 
 
 func _on_user_authenticated(is_authenticated: bool) -> void:
-	_sign_in_known = true
-	_signed_in = is_authenticated
+	_sign_in = SignIn.SIGNED_IN if is_authenticated else SignIn.SIGNED_OUT
 	var waiting := _waiting
 	_waiting = []
-	for entry in waiting:
-		var operation: CloudOperation = entry[0]
-		# An operation that timed out does not start.
-		if not operation.is_done():
-			_when_signed_in(operation, entry[1])
+	for start in waiting:
+		start.call()
 
 
 ## [param json_data] is the snapshot as JSON, or "null" when the cloud has no
@@ -162,10 +168,10 @@ func _on_game_saved(is_saved: bool, save_data_name: String, description: String)
 		_pending_write.fail(CloudOperation.Status.FAILED, "Google Play did not save the game.")
 
 
-## Google Play found two versions of the snapshot. The plugin sets the
-## resolution policy of Google, so this is rare. The game makes its own choice
-## (ADR-0018), so the operation of the conflict fails, and the next sync tries
-## again. The JSON has the "origin" of the conflict: "SAVE" or "LOAD".
+## Google Play found two versions of the snapshot. This is rare, because the
+## plugin sets a resolution policy of Google. The game makes its own choice
+## (ADR-0018). Thus the operation of the conflict fails, and the next sync
+## tries again. The JSON has the "origin" of the conflict: "SAVE" or "LOAD".
 func _on_conflict(json_data: String) -> void:
 	var data: Variant = JSON.parse_string(json_data)
 	var origin: Variant = data.get("origin") if data is Dictionary else null

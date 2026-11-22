@@ -7,10 +7,14 @@ extends CloudSave
 ##
 ## This adapter never starts Steam. It uses Steam only after a start that
 ## worked ([code]get_steam_init_result()[/code] has the status 0), because
-## each Remote Storage call before a start logs an engine error. With no
-## GodotSteam, with Steam not started, or with Steam Cloud off for the player
-## or the game, [method is_available] is false and each operation finishes as
-## [constant CloudOperation.Status.NOT_AVAILABLE]. The script names no
+## each Remote Storage call before a start logs an engine error. Only
+## [code]steamInitEx[/code] sets that result, also when the project setting
+## of GodotSteam starts Steam. [code]steamInit[/code] does not, so do not
+## start Steam with it.
+##
+## With no GodotSteam, with Steam not started, or with Steam Cloud off for the
+## player or the game, [method is_available] is false and each operation
+## finishes as [constant CloudOperation.Status.NOT_AVAILABLE]. The script names no
 ## GodotSteam class, so it loads with no plugin.
 ##
 ## Each operation finishes at once. [code]fileWrite[/code] writes the local
@@ -47,7 +51,10 @@ func read() -> CloudOperation:
 	if not _steam.call(&"fileExists", SAVE_NAME):
 		return CloudOperation.done("")
 	var size: int = _steam.call(&"getFileSize", SAVE_NAME)
-	if size <= 0:
+	if size == 0:
+		# An empty file is no save, so that a sync can write over it.
+		return CloudOperation.done("")
+	if size < 0:
 		return CloudOperation.failed("Steam Cloud gave no size for the save.")
 	var data: Variant = _steam.call(&"fileRead", SAVE_NAME, size)
 	# "ret" is the count of bytes that Steam read, or false with no Remote

@@ -61,7 +61,7 @@ Each adapter also takes its SDK object in `_init`, so unit tests can give it a f
 
 Three limits come from the platforms. The adapter README (`src/platform/cloud_save/README.md`) has the details and a smoke test for each.
 
-- **Google Play resolves its own conflicts.** The plugin opens each snapshot with a resolution policy of Google, so Google picks one version when two devices wrote, and the cloud does not keep the other. The rule above still decides on each device: the device that lost still has its game, and its next sync sees a cloud save that changed, so it picks with the rule and keeps the other game. Thus nothing is lost on a device, but the rule is not the only rule in the cloud.
+- **Google Play resolves its own conflicts.** The plugin opens each snapshot with a resolution policy of Google, so Google picks one version when two devices wrote, and the cloud does not keep the other. The rule above still decides on each device. The device that lost still has its game. Its next sync sees a cloud save that changed, so it picks with the rule and keeps the other game. Thus nothing is lost on a device, but the rule is not the only rule in the cloud.
 - **Google Play reports a write before its commit.** If the commit then fails, the device records a sync that did not happen. The next sync sees a cloud save that changed. With no play since, the older cloud game loads, and the device game goes to the kept save.
 - **iCloud downloads the store only after the player signs in to an Apple account.** A new install in that time reads an empty store, and can upload a new game. Not checked on a device. This is an open risk.
 

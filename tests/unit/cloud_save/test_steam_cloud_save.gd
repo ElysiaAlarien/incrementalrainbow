@@ -106,6 +106,15 @@ func test_a_cloud_with_no_save_reads_as_an_empty_text() -> void:
 	assert_eq(read.text, "")
 
 
+func test_an_empty_save_file_reads_as_no_save() -> void:
+	_steam.files[CloudSave.SAVE_NAME] = PackedByteArray()
+
+	var read := _cloud.read()
+
+	assert_true(read.is_ok())
+	assert_eq(read.text, "")
+
+
 func test_a_read_that_steam_cannot_do_fails() -> void:
 	_steam.files[CloudSave.SAVE_NAME] = "a save".to_utf8_buffer()
 	# GodotSteam sets "ret" to false when it has no Remote Storage.
