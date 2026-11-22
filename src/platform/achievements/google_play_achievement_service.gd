@@ -20,7 +20,8 @@ const AUTHENTICATED_SIGNAL := &"userAuthenticated"
 const UNLOCKED_SIGNAL := &"achievementUnlocked"
 
 ## The Play Console ids of the unlocks that Google Play answered as failed in
-## this session. The tracker sends them again at the next start.
+## this session, for the tests. The tracker does not read it: it sends each
+## earned achievement again at the next start.
 var failed_unlocks: Array[String] = []
 
 var _play_games: Object
@@ -64,9 +65,9 @@ func unlock(def: AchievementDef) -> bool:
 
 
 func _on_authenticated(is_authenticated: bool) -> void:
-	var became := is_authenticated and not _authenticated
+	var signed_in_now := is_authenticated and not _authenticated
 	_authenticated = is_authenticated
-	if became:
+	if signed_in_now:
 		became_available.emit()
 
 

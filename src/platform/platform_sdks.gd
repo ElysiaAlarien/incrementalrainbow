@@ -1,8 +1,10 @@
 class_name PlatformSdks
 extends RefCounted
 ## Starts each platform SDK once in the process, for each of its users: the
-## achievements (#25) and the cloud save (#24). An SDK that two users start
-## twice can fail or log errors, so each user gets the SDK from here.
+## achievements (#25) and the cloud save (#24). A second start of an SDK can
+## fail or log errors, so each user must get the SDK from here. (On this
+## branch, only the achievements do. The cloud save adapters must change to
+## use it.)
 ##
 ## It names no SDK class, so it loads in a build with no SDK, and then each
 ## function returns null. The names come from the plugin sources that
@@ -48,20 +50,22 @@ static func play_games() -> Object:
 	return _play_games
 
 
-## Starts Steam on [param sdk], a GodotSteam singleton. Returns true when
-## Steam started. The app id comes from the GodotSteam project settings (0
-## here). GodotSteam runs the callbacks each frame (embedded callbacks), so no
-## user must call [code]run_callbacks()[/code], and a call to it does
-## nothing. Use [method steam]: this is public for the tests.
+## Starts Steam on [param sdk], a GodotSteam singleton, if it did not start
+## yet. Returns true when Steam runs. Use [method steam]: this is public for
+## the tests.
 ##
-## Leave the GodotSteam setting
-## [code]steam/initialization/processes/initialize_on_startup[/code] off.
-## With it on, this second start logs "Steam is already initialized." and gives
-## the result of the first.
+## GodotSteam can start itself at boot (its project setting
+## [code]steam/initialization/processes/initialize_on_startup[/code]). Then
+## this does not start it again, because a second start logs an error. Else it
+## starts Steam with the app id of the GodotSteam project settings (0 here),
+## and GodotSteam runs the callbacks each frame (embedded callbacks).
 static func start_steam(sdk: Object) -> bool:
+	var started: Variant = sdk.call(&"get_steam_init_result")
+	if started is Dictionary and started.get("status") == STEAM_INIT_OK:
+		return true
 	var result: Variant = sdk.call(&"steamInitEx", 0, true)
 	if result is Dictionary and result.get("status") == STEAM_INIT_OK:
 		return true
-	var verbal: String = result.get("verbal", "") if result is Dictionary else ""
-	print_verbose("Steam did not start: %s" % verbal)
+	var reason: String = result.get("verbal", "") if result is Dictionary else ""
+	print_verbose("Steam did not start: %s" % reason)
 	return false

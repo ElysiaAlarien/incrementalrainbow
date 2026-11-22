@@ -7,8 +7,7 @@ extends RefCounted
 ##
 ## The plugin has ClassDB classes, not an engine singleton. This script names
 ## no plugin class, so it parses in a build with no plugin.
-## [GameCenterAchievementService] uses it through these members only, so the
-## tests can give the adapter a fake.
+## Tests give [GameCenterAchievementService] a subclass with no plugin.
 
 ## The sign-in result. The plugin sends it again when the player signs in or
 ## out later.
@@ -31,8 +30,12 @@ static func for_this_build() -> GameKit:
 	return GameKit.new(ClassDB.instantiate(MANAGER_CLASS))
 
 
-func _init(manager: Object) -> void:
+## [param manager] is the plugin's GameCenterManager, or null for a subclass
+## with no plugin.
+func _init(manager: Object = null) -> void:
 	_manager = manager
+	if _manager == null:
+		return
 	_manager.connect(&"authentication_result", authentication_result.emit)
 	_manager.connect(&"authentication_error", authentication_error.emit)
 

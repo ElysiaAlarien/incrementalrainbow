@@ -21,6 +21,11 @@ class FakeSteam:
 	var achievements: Array[String] = []
 	var stores := 0
 	var callback_runs := 0
+	## The result of a start before the adapter's, as GodotSteam keeps it.
+	var started_result := {}
+
+	func get_steam_init_result() -> Dictionary:
+		return started_result
 
 	func steamInitEx(app_id: int = 0, embed_callbacks: bool = false) -> Dictionary:
 		init_calls.append([app_id, embed_callbacks])
@@ -58,11 +63,9 @@ class FakePlayGames:
 		unlocked.append(achievement_id)
 
 
-## [GameKit] with no device: it keeps each report and answers when told.
+## [GameKit] with no plugin: it keeps each report and answers when told.
 class FakeGameKit:
-	extends RefCounted
-	signal authentication_result(status: bool)
-	signal authentication_error(message: String)
+	extends GameKit
 	var authentications := 0
 	var reports: Array[String] = []
 	var answers: Array[Callable] = []
@@ -162,6 +165,24 @@ func test_steam_runs_its_callbacks_at_each_poll() -> void:
 
 func test_steam_starts_once_with_embedded_callbacks() -> void:
 	var steam := FakeSteam.new()
+
+	assert_true(PlatformSdks.start_steam(steam))
+
+	assert_eq(steam.init_calls, [[0, true]])
+
+
+func test_steam_that_started_itself_is_not_started_again() -> void:
+	var steam := FakeSteam.new()
+	steam.started_result = {"status": 0, "verbal": ""}
+
+	assert_true(PlatformSdks.start_steam(steam))
+
+	assert_eq(steam.init_calls, [])
+
+
+func test_steam_that_did_not_start_itself_is_started() -> void:
+	var steam := FakeSteam.new()
+	steam.started_result = {"status": 2, "verbal": "No Steam client"}
 
 	assert_true(PlatformSdks.start_steam(steam))
 

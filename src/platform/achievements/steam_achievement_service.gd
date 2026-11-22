@@ -46,7 +46,8 @@ func unlock(def: AchievementDef) -> bool:
 	return true
 
 
-## Does nothing when GodotSteam runs the callbacks itself (see
+## Runs the Steam callbacks. It is necessary only when GodotSteam started
+## itself with no embedded callbacks. Else it does nothing (see
 ## [method PlatformSdks.start_steam]).
 func poll() -> void:
 	if _steam != null:

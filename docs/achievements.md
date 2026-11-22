@@ -9,7 +9,7 @@ Read this to finish #25 on a platform. ADR-0019 has the design. The code is in `
 - `AchievementTracker` unlocks achievements through one `AchievementService`. It unlocks all that the milestones grant at each start, after each import and cloud load, and when the service becomes available. It does not unlock what only an imported export code gave (ADR-0019, "An imported code grants nothing that only the import gave").
 - `TestAchievementService` lets the game run with no platform service. `AchievementServices.for_this_device()` picks it when the device has no SDK or plugin, or when Steam does not start.
 - The Steam, Game Center, and Google Play Games adapters are written. Each one gets its SDK or plugin as an object, so the unit tests (`tests/unit/test_achievement_adapters.gd`) give it a fake. Each method name, signal name, and property name was checked against the plugin source (versions below). **No one ran them with a real SDK or on a device yet.**
-- `src/platform/platform_sdks.gd` (`PlatformSdks`) starts GodotSteam and initializes the Play Games plugin once in the process, for the achievements and the cloud save (#24).
+- `src/platform/platform_sdks.gd` (`PlatformSdks`) starts GodotSteam and initializes the Play Games plugin once in the process. The achievements use it. The cloud save adapters (#24) do not use it yet: `GooglePlayCloudSave` calls `initialize()` itself, so Play Games is initialized twice until #24 changes it.
 
 ## Plugins and versions
 
@@ -42,7 +42,7 @@ Each platform needs the same five steps:
 ### Steam (`steam_achievement_service.gd`)
 
 - Add GodotSteam 4.24 or later as a GDExtension. Set the app id in its project setting `steam/initialization/app_data/app_id`, or put `steam_appid.txt` beside the game for runs outside Steam.
-- Leave `steam/initialization/processes/initialize_on_startup` off. `PlatformSdks.steam()` starts Steam with `steamInitEx(0, true)`, which also turns on embedded callbacks. With the setting on, Steam starts twice, and GodotSteam logs "Steam is already initialized."
+- `PlatformSdks.steam()` starts Steam with `steamInitEx(0, true)`, which also turns on embedded callbacks. If GodotSteam started itself (its setting `steam/initialization/processes/initialize_on_startup`), `get_steam_init_result()` tells this, and it does not start Steam again. Then also turn on `steam/initialization/processes/embed_callbacks`, or the Steam adapter runs the callbacks in `poll()`.
 - Dashboard: Steamworks, App Admin, Stats and Achievements. The "API Name" is the `steam` id. The sample data uses the achievement id in capitals, such as `FIRST_SALE`. Publish the changes in Steamworks.
 - The adapter calls `setAchievement(name)` (false when Steamworks has no such achievement) and then `storeStats()`. Since Steamworks SDK 1.61, Steam loads the stats at start, so no request is needed first.
 - Steam keeps an unlock on the device while it is offline, and sends it later.
