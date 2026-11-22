@@ -55,6 +55,16 @@ A sync waits at most 20 seconds for each answer of a service. Only one sync runs
 
 An adapter names no SDK class in its script. It finds the SDK with `Engine.has_singleton` or `ClassDB.class_exists`, and calls it with `call`. Thus the game loads and runs when the SDK or plugin is not in the build: the adapter is "not available", and the game saves only on the device. CI tests this for each adapter. `TestCloudSave` keeps the save in memory or in a folder, so that tests and a person on one computer can test the rule with no platform service.
 
+Each adapter also takes its SDK object in `_init`, so unit tests can give it a fake with the method and signal names of the pinned plugin version (GodotSteam v4.24, godot-play-game-services v3.4.0, GodotApplePlugins commit `a66f619`). The game gives none, and the adapter finds the SDK itself. `SteamCloudSave` never starts Steam. It uses Steam only after a start that worked.
+
+## Limits of the platforms
+
+Three limits come from the platforms. The adapter README (`src/platform/cloud_save/README.md`) has the details and a smoke test for each.
+
+- **Google Play resolves its own conflicts.** The plugin opens each snapshot with a resolution policy of Google, so Google picks one version when two devices wrote, and the cloud does not keep the other. The rule above still decides on each device: the device that lost still has its game, and its next sync sees a cloud save that changed, so it picks with the rule and keeps the other game. Thus nothing is lost on a device, but the rule is not the only rule in the cloud.
+- **Google Play reports a write before its commit.** If the commit then fails, the device records a sync that did not happen. The next sync sees a cloud save that changed. With no play since, the older cloud game loads, and the device game goes to the kept save.
+- **iCloud downloads the store only after the player signs in to an Apple account.** A new install in that time reads an empty store, and can upload a new game. Not checked on a device. This is an open risk.
+
 ## Decisions for the user
 
 1. **The conflict rule.** Proposed: the save that saved last wins, and the player can change to the other. Alternatives are above. Not decided.
