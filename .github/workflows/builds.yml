@@ -126,6 +126,10 @@ jobs:
             -e 's|^application/export_project_only=false|application/export_project_only=true|' \
             -e 's|build/ios/IncrementalRainbow.ipa|build/ios/IncrementalRainbow.xcodeproj|' \
             export_presets.cfg
+          # Stop if a pattern did not match, for example after a preset change.
+          grep -q '^application/app_store_team_id="ABCDE12345"' export_presets.cfg
+          grep -q '^application/export_project_only=true' export_presets.cfg
+          grep -q 'build/ios/IncrementalRainbow.xcodeproj' export_presets.cfg
           GODOT="$GODOT_DIR/godot" tools/build.sh iOS
           git checkout -- export_presets.cfg
 

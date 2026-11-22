@@ -17,12 +17,13 @@ The game is bought once. It has no ads and no in-app purchases. The test `tests/
 
 ## Do the steps for all builds
 
-1. Install Godot 4.7.2 (the version in `.github/workflows/ci.yml`).
+1. Install Godot 4.7.2. This is `GODOT_VERSION` in `.github/workflows/ci.yml` and `.github/workflows/builds.yml`. When you change the version, change it in the two workflows and in this file.
 2. Install the export templates of the same version. In the editor, use **Editor > Manage Export Templates > Download and Install**. Or download `Godot_v4.7.2-stable_export_templates.tpz` from the Godot release page, check it against `SHA512-SUMS.txt`, and unzip its `templates/` folder to:
    - Linux: `~/.local/share/godot/export_templates/4.7.2.stable/`
    - macOS: `~/Library/Application Support/Godot/export_templates/4.7.2.stable/`
    - Windows: `%APPDATA%\Godot\export_templates\4.7.2.stable\`
-3. Run the tests: `GODOT=/path/to/godot tools/test.sh`.
+3. For Android, install a JDK 17 and the Android SDK. Set `JAVA_HOME` and `ANDROID_HOME` before you start Godot the first time. Or set the paths in **Editor Settings > Export > Android**.
+4. Run the tests: `GODOT=/path/to/godot tools/test.sh`.
 
 ## Make a build
 
@@ -64,6 +65,8 @@ It does these steps:
 
 CI does not start the Android or iOS build, because that needs an emulator, a simulator, or a device.
 
+The workflow does not run when only `src/` or `data/` changes. Thus a code change that breaks an exported build is found at the next run of the workflow, not in its pull request.
+
 ## Secrets
 
 Do not put a key, a password, or a certificate in `export_presets.cfg`. The test `tests/build/test_export_presets.gd` fails when a secret field in the presets has a value.
@@ -94,16 +97,20 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
 
 ### Linux, Windows, and macOS on Steam
 
-1. Get a Steamworks partner account, and pay the app fee for the game.
-2. Make the builds with `tools/build.sh Linux Windows macOS`.
-3. Windows (optional): sign the `.exe`. Get a code signing certificate, set the Windows variables in [Secrets](#secrets), and set `codesign/enable=true` in the Windows preset. Godot uses `signtool` on Windows and `osslsigncode` on Linux and macOS.
-4. macOS: sign and notarize the app.
+1. Get a Steamworks partner account.
+2. Pay the app fee for the game. Steam then gives an App ID and depot ids. Write them in this file.
+3. Make the builds with `tools/build.sh Linux Windows macOS`.
+4. Windows (optional): sign the `.exe`. Get a code signing certificate, set the Windows variables in [Secrets](#secrets), and set `codesign/enable=true` in the Windows preset. Godot uses `signtool` on Windows and `osslsigncode` on Linux and macOS.
+5. macOS: sign and notarize the app.
    1. Join the Apple Developer Program.
    2. Make a "Developer ID Application" certificate, and export it as a `.p12` file.
    3. Make an App Store Connect API key for notarization.
-   4. Set the macOS variables in [Secrets](#secrets). In the macOS preset, set `codesign/codesign` to `2` (rcodesign) on Linux, or `3` (Xcode codesign) on a Mac. Set `codesign/apple_team_id`, and set `notarization/notarization` to `1` (rcodesign) or `2` (notarytool).
-   5. Make the build again. For rcodesign, install [rcodesign](https://github.com/indygreg/apple-platform-rs) and set its path in **Editor Settings > Export > macOS > rcodesign**.
-5. Upload each build to its depot with SteamPipe (the Steamworks SDK `steamcmd` and a build script). Each start check must pass first.
+   4. Set the macOS variables in [Secrets](#secrets).
+   5. In the macOS preset, set `codesign/codesign` to `2` (rcodesign) on Linux, or to `3` (Xcode codesign) on a Mac.
+   6. Set `codesign/apple_team_id` to your team id.
+   7. Set `notarization/notarization` to `1` (rcodesign) or to `2` (notarytool).
+   8. Make the build again. For rcodesign, install [rcodesign](https://github.com/indygreg/apple-platform-rs) and set its path in **Editor Settings > Export > macOS > rcodesign**.
+6. Upload each build to its depot with SteamPipe (the Steamworks SDK `steamcmd` and a build script). Each start check must pass first.
 
 ### Android on Google Play
 
@@ -117,9 +124,12 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
 3. Set the Android release variables in [Secrets](#secrets) to the keystore path, the alias, and the password.
 4. Google Play wants an Android App Bundle (`.aab`). Godot makes an `.aab` only with a Gradle build:
    1. In the editor, use **Project > Install Android Build Template**. This makes `android/`, which git ignores.
-   2. In the Android preset, set `gradle_build/use_gradle_build=true` and `gradle_build/export_format=1` (AAB). Change `export_path` to end in `.aab`.
-5. Make the build with `tools/build.sh Android`.
-6. Install the APK of a debug build on a device: `adb install build/android/IncrementalRainbow.apk`. Play the game for some minutes.
+   2. In the Android preset, set `gradle_build/use_gradle_build=true`.
+   3. Set `gradle_build/export_format=1` (AAB).
+   4. Change `export_path` to end in `.aab`.
+   5. CI checks the permissions only in the debug APK. Before each upload, check the permissions of the AAB in the Play Console (**App bundle explorer**).
+5. Before you change to an AAB, make a debug APK with `tools/build.sh --debug Android`. Install it on a device with `adb install build/android/IncrementalRainbow.apk`, and play the game for some minutes.
+6. Make the release AAB with `tools/build.sh Android`.
 7. Upload the `.aab` in the Play Console. Use Play App Signing. In the store listing, set "Contains ads" to **No**, and add no in-app products.
 
 ### iOS on the App Store
@@ -138,7 +148,7 @@ An ad or a purchase needs code from outside the project, such as a plugin, an ad
 To add a plugin, for example for cloud saves or achievements:
 
 1. Add the plugin, and turn it on in the preset.
-2. In the same change, add each of its items to its list in `StorePolicy`, with the reason: the addon folder, the `.gdextension` file, the `plugins/<name>` option, and each Android permission or iOS capability that it needs.
+2. In the same change, add each of its items to its list in `StorePolicy`, with the reason: the addon folder, the `.gdextension` file, the `plugins/<name>` option, and each Android permission, iOS capability, or iOS entitlement that it needs.
 3. If the export must not have the addon, add it to `StorePolicy.ADDONS_NOT_IN_BUILDS` and to the `exclude_filter` of each preset.
 
 The **Builds** workflow also reads the permissions in the Android APK, and fails on a permission for billing or for ads.

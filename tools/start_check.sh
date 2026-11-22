@@ -34,6 +34,7 @@ fi
 # A Windows game does not write to the console, so the check reads the log
 # file. macOS has no timeout command, so the loop stops a game that does not
 # quit in 120 s.
+problems=0
 "$game" --headless --quit-after "$frames" --log-file "$log_arg" >"$work/console.txt" 2>&1 &
 game_pid=$!
 for ((second = 0; second < 120; second++)); do
@@ -43,6 +44,7 @@ done
 if kill -0 "$game_pid" 2>/dev/null; then
 	kill "$game_pid"
 	echo "start check: the game did not quit in 120 s" >&2
+	problems=1
 fi
 status=0
 wait "$game_pid" || status=$?
@@ -52,7 +54,6 @@ else
 	cat "$work/console.txt"
 fi
 
-problems=0
 if [[ "$status" -ne 0 ]]; then
 	echo "start check: the game exited with code $status" >&2
 	problems=1
@@ -60,11 +61,11 @@ fi
 if [[ ! -f "$log" ]]; then
 	echo "start check: the game wrote no log" >&2
 	problems=1
-elif grep -E -q '^(SCRIPT )?ERROR' "$log"; then
+elif grep -E -q '(^|[^A-Z_])(SCRIPT )?ERROR' "$log"; then
 	echo "start check: the log has errors" >&2
 	problems=1
 fi
-save="$(find "$work" -name save.json -path '*app_userdata*' | head -n 1)"
+save="$(find "$work" -name save.json -path '*app_userdata*' -print -quit)"
 if [[ -z "$save" || ! -s "$save" ]]; then
 	echo "start check: the game wrote no save, so it did not load its content" >&2
 	problems=1

@@ -17,6 +17,9 @@ const ALLOWED_CUSTOM_PERMISSIONS: Dictionary[String, String] = {}
 const ALLOWED_PLUGINS: Dictionary[String, String] = {}
 ## Extra iOS device capability (capabilities/additional) to reason.
 const ALLOWED_IOS_CAPABILITIES: Dictionary[String, String] = {}
+## Extra iOS entitlements (the full text of entitlements/additional) to
+## reason.
+const ALLOWED_IOS_ENTITLEMENTS: Dictionary[String, String] = {}
 ## Folder in res://addons to reason.
 const ALLOWED_ADDONS: Dictionary[String, String] = {
 	"gut": "The test runner. The builds leave it out.",
@@ -87,6 +90,9 @@ static func _option_problems(presets: ConfigFile, section: String) -> PackedStri
 			for capability: String in value:
 				if not ALLOWED_IOS_CAPABILITIES.has(capability):
 					problems.append("%s: %s is not in StorePolicy.ALLOWED_IOS_CAPABILITIES" % [section, capability])
+		elif key == "entitlements/additional":
+			if not str(value).strip_edges().is_empty() and not ALLOWED_IOS_ENTITLEMENTS.has(value):
+				problems.append("%s: entitlements/additional is not in StorePolicy.ALLOWED_IOS_ENTITLEMENTS" % section)
 		elif key.begins_with("permissions/") and value == true:
 			if not ALLOWED_ANDROID_PERMISSIONS.has(key.trim_prefix("permissions/")):
 				problems.append("%s: %s is on, but not in StorePolicy.ALLOWED_ANDROID_PERMISSIONS" % [section, key])

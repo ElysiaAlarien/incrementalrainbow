@@ -63,6 +63,15 @@ func test_an_extra_ios_capability_that_is_not_allowed_is_a_problem() -> void:
 	assert_string_contains(problems[0], "gamekit")
 
 
+func test_extra_ios_entitlements_that_are_not_allowed_are_a_problem() -> void:
+	var entitlements := "<key>com.apple.developer.in-app-payments</key><array/>"
+
+	var problems := StorePolicy.preset_problems(_ios('entitlements/additional="%s"\n' % entitlements))
+
+	assert_eq(problems.size(), 1)
+	assert_string_contains(problems[0], "entitlements/additional")
+
+
 func test_an_addon_that_is_not_allowed_is_a_problem() -> void:
 	var problems := StorePolicy.addon_problems(PackedStringArray(["gut", "admob"]))
 
