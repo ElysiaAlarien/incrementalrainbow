@@ -19,6 +19,10 @@ extends Control
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
 ## and saves at intervals and when the game exits or goes to the background.
+## It syncs the save with the platform cloud save, if the device has one
+## ([CloudSaveSession], ADR-0018): when it starts, at intervals, and when it
+## goes to and comes back from the background. When the cloud save wins, the
+## screen replaces its game with it and tells the player.
 ## The Export or import button exports the game as a code and imports a code.
 ## The Prestige button shows what a prestige keeps and clears, and asks the
 ## player to confirm. A banner shows the step of the guided start, with a
@@ -33,6 +37,14 @@ extends Control
 
 ## Seconds between saves while the game runs.
 const AUTOSAVE_INTERVAL_S := 30.0
+## Seconds between syncs with the cloud save while the game runs. Each sync
+## also happens when the game starts, goes to the background, comes back, and
+## quits.
+const CLOUD_SYNC_INTERVAL_S := 300.0
+## The command-line argument, after [code]--[/code], that sets
+## [member save_path], so that two copies of the game on one computer act as
+## two devices (see [TestCloudSave]).
+const SAVE_PATH_ARG := "--save-path="
 ## The real time that offline progress can use in each frame.
 const CATCH_UP_BUDGET_MS := 12
 ## The first part of offline progress, in game time. Later parts grow or
@@ -60,6 +72,9 @@ const SECTIONS: Dictionary[StringName, String] = {
 
 ## Where the game keeps its save. Set it before the screen enters the tree.
 var save_path := SaveFile.DEFAULT_PATH
+## The cloud save of the device. Tests set it before the screen enters the
+## tree. When it is null, [method CloudSaves.for_device] picks it.
+var cloud_save: CloudSave
 ## The device clock in Unix milliseconds. Tests set it before the screen
 ## enters the tree.
 var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0)
@@ -117,6 +132,20 @@ var _save_file: SaveFile
 ## False when a save that could not load is still at the save path, so that a
 ## save does not destroy it.
 var _can_save := true
+## The last save text and its save time, which a sync with the cloud uses, so
+## that the device and the cloud have the same text.
+var _last_save_text := ""
+var _last_saved_at_unix_ms: int = LoadResult.NO_SAVE_TIME
+var _cloud: CloudSaveSession
+var _cloud_dialog: CloudSaveDialog
+## True when the game started new on this device at this start.
+var _started_new_game := false
+## True after the player saw that the cloud did not answer, so that each sync
+## with no network does not tell it again.
+var _told_cloud_unreachable := false
+## A conflict that waits for offline progress and its summary, so that the
+## player sees one dialog at a time.
+var _pending_conflict: CloudSyncPlan
 var _content: Content
 var _rows: Dictionary[int, FactoryRow] = {}
 var _link_rows: Dictionary[int, LinkRow] = {}
@@ -191,6 +220,10 @@ func _ready() -> void:
 		_show_message("The game data has errors:\n" + "\n".join(_content.errors))
 		set_process(false)
 		return
+	if get_tree().current_scene == self:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with(SAVE_PATH_ARG):
+				save_path = arg.trim_prefix(SAVE_PATH_ARG)
 	_save_file = SaveFile.new(save_path)
 	_catch_up_screen = CatchUpScreen.new()
 	add_child(_catch_up_screen)
@@ -245,6 +278,7 @@ func _ready() -> void:
 		_prestige_upgrade_list.add_child(row)
 	_refresh()
 	show_section(_section)
+	_start_cloud_sync()
 
 
 func _process(delta: float) -> void:
@@ -278,14 +312,18 @@ func _exit_tree() -> void:
 		get_tree().node_added.disconnect(_let_drags_scroll)
 	# The scene tree removes this screen when the game quits by any path.
 	write_save()
+	_sync_cloud(false)
 
 
 func _notification(what: int) -> void:
 	# A mobile OS can stop a game in the background with no other notice.
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		write_save()
+		_sync_cloud(false)
 		_paused_at_unix_ms = clock.call()
 	elif what == NOTIFICATION_APPLICATION_RESUMED and _paused_at_unix_ms >= 0:
+		# Another device can have played while this one was in the background.
+		_sync_cloud(true)
 		_return_from_background()
 
 
@@ -346,6 +384,7 @@ func _finish_catch_up() -> void:
 	if _offline_summary.duration_ms + _offline_summary.skipped_ms >= SUMMARY_MIN_AWAY_MS:
 		_summary_dialog.show_summary(_offline_summary, _sim.max_offline_ms())
 	_offline_summary = OfflineSummary.new()
+	_show_pending_conflict()
 
 
 ## The device clock time that the state of the game is for: now, less the
@@ -357,9 +396,13 @@ func _state_unix_ms() -> int:
 
 ## Writes the current game to the device.
 func write_save() -> void:
-	if _sim == null or not _can_save:
+	if _sim == null:
 		return
-	var error := _save_file.write(SaveCodec.encode(_sim, _state_unix_ms()))
+	_last_saved_at_unix_ms = _state_unix_ms()
+	_last_save_text = SaveCodec.encode(_sim, _last_saved_at_unix_ms)
+	if not _can_save:
+		return
+	var error := _save_file.write(_last_save_text)
 	if error != OK:
 		push_error("Could not save the game to %s: %s" % [_save_file.path, error_string(error)])
 		_show_message("The game could not save: %s." % error_string(error))
@@ -462,9 +505,12 @@ func _fit_header() -> void:
 ## destroy it.
 func _load_or_start_game() -> Simulation:
 	if _save_file.exists():
-		var result := SaveCodec.decode(_content, _save_file.read())
+		var text := _save_file.read()
+		var result := SaveCodec.decode(_content, text)
 		if result.ok:
 			_sim = result.simulation
+			_last_save_text = text
+			_last_saved_at_unix_ms = result.saved_at_unix_ms
 			_start_offline_progress(result.time_away_ms(clock.call()))
 			return _sim
 		var kept_path := _save_file.keep_damaged()
@@ -475,6 +521,7 @@ func _load_or_start_game() -> Simulation:
 				ProjectSettings.globalize_path(_save_file.path)
 		push_warning("The save did not load: %s" % result.message)
 		_show_message("Your save could not load, so a new game started. %s\n%s" % [kept_text, result.message])
+	_started_new_game = true
 	return Simulation.new(_content, randi())
 
 
@@ -511,6 +558,88 @@ func _show_replaced_run() -> void:
 	_show_message("")
 	write_save()
 	_refresh()
+
+
+## Starts the cloud save: the first sync, and a sync at intervals. The game
+## plays while a sync waits for the service.
+func _start_cloud_sync() -> void:
+	_cloud = CloudSaveSession.new(cloud_save if cloud_save != null else CloudSaves.for_device(),
+		_content, save_path)
+	_cloud.synced.connect(_on_cloud_synced)
+	_cloud_dialog = CloudSaveDialog.new()
+	_cloud_dialog.use_other_pressed.connect(_use_kept_save)
+	add_child(_cloud_dialog)
+	_summary_dialog.visibility_changed.connect(_show_pending_conflict)
+	var timer := Timer.new()
+	timer.name = "CloudSync"
+	timer.wait_time = CLOUD_SYNC_INTERVAL_S
+	timer.timeout.connect(func() -> void:
+		write_save()
+		_sync_cloud(true))
+	add_child(timer)
+	timer.start()
+	if _started_new_game:
+		_cloud.mark_new_game()
+	if _last_save_text.is_empty():
+		write_save()
+	_sync_cloud(true)
+
+
+## Syncs the last save with the cloud. With [param can_tell_player] false, the
+## sync only uploads (see [method CloudSaveSession.sync]).
+func _sync_cloud(can_tell_player: bool) -> void:
+	if _cloud == null or _cloud.is_busy() or _last_save_text.is_empty():
+		return
+	_cloud.sync(ExportCode.from_save(_last_save_text, SaveCodec.VERSION), _last_saved_at_unix_ms,
+		can_tell_player)
+
+
+func _on_cloud_synced(plan: CloudSyncPlan) -> void:
+	if not is_inside_tree() or is_queued_for_deletion():
+		return
+	var service := _cloud.service_name()
+	if plan.action == CloudSyncPlan.Action.USE_CLOUD:
+		_replace_game(plan.cloud)
+	match plan.notice:
+		CloudSyncPlan.Notice.LOADED_FROM_CLOUD:
+			_show_message("Your game loaded from %s: the game that saved there %s." % [
+				service, CloudSaveDialog.format_time(plan.used_saved_at_unix_ms)])
+		CloudSyncPlan.Notice.CONFLICT:
+			_pending_conflict = plan
+			_show_pending_conflict()
+		CloudSyncPlan.Notice.CLOUD_DAMAGED:
+			_show_message("Your save in %s could not load, so the game saved the game on this device there.\n%s" % [
+				service, plan.message])
+		CloudSyncPlan.Notice.CLOUD_NEWER:
+			_show_message("A newer version of the game saved your game in %s. Update the game to use it. Until then, this game saves only on this device." % service)
+		CloudSyncPlan.Notice.UNREACHABLE:
+			if not _told_cloud_unreachable:
+				_told_cloud_unreachable = true
+				_show_message("The game could not reach %s, so for now it saves only on this device. %s" % [
+					service, plan.message])
+
+
+## Shows the conflict of the last cloud sync, when offline progress and its
+## summary are done.
+func _show_pending_conflict() -> void:
+	if _pending_conflict == null or _offline_pending_ms > 0 or _summary_dialog.visible:
+		return
+	_cloud_dialog.show_conflict(_pending_conflict, _cloud.service_name())
+	_pending_conflict = null
+
+
+## Changes to the save that the last cloud sync did not use, and keeps the
+## game that it replaces in its place.
+func _use_kept_save() -> void:
+	var kept := _cloud.kept_code()
+	var result := ExportCode.decode(_content, kept)
+	if not result.ok:
+		_show_message("The other game could not load, and your game did not change.\n%s" % result.message)
+		return
+	write_save()
+	_cloud.keep(ExportCode.from_save(_last_save_text, SaveCodec.VERSION))
+	_replace_game(result)
+	_sync_cloud(true)
 
 
 func _add_color_card(color: ColorDef) -> void:

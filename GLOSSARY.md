@@ -243,6 +243,20 @@ _Avoid_: Save file, save game, profile
 The save as text that the player copies to another device and imports there, with the save format version and a checksum. See ADR-0010.
 _Avoid_: Save string, save key, backup code
 
+**Cloud save**:
+The save in the platform's cloud (Steam Cloud, iCloud, or Google Play), kept as the export code, so that the player's game moves between their devices. See ADR-0018.
+_Avoid_: Cloud sync file, remote save
+
+**Sync**:
+One comparison of the save on the device with the cloud save, which uploads one, uses the other, or finds a conflict.
+
+**Sync base**:
+The cloud save after the last good sync on this device. A sync uses it to tell which side changed. It is not in the save, because it is true only for one device.
+
+**Conflict**:
+A sync where the save on the device and the cloud save both changed since the sync base. A clear rule picks one, the game tells the player, and the other is kept.
+_Avoid_: Clash, merge
+
 **Migration**:
 One named change to the shape of the saved state, in a file of its own, so that old saves still load. A save lists the migrations that its state has, and a load runs the others. See ADR-0014.
 _Avoid_: Upgrade, conversion
