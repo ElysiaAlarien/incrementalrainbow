@@ -42,6 +42,12 @@ const MAX_OFFLINE_MS := 86_400_000
 ## screen shows the forecast for, in [method balance_data].
 const FORECAST_BASE_ACCURACY := 0.1
 const FORECAST_HORIZON_MS := 10_000
+## The prestige upgrades of [method prestige_upgrades_data]: quick_lines
+## costs 1 prism and doubles the production speed, and seed_money costs 2
+## prisms and adds 50 starting money.
+const QUICK_LINES_PRICE := 1
+const SEED_MONEY_PRICE := 2
+const SEED_MONEY := 50
 
 
 static func colors_data() -> Dictionary:
@@ -68,6 +74,15 @@ static func mixed_colors_data() -> Dictionary:
 		{"id": "brown", "name": "Brown", "symbol": "star", "display": "#8b5a33",
 			"recipe": {"red": 1, "yellow": 1, "blue": 1}, "unlock": "research"},
 	])
+	return data
+
+
+## The test colors, plus white, a base color that a prestige upgrade
+## unlocks.
+static func prestige_colors_data() -> Dictionary:
+	var data := colors_data()
+	data.colors.append({"id": "white", "name": "White", "symbol": "pentagon", "display": "#f4f4f4",
+		"recipe": {}, "unlock": "prestige_upgrade"})
 	return data
 
 
@@ -207,18 +222,42 @@ static func research_data(colors: Dictionary = colors_data()) -> Dictionary:
 	return {"lab_build_cost": LAB_COST, "research": research}
 
 
+## Prestige upgrades: "quick_lines" (doubles the production speed) and
+## "seed_money" (adds [constant SEED_MONEY] starting money), at the prices of
+## the constants. When [param colors] has white (see
+## [method prestige_colors_data]), also "white_light", which costs 1 prism and
+## unlocks white.
+static func prestige_upgrades_data(colors: Dictionary = colors_data()) -> Dictionary:
+	var upgrades := [
+		{"id": "quick_lines", "name": "Quick lines", "price": QUICK_LINES_PRICE,
+			"bonuses": {"production_speed": 2.0}},
+		{"id": "seed_money", "name": "Seed money", "price": SEED_MONEY_PRICE,
+			"bonuses": {"starting_money": SEED_MONEY}},
+	]
+	var ids: Array = colors.colors.map(func(c: Dictionary) -> String: return c.id)
+	if ids.has("white"):
+		upgrades.append({"id": "white_light", "name": "White light", "price": 1,
+			"unlocks": {"colors": ["white"]}})
+	return {"upgrades": upgrades}
+
+
 ## Data for [method Content.from_data], with each section replaceable. When
 ## [param markets] is null, one market prices every color in [param colors].
-## By default there are no demand events.
+## By default there are no demand events. When [param research] or
+## [param prestige_upgrades] is null, it comes from [method research_data] or
+## [method prestige_upgrades_data] for [param colors].
 static func data(colors: Dictionary = colors_data(), balance: Dictionary = balance_data(),
 		markets: Variant = null, transport: Dictionary = transport_data(),
-		demand_events: Dictionary = {"events": []}, research: Variant = null) -> Dictionary:
+		demand_events: Dictionary = {"events": []}, research: Variant = null,
+		prestige_upgrades: Variant = null) -> Dictionary:
 	if markets == null:
 		markets = markets_data(PRICE, colors)
 	if research == null:
 		research = research_data(colors)
+	if prestige_upgrades == null:
+		prestige_upgrades = prestige_upgrades_data(colors)
 	return {"colors": colors, "balance": balance, "markets": markets, "transport": transport,
-		"demand_events": demand_events, "research": research}
+		"demand_events": demand_events, "research": research, "prestige_upgrades": prestige_upgrades}
 
 
 ## Content with one widget per [param widget_time_ms] for each production line,

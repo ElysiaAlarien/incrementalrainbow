@@ -70,6 +70,12 @@ enum Reason {
 	HELD,
 	## The warehouse has no sell threshold.
 	NO_SELL_THRESHOLD,
+	## There is no prestige upgrade with that id.
+	UNKNOWN_PRESTIGE_UPGRADE,
+	## The player owns the prestige upgrade already.
+	PRESTIGE_UPGRADE_OWNED,
+	## The player has fewer prisms than the command costs.
+	NOT_ENOUGH_PRISMS,
 }
 
 var ok: bool

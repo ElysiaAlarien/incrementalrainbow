@@ -43,11 +43,16 @@ func _init(color: ColorDef, content: Content) -> void:
 	_build_button.pressed.connect(func() -> void: build_pressed.emit(color_id))
 	box.add_child(_build_button)
 	_locked_label.name = "Locked"
-	var research_names := PackedStringArray()
-	for def in content.research_unlocking(color.id):
-		research_names.append(def.name)
-	_locked_label.text = "Needs research:\n%s" % " or ".join(research_names)
-	# The research name can be long, so the text is small and can wrap to two
+	var unlock_names := PackedStringArray()
+	if color.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE:
+		for def in content.prestige_upgrades_unlocking(color.id):
+			unlock_names.append(def.name)
+		_locked_label.text = "Needs a prestige upgrade:\n%s" % " or ".join(unlock_names)
+	else:
+		for def in content.research_unlocking(color.id):
+			unlock_names.append(def.name)
+		_locked_label.text = "Needs research:\n%s" % " or ".join(unlock_names)
+	# The name can be long, so the text is small and can wrap to two
 	# lines in the height of the button.
 	_locked_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_locked_label.add_theme_font_size_override(&"font_size", RECIPE_FONT_SIZE)

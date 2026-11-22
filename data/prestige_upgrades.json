@@ -1,0 +1,9 @@
+{
+	"_about": "Prestige upgrades, in the order the screen shows them. The player buys each one once, with prisms, and keeps it in all later runs. Each upgrade: id, name, price (prisms, a positive integer), and at least one of bonuses and unlocks. bonuses (optional object): production_speed (a number of more than 1: factories make widgets that many times as fast; the bonuses of two upgrades multiply), starting_money (a number of more than 0: money added at once and at the start of each later run; the bonuses of two upgrades add up). unlocks (optional object, the same form as in research.json): colors lists the colors, and with them their recipes, that it unlocks; each must have unlock \"prestige_upgrade\" in colors.json. PLACEHOLDER upgrades and values until playtests set them.",
+	"placeholder": true,
+	"upgrades": [
+		{"id": "quick_lines", "name": "Quick lines", "price": 1, "bonuses": {"production_speed": 1.25}},
+		{"id": "seed_money", "name": "Seed money", "price": 1, "bonuses": {"starting_money": 200}},
+		{"id": "quicker_lines", "name": "Quicker lines", "price": 3, "bonuses": {"production_speed": 1.5}}
+	]
+}

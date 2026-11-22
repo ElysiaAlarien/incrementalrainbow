@@ -356,6 +356,85 @@ func test_reports_a_research_color_that_no_research_unlocks() -> void:
 		"blue_green: no research unlocks it, but its unlock is research")
 
 
+func test_the_game_data_has_prestige_upgrades() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+
+	assert_eq(content.errors, PackedStringArray())
+	assert_false(content.prestige_upgrades().is_empty())
+
+
+func test_reads_prestige_upgrades() -> void:
+	var colors := ContentFixture.prestige_colors_data()
+	var content := ContentFixture.from_data(ContentFixture.data(colors))
+
+	var ids := content.prestige_upgrades().map(func(d: PrestigeUpgradeDef) -> StringName: return d.id)
+	assert_eq(ids, [&"quick_lines", &"seed_money", &"white_light"])
+	var quick := content.prestige_upgrade(&"quick_lines")
+	assert_eq([quick.name, quick.price, quick.production_speed], ["Quick lines", 1, 2.0])
+	assert_true(quick.starting_money.is_zero())
+	assert_eq(quick.unlock_colors, [] as Array[StringName])
+	var seed_money := content.prestige_upgrade(&"seed_money")
+	assert_eq(seed_money.production_speed, 1.0, "no speed bonus")
+	assert_true(seed_money.starting_money.equals(BigNumber.from_int(ContentFixture.SEED_MONEY)))
+	assert_eq(content.prestige_upgrade(&"white_light").unlock_colors, [&"white"] as Array[StringName])
+	assert_eq(content.color(&"white").unlock, ColorDef.Unlock.PRESTIGE_UPGRADE)
+	assert_eq(content.prestige_upgrades_unlocking(&"white"),
+		[content.prestige_upgrade(&"white_light")] as Array[PrestigeUpgradeDef])
+	assert_null(content.prestige_upgrade(&"magic"))
+
+
+## The errors of content with the colors of
+## [method ContentFixture.prestige_colors_data] and the prestige upgrades
+## [param entries].
+func _upgrade_errors(entries: Array) -> String:
+	var colors := ContentFixture.prestige_colors_data()
+	var content := Content.from_data(ContentFixture.data(colors, ContentFixture.balance_data(), null,
+		ContentFixture.transport_data(), {"events": []}, null, {"upgrades": entries}))
+	return "\n".join(content.errors)
+
+
+func test_reports_bad_prestige_upgrades() -> void:
+	var entries: Array = ContentFixture.prestige_upgrades_data(ContentFixture.prestige_colors_data()).upgrades
+	assert_eq(_upgrade_errors(entries), "")
+	entries.append({"id": "bad", "name": "Bad", "price": 0,
+		"bonuses": {"production_speed": 0.5, "starting_money": -1, "luck": 2},
+		"unlocks": {"colors": ["green", "red"], "flight": true}})
+	entries.append({"id": "empty", "name": "Empty", "price": 1.5})
+	entries.append({"id": "odd", "name": "Odd", "price": 1, "bonuses": [], "unlocks": "white"})
+
+	var errors := _upgrade_errors(entries)
+
+	for expected in [
+		"bad.price must be a positive integer",
+		"bad: bonuses.production_speed must be a number of more than 1",
+		"bad: bonuses.starting_money must be a number of more than 0",
+		"bad: bonuses has luck, but it can have only production_speed, starting_money",
+		"bad: unlocks has flight, but it can have only colors",
+		"bad: unlocks green, which is not a color",
+		"bad: unlocks red, but the unlock of red is not prestige_upgrade",
+		"empty.price must be a positive integer",
+		"empty: gives no bonus and unlocks nothing",
+		"odd: bonuses must be an object",
+		"odd: unlocks must be an object",
+	]:
+		assert_string_contains(errors, expected)
+
+
+func test_reports_a_color_that_no_prestige_upgrade_unlocks() -> void:
+	assert_string_contains(_upgrade_errors([]),
+		"white: no prestige upgrade unlocks it, but its unlock is prestige_upgrade")
+
+
+func test_research_cannot_unlock_a_color_of_a_prestige_upgrade() -> void:
+	var colors := ContentFixture.prestige_colors_data()
+	var research := {"lab_build_cost": 30, "research": [
+		{"id": "glow", "name": "Glow", "cost": {"red": 1}, "unlocks": {"colors": ["white"]}}]}
+	var content := Content.from_data(ContentFixture.data(colors, ContentFixture.balance_data(), null,
+		ContentFixture.transport_data(), {"events": []}, research))
+
+	assert_string_contains("\n".join(content.errors), "glow: unlocks white, but the unlock of white is not research")
+
+
 func test_reads_a_recipe() -> void:
 	var colors := ContentFixture.colors_data()
 	colors.colors.append({"id": "green", "name": "Green", "symbol": "diamond",
@@ -391,7 +470,7 @@ func test_reports_bad_data() -> void:
 			"factory.widget_time_ms must be a positive integer",
 			"factory.output_bay_capacity must be a positive integer",
 			"rust: a recipe cannot use its own color",
-			"rust: unlock must be one of start, research, but it is magic",
+			"rust: unlock must be one of start, research, prestige_upgrade, but it is magic",
 			"rust: recipe needs 3 red, but an input bay holds only 2 (factory.input_bay_capacity)",
 			"factory.build_cost must be a number of at least 0",
 			"run.starting_money must be a number of at least 0",
