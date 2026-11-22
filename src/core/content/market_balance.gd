@@ -44,6 +44,10 @@ var _investment_cost: BigNumber
 var _investment_cost_growth: float
 var _population_step: int
 var _income_step: int
+## Investments made to the cost of the next one, so that a query of all
+## markets does not compute them again. Not state: the costs follow from the
+## values above.
+var _investment_costs: Dictionary[int, BigNumber] = {}
 
 
 func _init(p_period_ms: int, p_capacity_per_population: float, p_reference_income: float,
@@ -75,7 +79,11 @@ func income_factor(income: int) -> float:
 ## The cost of a community investment of one kind in a market that has had
 ## [param made] investments of that kind. Costs are whole numbers.
 func investment_cost_after(made: int) -> BigNumber:
-	return _investment_cost.times_power(_investment_cost_growth, made).ceiled()
+	var cost: BigNumber = _investment_costs.get(made)
+	if cost == null:
+		cost = _investment_cost.times_power(_investment_cost_growth, made).ceiled()
+		_investment_costs[made] = cost
+	return cost
 
 
 ## The number of the period that holds [param at_ms]: 0 for the first period.

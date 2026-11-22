@@ -19,6 +19,14 @@ const _MANTISSA_SCALE := 1e14
 const _SUFFIXES: PackedStringArray = ["K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"]
 ## Above this exponent, the format shows only the size of the exponent.
 const _LONG_EXPONENT := 1_000_000
+## The ranges of the fast paths in [method _init], in absolute value: [1,
+## 9.5] has a shift of 0, [10.5, 95] a shift of 1, and [0.105, 0.95] a shift
+## of -1. Each bound is more than 2% from a power of ten.
+const _FAST_ONES_MAX := 9.5
+const _FAST_TENS_MIN := 10.5
+const _FAST_TENS_MAX := 95.0
+const _FAST_TENTHS_MIN := 0.105
+const _FAST_TENTHS_MAX := 0.95
 
 static var ZERO := BigNumber.new(0.0, 0)
 
@@ -36,23 +44,39 @@ var _exponent: int
 ## Makes the number [param p_mantissa] * 10^[param p_exponent]. The mantissa can
 ## have any size; the result is normalized.
 func _init(p_mantissa: float = 0.0, p_exponent: int = 0) -> void:
-	if p_mantissa == 0.0 or is_nan(p_mantissa) or is_inf(p_mantissa):
+	var size := absf(p_mantissa)
+	var m := p_mantissa
+	var e := p_exponent
+	# Fast paths for the most common sizes, such as prices and the product of
+	# two mantissas (#55). In each range, the shift that log() gives below is
+	# certain, because the range is far from a power of ten, and the result is
+	# the same: pow(10.0, 0) is 1.0 and pow(10.0, 1) is 10.0.
+	if size >= 1.0 and size <= _FAST_ONES_MAX:
+		pass
+	elif size >= _FAST_TENS_MIN and size <= _FAST_TENS_MAX:
+		m = p_mantissa / 10.0
+		e += 1
+	elif size >= _FAST_TENTHS_MIN and size <= _FAST_TENTHS_MAX:
+		m = p_mantissa * 10.0
+		e -= 1
+	elif p_mantissa == 0.0 or is_nan(p_mantissa) or is_inf(p_mantissa):
 		assert(p_mantissa == 0.0, "BigNumber mantissa must be finite, got %s" % p_mantissa)
 		_mantissa = 0.0
 		_exponent = 0
 		return
-	var shift := floori(log(absf(p_mantissa)) / log(10.0))
-	# Multiply by an exact power of ten when the shift is negative, because
-	# dividing by an inexact one (0.1) gives 0.9 / 0.1 = 9.000000000000002.
-	var m := p_mantissa * pow(10.0, -shift) if shift < 0 else p_mantissa / pow(10.0, shift)
-	var e := p_exponent + shift
-	# log() can be off by one near powers of ten.
-	if absf(m) >= 10.0:
-		m /= 10.0
-		e += 1
-	elif absf(m) < 1.0:
-		m *= 10.0
-		e -= 1
+	else:
+		var shift := floori(log(size) / log(10.0))
+		# Multiply by an exact power of ten when the shift is negative, because
+		# dividing by an inexact one (0.1) gives 0.9 / 0.1 = 9.000000000000002.
+		m = p_mantissa * pow(10.0, -shift) if shift < 0 else p_mantissa / pow(10.0, shift)
+		e += shift
+		# log() can be off by one near powers of ten.
+		if absf(m) >= 10.0:
+			m /= 10.0
+			e += 1
+		elif absf(m) < 1.0:
+			m *= 10.0
+			e -= 1
 	# m * scale is below 2^53, so it rounds to an exact integer, and one
 	# division gives the float nearest to the rounded decimal mantissa.
 	m = roundf(m * _MANTISSA_SCALE) / _MANTISSA_SCALE
@@ -124,6 +148,31 @@ func mul(other: BigNumber) -> BigNumber:
 	if is_zero() or other.is_zero():
 		return ZERO
 	return BigNumber.new(_mantissa * other._mantissa, _exponent + other._exponent)
+
+
+## The same number as [code]mul(BigNumber.from_float(value))[/code], faster:
+## for a [param value] in a range of the fast paths of [method _init], it
+## makes one new number instead of two.
+func times_float(value: float) -> BigNumber:
+	var size := absf(value)
+	var m := value
+	var e := 0
+	# The fast paths of _init and its rounding, for from_float(value).
+	if size >= 1.0 and size <= _FAST_ONES_MAX:
+		pass
+	elif size >= _FAST_TENTHS_MIN and size <= _FAST_TENTHS_MAX:
+		m = value * 10.0
+		e = -1
+	elif size >= _FAST_TENS_MIN and size <= _FAST_TENS_MAX:
+		m = value / 10.0
+		e = 1
+	else:
+		return mul(BigNumber.from_float(value))
+	if is_zero():
+		return ZERO
+	m = roundf(m * _MANTISSA_SCALE) / _MANTISSA_SCALE
+	return BigNumber.new(_mantissa * m, _exponent + e)
+
 
 
 ## Returns -1 if this number is less than [param other], 0 if equal, and 1 if greater.

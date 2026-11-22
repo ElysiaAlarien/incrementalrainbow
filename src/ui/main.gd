@@ -696,8 +696,8 @@ func _link_source_keys(factories: Array[FactoryView], warehouses: Array[Warehous
 ## each warehouse, then each lab.
 func _link_destination_keys(factories: Array[FactoryView], warehouses: Array[WarehouseView]) -> Array:
 	var keys: Array = []
-	for market in _sim.markets():
-		keys.append([&"market", market.id])
+	for market_id in _sim.market_ids():
+		keys.append([&"market", market_id])
 	for view in factories:
 		if not view.input_bays.is_empty():
 			keys.append([&"factory", view.id])
