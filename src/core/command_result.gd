@@ -63,6 +63,12 @@ enum Reason {
 	MIXED_SOURCES,
 	## The source of the link has no split.
 	NO_SPLIT,
+	## A sell threshold is not [constant WarehouseView.NO_SELL_THRESHOLD] or a
+	## whole percentage of at least 1.
+	BAD_SELL_THRESHOLD,
+	## An automatic start sent nothing, because its warehouse holds the color
+	## from the market at its end (see [method Simulation.set_sell_threshold]).
+	HELD,
 }
 
 var ok: bool

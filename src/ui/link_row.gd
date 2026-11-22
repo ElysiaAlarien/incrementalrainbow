@@ -183,6 +183,8 @@ static func transport_text(view: LinkView) -> String:
 			return "Automatic: nothing to ship, next try in %s" % next
 		LinkView.Automatic.NOT_ENOUGH_MONEY:
 			return "Automatic: not enough money, next try in %s" % next
+		LinkView.Automatic.HELD:
+			return "Automatic: held by the sell threshold, next try in %s" % next
 	return ""
 
 
@@ -192,6 +194,8 @@ static func _transport_color(automatic: LinkView.Automatic) -> Color:
 			return MUTED_COLOR
 		LinkView.Automatic.NOT_ENOUGH_MONEY:
 			return BLOCKED_COLOR
+		LinkView.Automatic.HELD:
+			return UPGRADE_COLOR
 	return AUTOMATIC_COLOR
 
 

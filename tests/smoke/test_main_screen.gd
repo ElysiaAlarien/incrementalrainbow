@@ -756,6 +756,50 @@ func test_a_warehouse_unlocks_and_shows_its_widgets_and_throughput() -> void:
 	assert_string_contains(row.text(), "Out: %d/min" % view.count)
 
 
+func test_the_player_sets_a_sell_threshold_and_sees_when_the_warehouse_holds() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	while not sim.is_warehouse_unlocked():
+		_card(main, "red").build_button().pressed.emit()
+	await wait_process_frames(1)
+	_choose(main, "NewWarehouseColor", "Red")
+	main.find_child("BuildWarehouse", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var row := _warehouse_row(main, 1)
+	assert_string_contains(row.text(), "None: sends at any demand")
+	assert_true(row.clear_button().disabled)
+
+	# Ten times normal demand is above any demand, so the warehouse holds.
+	_choose(main, "NewLinkSource", "Red warehouse #1")
+	_choose(main, "NewLinkDestination", "Millbrook")
+	main.find_child("MakeLink", true, false).pressed.emit()
+	row.threshold_box().value = 1000
+	row.set_button().pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(sim.warehouse(1).sell_threshold, 1000)
+	assert_string_contains(row.text(), "1000%: holds from Millbrook, where demand is below it")
+	assert_false(row.clear_button().disabled)
+
+	row.threshold_box().value = 1
+	row.set_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_string_contains(row.text(), "1%: sends, demand is at or above it")
+
+	row.clear_button().pressed.emit()
+	await wait_process_frames(1)
+	assert_eq(sim.warehouse(1).sell_threshold, WarehouseView.NO_SELL_THRESHOLD)
+	assert_string_contains(row.text(), "None: sends at any demand")
+
+
+func test_a_held_automatic_link_says_why_it_sends_nothing() -> void:
+	var view := LinkView.new()
+	view.automatic = LinkView.Automatic.HELD
+	view.next_automatic_in_ms = 2500
+
+	assert_eq(LinkRow.transport_text(view), "Automatic: held by the sell threshold, next try in 2.5s")
+
+
 func test_a_link_from_a_warehouse_to_a_warehouse_shows_why_it_cannot_be_made() -> void:
 	var main := await _open_main()
 	var sim: Simulation = main.simulation()

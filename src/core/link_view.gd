@@ -16,6 +16,10 @@ enum Automatic {
 	## The last automatic start sent nothing, because the player had less
 	## money than the shipment costs.
 	NOT_ENOUGH_MONEY,
+	## The last automatic start sent nothing, because the link goes from a
+	## warehouse to a market whose demand was below the warehouse's sell
+	## threshold.
+	HELD,
 }
 
 ## What kind of place a link goes to.
@@ -81,6 +85,10 @@ var widgets_per_minute: int
 ## The percentage of the source's widgets that the split sends to this link,
 ## or [constant NO_SPLIT]. See [method Simulation.splits].
 var split_percent: int = NO_SPLIT
+## True when the link goes from a warehouse to a market, and the demand for its
+## color in that market is below the warehouse's sell threshold now. Then its
+## automatic starts send nothing. A shipment by hand is outside the hold.
+var held: bool = false
 
 
 func is_automatic() -> bool:

@@ -102,8 +102,12 @@ The percentage of a color's widgets that the player sends to each of that color'
 _Avoid_: Allocation, ratio, distribution
 
 **Sell threshold**:
-The demand level below which a warehouse holds a color instead of sending it to a market.
+The demand level below which a warehouse holds a color instead of sending it to a market. It holds only the automatic starts to each market whose demand is below it, not shipments by hand or links to factories and labs. See ADR-0016.
 _Avoid_: Reserve price, floor
+
+**Hold**:
+What a warehouse does with its color while the demand in a market is below its sell threshold: its automatic starts to that market send nothing, and the widgets stay in the warehouse.
+_Avoid_: Block, pause
 
 ## Unlocks
 

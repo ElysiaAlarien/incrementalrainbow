@@ -8,6 +8,9 @@ var id: int
 var color: StringName
 ## Widgets in the warehouse now.
 var count: int = 0
+## The demand percent below which the warehouse holds its color from a market,
+## or [constant WarehouseView.NO_SELL_THRESHOLD].
+var sell_threshold: int = WarehouseView.NO_SELL_THRESHOLD
 
 
 func _init(p_id: int, p_color: StringName) -> void:
@@ -34,6 +37,9 @@ static func from_snapshot(reader: SnapshotReader, content: Content) -> Warehouse
 	if state.color != &"" and content.color(state.color) == null:
 		reader.fail("color", "there is no color \"%s\"" % state.color)
 	state.count = reader.integer("count", 0, content.warehouse_balance.space)
+	state.sell_threshold = reader.integer("sell_threshold", WarehouseView.NO_SELL_THRESHOLD)
+	if state.sell_threshold == 0:
+		reader.fail("sell_threshold", "must be %d (none) or at least 1" % WarehouseView.NO_SELL_THRESHOLD)
 	return state
 
 
@@ -43,8 +49,9 @@ func to_view(space: int) -> WarehouseView:
 	view.color = color
 	view.count = count
 	view.space = space
+	view.sell_threshold = sell_threshold
 	return view
 
 
 func to_dict() -> Dictionary:
-	return {"id": id, "color": color, "count": count}
+	return {"id": id, "color": color, "count": count, "sell_threshold": sell_threshold}

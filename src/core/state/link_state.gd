@@ -14,12 +14,14 @@ const READY := &"ready"
 const SHIPPED := &"shipped"
 const NOTHING_TO_SHIP := &"nothing_to_ship"
 const NOT_ENOUGH_MONEY := &"not_enough_money"
+const HELD := &"held"
 const AUTOMATIC_STATUSES: Dictionary[StringName, LinkView.Automatic] = {
 	MANUAL: LinkView.Automatic.MANUAL,
 	READY: LinkView.Automatic.READY,
 	SHIPPED: LinkView.Automatic.SHIPPED,
 	NOTHING_TO_SHIP: LinkView.Automatic.NOTHING_TO_SHIP,
 	NOT_ENOUGH_MONEY: LinkView.Automatic.NOT_ENOUGH_MONEY,
+	HELD: LinkView.Automatic.HELD,
 }
 
 ## The name of each destination kind in a save.
@@ -61,7 +63,7 @@ var vehicle: StringName
 var shipments: Array[ShipmentState] = []
 ## [constant MANUAL], or what the last automatic start did: [constant READY]
 ## before the first one, then [constant SHIPPED], [constant NOTHING_TO_SHIP],
-## or [constant NOT_ENOUGH_MONEY].
+## [constant NOT_ENOUGH_MONEY], or [constant HELD].
 var automatic_status: StringName = MANUAL
 ## On an automatic link, the time of the next automatic start. 0 on a manual link.
 var next_automatic_ms: int = 0
@@ -103,6 +105,8 @@ func record_automatic_start(result: CommandResult, transit_time_ms: int) -> void
 			automatic_status = SHIPPED
 		CommandResult.Reason.NOT_ENOUGH_MONEY:
 			automatic_status = NOT_ENOUGH_MONEY
+		CommandResult.Reason.HELD:
+			automatic_status = HELD
 		_:
 			assert(result.reason == CommandResult.Reason.NOTHING_TO_SHIP, "unexpected %s" % result.message)
 			automatic_status = NOTHING_TO_SHIP

@@ -38,10 +38,12 @@ func _rich_game() -> Simulation:
 	sim.make_factory_link(3, 4)
 	sim.make_factory_link(5, 4)
 	# A red warehouse, fed by the red factory #1, that holds widgets and has
-	# widgets on their way to it, and a link from it to the market.
+	# widgets on their way to it, and a manual link from it to the market. Its
+	# sell threshold does not hold a manual link, so the shipments do not change.
 	assert_true(sim.build_warehouse(&"red").ok)
 	sim.link_factory_to_warehouse(1, 1)
 	sim.link_warehouse_to_market(1, &"millbrook")
+	assert_true(sim.set_sell_threshold(1, 90).ok)
 	sim.add_production_line(4)
 	sim.start_shipment(3)
 	sim.tick(1400)
