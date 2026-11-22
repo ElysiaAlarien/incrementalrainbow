@@ -7,9 +7,10 @@ An incremental game where the player builds factories that make colored widgets,
 - `src/core/`: the headless simulation core. All game rules live here, with no scene-tree dependency.
 - `src/ui/`: scenes and scripts that show the core and send it commands.
 - `data/`: game content as JSON (colors, symbols, recipes, and balance values).
-- `tests/unit/`: core tests. `tests/smoke/`: UI smoke tests.
+- `tests/unit/`: core tests. `tests/smoke/`: UI smoke tests. `tests/build/`: checks of the export presets.
 - `addons/gut/`: the GUT test runner (vendored).
 - `docs/adr/`: architecture decisions.
+- `export_presets.cfg`: the export presets for Windows, macOS, Linux, iOS, and Android.
 
 ## Run the tests
 
@@ -20,3 +21,11 @@ GODOT=/path/to/godot tools/test.sh
 ```
 
 To run one test script, add `-gselect=test_big_number.gd`. CI runs the same script on each pull request.
+
+## Make the builds
+
+See [docs/building.md](docs/building.md). For example:
+
+```bash
+GODOT=/path/to/godot tools/build.sh Linux Windows macOS
+```

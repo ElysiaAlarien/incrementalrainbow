@@ -5,3 +5,6 @@
 
 # Test output
 /test-results/
+
+# Builds (tools/build.sh)
+/build/
