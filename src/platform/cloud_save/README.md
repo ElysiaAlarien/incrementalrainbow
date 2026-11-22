@@ -45,7 +45,7 @@ Note: `fileWrite` writes the copy of Steam on the computer. The Steam client upl
 1. Get an Apple Developer account, and turn on iCloud with the key-value store for the app ID.
 2. Add the entitlement `com.apple.developer.ubiquity-kvstore-identifier` to the iOS export (#28 owns the export presets). Without it, `synchronize()` is false, and each sync fails with a message.
 3. Add GodotApplePlugins (https://github.com/migueldeicaza/GodotApplePlugins, Asset Library 4552, commit `a66f619` or later). `ICloudSave` uses its class `NSUbiquitousKeyValueStore`: `default_store()`, `synchronize()`, `string_for_key(key)`, and `set_string(value, key)`. It keeps one wrapper, because `default_store()` makes a new one at each call.
-4. Smoke test on two devices with one Apple ID: save, sync, load, and a conflict. Also with iCloud off for the app, and with no Apple account on the device.
+4. Smoke test on two devices with one Apple ID: save, sync, load, and a conflict. Also with iCloud off for the app, and with no Apple account on the device. No test runs the lookup of the store (`ClassDB.class_call_static(&"NSUbiquitousKeyValueStore", &"default_store")`), so check first that the game finds iCloud.
 5. Smoke test the open risk: sign in to an Apple account on a device that has never had the game, install the game, and start it at once. Check that it loads the cloud game, and does not upload a new game over it.
 
 Notes:
@@ -61,13 +61,16 @@ Notes:
 3. `GooglePlayCloudSave` calls the Android singleton `GodotPlayGameServices` directly, not the GDScript nodes of the addon: `initialize()`, `isAuthenticated()` with the signal `userAuthenticated(bool)`, `loadGame(name, false)` with `gameLoaded(json)`, `saveGame(name, description, bytes, 0, 0)` with `gameSaved(bool, name, description)`, and `conflictEmitted(json)`.
 4. The adapter calls `initialize()` when the game starts. The achievements of #25 and the addon autoload can call it too. Check on a device that a second call does no harm, or give it one owner.
 5. Smoke test on two devices with one Google account: save, sync, load, and a conflict. Also when the player is not signed in, with no network, and with the network off during a save.
+6. Smoke test the upload when the game goes to the background: play, press Home, stop the app at once, and start the game on the other device. The upload needs two answers of the plugin while the app is in the background.
+7. Smoke test a sign-in after the start: start the game signed out, sign in to Play Games, return to the game, and check that it syncs.
 
 How the adapter uses the plugin, from its source:
 
-- The sign-in answer comes later by signal. A read or a write before it waits for it, so the sync at the start works. When the player is not signed in, the adapter is not available, and a sync does nothing. A sign-in after the start syncs at the next sync (in 5 minutes or on return from the background).
+- The sign-in answer comes later by signal. A read or a write before it waits for it, so the sync at the start works. When the player is not signed in, the adapter is not available, and a sync does nothing. The plugin sends the sign-in answer only after `isAuthenticated()` or `signIn()`, so each read or write while the player is signed out asks again. Thus a sign-in after the start syncs at the next sync (in 5 minutes or on return from the background).
 - `gameLoaded` has the snapshot as JSON. Gson writes its content as an array of numbers from -128 to 127. "null" means that there is no snapshot.
 - The plugin sends no signal for most errors of a read or a write. Then the operation fails at the timeout (20 seconds), and the next sync tries again.
 - Each write has its own description ("Incremental Rainbow, saved <date and time>"), and `gameSaved` sends it back. So a late answer to an earlier write does not finish the next write.
+- A read has no such mark. A late `gameLoaded` of a read that timed out can finish the next read. Both read the same snapshot, so the risk is a cloud save that is at most one timeout older.
 
 Limits of the plugin (ADR-0018 has them too):
 

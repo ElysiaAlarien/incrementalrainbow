@@ -13,7 +13,7 @@ extends CloudSave
 ##
 ## The plugin answers with signals, so each operation finishes later. The
 ## answer to the sign-in check also comes later: an operation before it waits
-## for it. One read and one write can wait at a time. The plugin sends no
+## for it. While the player is signed out, each operation asks again. One read and one write can wait at a time. The plugin sends no
 ## signal for most errors, so such an operation fails only at the timeout of
 ## [method CloudOperation.wait].
 
@@ -88,13 +88,19 @@ func _not_available_message() -> String:
 
 
 ## Starts [param operation] with [param start] when the player is signed in,
-## or after the answer to the sign-in check.
-func _when_signed_in(operation: CloudOperation, start: Callable) -> void:
+## or after the answer to the sign-in check. When the player was signed out,
+## it asks again first, because only a check or a sign-in sends the answer:
+## the player can sign in after the start, for example in another game. With
+## [param may_ask] false, a player who is signed out fails the operation.
+func _when_signed_in(operation: CloudOperation, start: Callable, may_ask: bool = true) -> void:
+	if _plugin != null and _sign_in == SignIn.SIGNED_OUT and may_ask:
+		_sign_in = SignIn.UNKNOWN
+		_plugin.call(&"isAuthenticated")
 	if _plugin != null and _sign_in == SignIn.UNKNOWN:
 		_waiting.append(func() -> void:
 			# An operation that timed out does not start.
 			if not operation.is_done():
-				_when_signed_in(operation, start))
+				_when_signed_in(operation, start, false))
 	elif not is_available():
 		operation.fail(CloudOperation.Status.NOT_AVAILABLE, _not_available_message())
 	else:

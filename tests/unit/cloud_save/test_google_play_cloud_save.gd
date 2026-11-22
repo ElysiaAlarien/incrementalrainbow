@@ -99,9 +99,32 @@ func test_a_player_who_is_not_signed_in_has_no_google_play() -> void:
 	_play.userAuthenticated.emit(false)
 
 	assert_eq(waiting.status, CloudOperation.Status.NOT_AVAILABLE)
+	assert_string_contains(waiting.message, "not signed in")
 	assert_false(_cloud.is_available())
-	assert_eq(_cloud.read().status, CloudOperation.Status.NOT_AVAILABLE)
-	assert_string_contains(_cloud.write("text").message, "not signed in")
+
+
+func test_an_operation_while_signed_out_asks_again_for_the_sign_in() -> void:
+	_play.userAuthenticated.emit(false)
+	_play.calls.clear()
+
+	var read := _cloud.read()
+	var written := _cloud.write("text")
+
+	assert_eq(_play.calls, ["isAuthenticated"] as Array[String], "one question for both")
+	assert_false(read.is_done())
+	_play.userAuthenticated.emit(false)
+	assert_eq(read.status, CloudOperation.Status.NOT_AVAILABLE)
+	assert_eq(written.status, CloudOperation.Status.NOT_AVAILABLE)
+
+
+func test_a_sign_in_after_the_start_works_at_the_next_operation() -> void:
+	_play.userAuthenticated.emit(false)
+
+	var read := _cloud.read()
+	_sign_in()
+	_play.gameLoaded.emit(_snapshot_json("a save"))
+
+	assert_eq(read.text, "a save")
 
 
 func test_a_later_sign_in_makes_google_play_available() -> void:
