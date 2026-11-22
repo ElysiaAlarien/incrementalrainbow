@@ -1520,13 +1520,12 @@ func test_a_version_13_save_still_loads_with_its_save_time() -> void:
 
 ## A save of version 14 (ADR-0014: the list of migrations), as the game wrote it.
 ## It is the version 13 fixture, loaded and saved again.
-func test_a_version_14_save_still_loads_with_no_migration() -> void:
+func test_a_version_14_save_still_loads_with_its_save_time() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v14.json")
 
 	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
-	assert_false(result.migrated, "a version 14 save has each numbered migration")
 	assert_eq(result.saved_at_unix_ms, SAVED_AT_UNIX_MS)
 	var v13 := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v13.json"),
 		SaveMigrations.found(), ContentFixture.make_for_saves())

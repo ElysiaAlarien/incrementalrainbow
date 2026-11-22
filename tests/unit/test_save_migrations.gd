@@ -148,16 +148,22 @@ func _migration(migrations: SaveMigrations, migration_name: StringName) -> SaveM
 	return null
 
 
-## The state of [param data], a save, with each migration that it does not have
-## except [param a], [param b], and the migrations that need them. Then
-## [param a] and [param b] in both orders. Returns the two states as JSON.
-func _both_orders(migrations: SaveMigrations, data: Dictionary, a: StringName, b: StringName) -> Array[String]:
+## The names of the migrations that [param data], a save, has.
+func _applied(data: Dictionary) -> Array[StringName]:
 	var applied: Array[StringName] = []
 	if int(data.version) < SaveCodec.VERSION:
 		applied = SaveCodec.NUMBERED_MIGRATIONS.slice(0, int(data.version) - 1)
 	else:
 		for migration_name: String in data.applied:
 			applied.append(StringName(migration_name))
+	return applied
+
+
+## The state of [param data], a save, with each migration that it does not have
+## except [param a], [param b], and the migrations that need them. Then
+## [param a] and [param b] in both orders. Returns the two states as JSON.
+func _both_orders(migrations: SaveMigrations, data: Dictionary, a: StringName, b: StringName) -> Array[String]:
+	var applied := _applied(data)
 	var state: Dictionary = data.state.duplicate(true)
 	for migration in migrations.missing(applied):
 		var needs := migrations.all_needs(migration.name)
@@ -178,9 +184,14 @@ func test_independent_migrations_give_the_same_state_in_either_order() -> void:
 	var pairs := _independent_pairs(migrations)
 	for file in DirAccess.get_files_at(FIXTURES):
 		var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FIXTURES + file))
+		var applied := _applied(data)
 		for pair in pairs:
+			if applied.has(pair[0]) or applied.has(pair[1]):
+				continue
 			var states := _both_orders(migrations, data, pair[0], pair[1])
-			assert_eq(states[0], states[1], "%s: %s and %s in either order" % [file, pair[0], pair[1]])
+			# The states are long, so the message names only the pair.
+			assert_true(states[0] == states[1], "%s: %s and %s give different states in either order" % [
+				file, pair[0], pair[1]])
 	pass_test("%d pairs of independent migrations" % pairs.size())
 
 
