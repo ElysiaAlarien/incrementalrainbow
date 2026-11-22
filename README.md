@@ -6,6 +6,7 @@ An incremental game where the player builds factories that make colored widgets,
 
 - `src/core/`: the headless simulation core. All game rules live here, with no scene-tree dependency.
 - `src/ui/`: scenes and scripts that show the core and send it commands.
+- `src/platform/`: services of the device and the platform, outside the core: the save file, and achievements (`docs/achievements.md`).
 - `data/`: game content as JSON (colors, symbols, recipes, and balance values).
 - `tests/unit/`: core tests. `tests/smoke/`: UI smoke tests. `tests/build/`: checks of the export presets.
 - `addons/gut/`: the GUT test runner (vendored).

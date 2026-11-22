@@ -1,0 +1,117 @@
+{
+	"applied": [
+		"add_links",
+		"add_automatic_transport",
+		"add_demand",
+		"add_prisms",
+		"add_mixed_factories",
+		"add_demand_events",
+		"add_markets",
+		"add_warehouses",
+		"add_transport_tier",
+		"add_research",
+		"add_splits",
+		"add_save_time",
+		"add_generated_markets",
+		"add_guided_start",
+		"add_milestones",
+		"add_prestige_upgrades",
+		"add_sell_thresholds"
+	],
+	"format": "incremental-rainbow-save",
+	"saved_at_unix_ms": 1795000000000,
+	"state": {
+		"completed_research": [],
+		"demand_events": [],
+		"drift_key": 3072083842,
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 0,
+				"progress_ms": 0,
+				"size": 1
+			}
+		],
+		"generated_markets": 1,
+		"guided_start": "done",
+		"lab_stock": [],
+		"labs": [],
+		"links": [],
+		"markets": [
+			{
+				"capacity_used": 0,
+				"id": "millbrook",
+				"income": 100,
+				"income_investments": 0,
+				"population": 1000,
+				"population_investments": 0
+			},
+			{
+				"capacity_used": 0,
+				"id": "generated_1",
+				"income": 98,
+				"income_investments": 0,
+				"population": 1199,
+				"population_investments": 0
+			}
+		],
+		"milestones": [
+			{
+				"id": "factories",
+				"value": 3
+			},
+			{
+				"id": "factory.blue",
+				"value": 1
+			},
+			{
+				"id": "factory.red",
+				"value": 1
+			},
+			{
+				"id": "factory.yellow",
+				"value": 1
+			},
+			{
+				"id": "first_sale",
+				"value": 1
+			},
+			{
+				"id": "prestiges",
+				"value": 1
+			},
+			{
+				"id": "prisms_bought",
+				"value": 1
+			}
+		],
+		"money": [
+			9.0,
+			1
+		],
+		"next_demand_event_ms": 5149,
+		"next_factory_id": 2,
+		"next_lab_id": 1,
+		"next_link_id": 1,
+		"next_shipment_id": 1,
+		"next_warehouse_id": 1,
+		"prestige_upgrades": [],
+		"prisms": 1,
+		"prisms_bought": 1,
+		"research_progress": [],
+		"rng": [
+			412331537,
+			135535648,
+			1362993420,
+			761369503
+		],
+		"saturation": [],
+		"selected_research": "",
+		"time_ms": 0,
+		"transport_tier": "cart",
+		"warehouses": []
+	},
+	"version": 14
+}

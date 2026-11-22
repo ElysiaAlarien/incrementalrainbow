@@ -233,6 +233,14 @@ _Avoid_: Offline limit, max idle time
 **Save time**:
 The device clock time that a save's state is for. It is in the save, beside the state.
 
+**Milestone**:
+A lifetime record of something the player did: the first time they did it, or the highest count they reached, such as the prisms bought. It only goes up, and a prestige keeps it. The core sends an event when a milestone goes up. See ADR-0018.
+_Avoid_: Stat, record, achievement
+
+**Achievement**:
+A goal on the platform (Steam, Game Center, or Google Play Games) that a milestone grants. The achievements are data outside the core.
+_Avoid_: Trophy, badge, milestone
+
 ## Saves
 
 **Save**:
