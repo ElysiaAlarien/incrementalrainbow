@@ -8,12 +8,15 @@ enum Unlock {
 	START,
 	## Research in a run unlocks it.
 	RESEARCH,
+	## A prestige upgrade unlocks it, for this run and all later runs.
+	PRESTIGE_UPGRADE,
 }
 
 ## The [enum Unlock] value for each name in colors.json.
 const UNLOCK_NAMES: Dictionary[String, Unlock] = {
 	"start": Unlock.START,
 	"research": Unlock.RESEARCH,
+	"prestige_upgrade": Unlock.PRESTIGE_UPGRADE,
 }
 
 var id: StringName:

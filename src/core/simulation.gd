@@ -30,10 +30,12 @@ const _EVENT_AUTOMATIC_START := 2
 ## copies only these members into it. Each key is a name for the player, and
 ## its value lists the members that hold it. All other state, also state that
 ## a later feature adds, is part of the run and clears by default. To keep new
-## state across runs, such as prestige upgrades, add it here.
+## state across runs, add it here. The unlocks and bonuses of prestige
+## upgrades come from the owned upgrades, so they need no member of their own.
 const _PRESTIGE_KEEPS: Dictionary[String, Array] = {
 	"Prisms": [&"_prisms"],
 	"Prism price": [&"_prisms_bought"],
+	"Prestige upgrades and their unlocks": [&"_prestige_upgrades"],
 }
 ## What a prestige clears, as names for the player. A prestige clears all
 ## state that [constant _PRESTIGE_KEEPS] does not name, so this list only
@@ -74,6 +76,11 @@ var _transport_tier: TransportTier
 ## clears neither.
 var _prisms: int = 0
 var _prisms_bought: int = 0
+## The ids of the prestige upgrades that the player owns, in content order.
+## Prestige does not clear them. Their effects come from this list each time
+## (see [method _production_speed] and [method _starting_money]), so that no
+## other member must change when the player buys one.
+var _prestige_upgrades: Array[StringName] = []
 var _next_lab_id: int = 1
 ## Lab ids, in build order. A lab has no state of its own: the widgets it
 ## consumes pay for [member _research].
@@ -93,7 +100,7 @@ func _init(p_content: Content, p_seed: int) -> void:
 	_rng = SimRng.new(p_seed)
 	_demand = DemandState.new(_rng.next_u32())
 	_demand.schedule_events(0, _rng, _content)
-	_money = _content.starting_money
+	_money = _starting_money()
 	for def in _content.markets():
 		_markets[def.id] = MarketState.from_def(def)
 	_transport_tier = _content.transport_tiers()[0]
@@ -137,9 +144,32 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 	sim._prisms = reader.integer("prisms", 0)
 	if sim._prisms > sim._prisms_bought:
 		reader.fail("prisms", "cannot be more than prisms_bought (%d)" % sim._prisms_bought)
+	sim._read_prestige_upgrades(reader)
 	sim._check_input_bay_space(factory_readers)
 	sim._check_warehouse_space(reader)
 	return sim
+
+
+## Reads the owned prestige upgrades for [method from_snapshot], and keeps
+## them in content order.
+func _read_prestige_upgrades(reader: SnapshotReader) -> void:
+	var owned := {}
+	for id in reader.text_id_list("prestige_upgrades"):
+		if _content.prestige_upgrade(id) == null:
+			reader.fail("prestige_upgrades", "there is no prestige upgrade \"%s\"" % id)
+		elif owned.has(id):
+			reader.fail("prestige_upgrades", "%s is in the list more than once" % id)
+		owned[id] = true
+	_set_prestige_upgrades(owned)
+
+
+## Sets the owned prestige upgrades to the ids in [param owned], in content
+## order. Ids that are not in the content are not kept.
+func _set_prestige_upgrades(owned: Dictionary) -> void:
+	_prestige_upgrades.clear()
+	for def in _content.prestige_upgrades():
+		if owned.has(def.id):
+			_prestige_upgrades.append(def.id)
 
 
 ## Reads the warehouses for [method from_snapshot].
@@ -335,7 +365,9 @@ func build_factory(color: StringName) -> CommandResult:
 			"There is no color \"%s\"." % color)
 	if not is_color_unlocked(color):
 		return CommandResult.failure(CommandResult.Reason.COLOR_LOCKED,
-			"%s needs research first: %s." % [color_def.name, _research_names(color)])
+			"%s needs %s first: %s." % [color_def.name,
+				"a prestige upgrade" if color_def.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE else "research",
+				" or ".join(_content.unlocker_names(color_def))])
 	var cost := factory_build_cost()
 	if _money.is_less_than(cost):
 		return _not_enough_money("A factory", cost)
@@ -838,7 +870,46 @@ func prestige() -> CommandResult:
 	for property in get_property_list():
 		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and not kept.has(StringName(property.name)):
 			set(property.name, fresh.get(property.name))
+	# A new game has no prestige upgrades, so the fresh run has the starting
+	# money of the content. The kept upgrades add their bonus to it.
+	_money = _starting_money()
 	return CommandResult.success()
+
+
+## Buys the prestige upgrade [param upgrade_id] for its price in prisms. It
+## has its effect at once, and in all later runs: a prestige keeps it. A
+## bonus to production speed applies to all factories from now on, and a
+## bonus to starting money adds that money now, as at the start of a run. On
+## success, [member CommandResult.value] is the prisms that the player has
+## left.
+func buy_prestige_upgrade(upgrade_id: StringName) -> CommandResult:
+	var def := _content.prestige_upgrade(upgrade_id)
+	if def == null:
+		return CommandResult.failure(CommandResult.Reason.UNKNOWN_PRESTIGE_UPGRADE,
+			"There is no prestige upgrade \"%s\"." % upgrade_id)
+	if _prestige_upgrades.has(upgrade_id):
+		return CommandResult.failure(CommandResult.Reason.PRESTIGE_UPGRADE_OWNED,
+			"You own %s already." % def.name)
+	if _prisms < def.price:
+		return CommandResult.failure(CommandResult.Reason.NOT_ENOUGH_PRISMS,
+			"%s costs %s, but you have only %s." % [def.name, _prism_count_text(def.price),
+				_prism_count_text(_prisms)])
+
+	# Commands come between ticks, so each factory has made its widgets up to
+	# now at the old speed. From now on, it makes them at the new speed.
+	_prisms -= def.price
+	var owned := {}
+	for id in _prestige_upgrades:
+		owned[id] = true
+	owned[upgrade_id] = true
+	_set_prestige_upgrades(owned)
+	_money = _money.add(def.starting_money)
+	return CommandResult.success(_prisms)
+
+
+## Such as "1 prism" or "3 prisms".
+static func _prism_count_text(count: int) -> String:
+	return "%d %s" % [count, "prism" if count == 1 else "prisms"]
 
 
 ## A failure if [method prestige] is not allowed now, or null.
@@ -1072,6 +1143,21 @@ func prestige_preview() -> PrestigeView:
 	return view
 
 
+## All prestige upgrades, in content order, with their prices and whether the
+## player owns them.
+func prestige_upgrades() -> Array[PrestigeUpgradeView]:
+	var views: Array[PrestigeUpgradeView] = []
+	for def in _content.prestige_upgrades():
+		views.append(_prestige_upgrade_view(def))
+	return views
+
+
+## The prestige upgrade with [param id], or null.
+func prestige_upgrade(id: StringName) -> PrestigeUpgradeView:
+	var def := _content.prestige_upgrade(id)
+	return null if def == null else _prestige_upgrade_view(def)
+
+
 ## The money that [method build_factory] costs now.
 func factory_build_cost() -> BigNumber:
 	return _content.factory_balance.build_cost
@@ -1138,12 +1224,20 @@ func buildable_factory_colors() -> Array[StringName]:
 
 ## True if the player can build factories of [param color] now: it is
 ## available from the start (see [enum ColorDef.Unlock]), or complete research
-## unlocks it.
+## or an owned prestige upgrade unlocks it, as its unlock says.
 func is_color_unlocked(color: StringName) -> bool:
 	var def := _content.color(color)
 	if def == null:
 		return false
-	return def.unlock == ColorDef.Unlock.START or _research.unlocks_color(color, _content)
+	match def.unlock:
+		ColorDef.Unlock.RESEARCH:
+			return _research.unlocks_color(color, _content)
+		ColorDef.Unlock.PRESTIGE_UPGRADE:
+			for id in _prestige_upgrades:
+				if _content.prestige_upgrade(id).unlocks_color(color):
+					return true
+			return false
+	return true
 
 
 ## All labs, by id, in build order.
@@ -1328,6 +1422,7 @@ func snapshot() -> Dictionary:
 		"warehouses": _warehouses.map(func(w: WarehouseState) -> Dictionary: return w.to_dict()),
 		"prisms": _prisms,
 		"prisms_bought": _prisms_bought,
+		"prestige_upgrades": _prestige_upgrades.map(func(id: StringName) -> String: return String(id)),
 		"markets": _markets_to_dicts(),
 		"transport_tier": _transport_tier.id,
 		"next_lab_id": _next_lab_id,
@@ -1530,6 +1625,33 @@ func _prism_price() -> BigNumber:
 	return _content.prism_balance.price(_prisms_bought)
 
 
+## The money at the start of a run: that of the content, plus the bonuses of
+## the owned prestige upgrades.
+func _starting_money() -> BigNumber:
+	var money := _content.starting_money
+	for id in _prestige_upgrades:
+		money = money.add(_content.prestige_upgrade(id).starting_money)
+	return money
+
+
+## How many times as fast factories make widgets: the product of the bonuses
+## of the owned prestige upgrades, in content order, so that the same
+## upgrades always give the same value.
+func _production_speed() -> float:
+	var speed := 1.0
+	for id in _prestige_upgrades:
+		speed *= _content.prestige_upgrade(id).production_speed
+	return speed
+
+
+## The time for one production line to make one widget now: the time in the
+## content, divided by [method _production_speed], to the nearest whole
+## millisecond, and at least 1. Time is an integer so that production stays
+## exact for ticks of any length.
+func _widget_time_ms() -> int:
+	return maxi(1, roundi(_content.factory_balance.widget_time_ms / _production_speed()))
+
+
 ## The factory with [param id], or null, with its widgets made up to now.
 ## Inside a tick, a factory makes widgets only when an event uses it, and the
 ## events use it through this function. Its production is exact for any
@@ -1547,7 +1669,7 @@ func _factory_state(id: int) -> FactoryState:
 func _sync(state: FactoryState) -> void:
 	if state.synced_ms == _time_ms:
 		return
-	var made := state.advance(_time_ms - state.synced_ms, _content.factory_balance)
+	var made := state.advance(_time_ms - state.synced_ms, _content.factory_balance, _widget_time_ms())
 	state.synced_ms = _time_ms
 	if _offline_tally != null:
 		_offline_tally.widgets_made += made
@@ -1574,13 +1696,16 @@ func _factory_view(state: FactoryState) -> FactoryView:
 	return view
 
 
-## The names of the research that unlocks [param color], such as
-## "Warm tertiaries".
-func _research_names(color: StringName) -> String:
-	var ids: Array[StringName] = []
-	for def in _content.research_unlocking(color):
-		ids.append(def.id)
-	return " or ".join(_content.research_names(ids))
+func _prestige_upgrade_view(def: PrestigeUpgradeDef) -> PrestigeUpgradeView:
+	var view := PrestigeUpgradeView.new()
+	view.id = def.id
+	view.name = def.name
+	view.price = def.price
+	view.owned = _prestige_upgrades.has(def.id)
+	view.production_speed = def.production_speed
+	view.starting_money = def.starting_money
+	view.unlock_colors = def.unlock_colors
+	return view
 
 
 func _research_view(def: ResearchDef) -> ResearchView:

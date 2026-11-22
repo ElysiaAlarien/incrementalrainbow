@@ -7,7 +7,7 @@ const FactoryState := preload("res://src/core/state/factory_state.gd")
 var id: int
 var color: StringName
 ## How many production lines the factory has. Each line makes one widget per
-## [member FactoryBalance.widget_time_ms].
+## widget time, which the simulation gives to [method advance].
 var size: int = 1
 var output_bay_count: int = 0
 ## Work done on the next widgets, in line-milliseconds: one line working for
@@ -36,9 +36,10 @@ func _init(p_id: int, p_color: StringName, p_recipe: Dictionary[StringName, int]
 		input_bays[input] = 0
 
 
-## Makes widgets for [param duration_ms]. Constant time for any duration, and
+## Makes widgets for [param duration_ms], at one widget per
+## [param widget_time_ms] for each line. Constant time for any duration, and
 ## exact: one long advance gives the same state as many short ones, as long as
-## no input arrives between them.
+## no input arrives and the widget time does not change between them.
 ## [br][br]
 ## Each widget consumes one full recipe from the input bays when it is done.
 ## The factory can make widgets up to the free space in its output bay and up
@@ -46,14 +47,14 @@ func _init(p_id: int, p_color: StringName, p_recipe: Dictionary[StringName, int]
 ## bay full) or waits (an input bay is short), so it keeps no partial progress:
 ## it starts a new widget when it can make one again. Returns the count of
 ## widgets made.
-func advance(duration_ms: int, balance: FactoryBalance) -> int:
+func advance(duration_ms: int, balance: FactoryBalance, widget_time_ms: int) -> int:
 	var limit := mini(balance.output_bay_capacity - output_bay_count, _recipes_in_bays())
 	if limit <= 0:
 		progress_ms = 0
 		return 0
 	# Compare durations, not work, so that a long tick on a large factory
 	# cannot overflow.
-	var work_to_limit := limit * balance.widget_time_ms - progress_ms
+	var work_to_limit := limit * widget_time_ms - progress_ms
 	@warning_ignore("integer_division")
 	var time_to_limit := (work_to_limit + size - 1) / size
 	var made := limit
@@ -62,8 +63,8 @@ func advance(duration_ms: int, balance: FactoryBalance) -> int:
 	else:
 		progress_ms += duration_ms * size
 		@warning_ignore("integer_division")
-		made = progress_ms / balance.widget_time_ms
-		progress_ms -= made * balance.widget_time_ms
+		made = progress_ms / widget_time_ms
+		progress_ms -= made * widget_time_ms
 	output_bay_count += made
 	for input in _recipe:
 		input_bays[input] -= made * _recipe[input]

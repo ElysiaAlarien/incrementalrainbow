@@ -1,5 +1,5 @@
 {
-	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, recipe (input color id to the count consumed to make one widget; empty for a base color), and unlock (\"start\": available from the start of each run, the default; \"research\": research in a run unlocks it).",
+	"_about": "Each color: id, display name, symbol (a shape drawn next to the color, for colorblind players), display color, recipe (input color id to the count consumed to make one widget; empty for a base color), and unlock (\"start\": available from the start of each run, the default; \"research\": research in a run unlocks it; \"prestige_upgrade\": a prestige upgrade unlocks it).",
 	"colors": [
 		{"id": "red", "name": "Red", "symbol": "square", "display": "#d64545", "recipe": {}},
 		{"id": "yellow", "name": "Yellow", "symbol": "triangle", "display": "#f2c230", "recipe": {}},

@@ -1,6 +1,7 @@
 extends GutTest
 ## Prestige: the player ends a run and starts a fresh one. A prestige keeps
-## prisms and the prism price, and clears the run (see ADR-0012).
+## prisms, the prism price, and prestige upgrades, and clears the run (see
+## ADR-0012).
 
 const SEED := 19
 ## Each snapshot key, and the name in the prestige preview that tells the
@@ -22,6 +23,7 @@ const PREVIEW_NAME_OF_KEY := {
 	"next_demand_event_ms": "Demand and saturation",
 	"prisms": "Prisms",
 	"prisms_bought": "Prism price",
+	"prestige_upgrades": "Prestige upgrades and their unlocks",
 	"markets": "Community investments and capacity used in each market",
 	"next_warehouse_id": "Warehouses and the widgets in them",
 	"warehouses": "Warehouses and the widgets in them",
@@ -201,7 +203,7 @@ func test_after_a_prestige_all_state_but_the_kept_set_is_as_in_a_new_game() -> v
 
 	var new_game := Simulation.new(_content(), SEED)
 	var ignored := _kept_keys(sim) + RANDOM_KEYS
-	assert_eq(_kept_keys(sim), ["prisms", "prisms_bought"] as Array[String])
+	assert_eq(_kept_keys(sim), ["prisms", "prisms_bought", "prestige_upgrades"] as Array[String])
 	assert_eq(_without(sim.snapshot(), ignored), _without(new_game.snapshot(), ignored))
 
 
@@ -267,7 +269,7 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 
 	assert_true(view.allowed)
 	assert_eq(view.message, "")
-	assert_eq(view.keeps, PackedStringArray(["Prisms", "Prism price"]))
+	assert_eq(view.keeps, PackedStringArray(["Prisms", "Prism price", "Prestige upgrades and their unlocks"]))
 	assert_eq(view.clears, PackedStringArray(["Money", "Factories",
 		"Links, with their vehicles and shipments", "Demand and saturation",
 		"Community investments and capacity used in each market",

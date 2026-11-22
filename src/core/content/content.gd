@@ -1,7 +1,7 @@
 class_name Content
 extends RefCounted
 ## The game content: colors, symbols, recipes, markets, transport tiers,
-## demand events, research, and balance values, such as those of factories, prisms,
+## demand events, research, prestige upgrades, and balance values, such as those of factories, prisms,
 ## markets, and warehouses. Read-only.
 ##
 ## Content is data, not code. It loads from JSON files in [constant DEFAULT_DIR]
@@ -20,6 +20,7 @@ const FILES: Dictionary[String, String] = {
 	"transport": "transport.json",
 	"demand_events": "demand_events.json",
 	"research": "research.json",
+	"prestige_upgrades": "prestige_upgrades.json",
 }
 
 ## Problems found in the data. Empty when the content is valid.
@@ -86,6 +87,8 @@ var _demand_events_by_id: Dictionary[StringName, DemandEventDef] = {}
 var _lab_build_cost := BigNumber.ZERO
 var _research: Array[ResearchDef] = []
 var _research_by_id: Dictionary[StringName, ResearchDef] = {}
+var _prestige_upgrades: Array[PrestigeUpgradeDef] = []
+var _prestige_upgrades_by_id: Dictionary[StringName, PrestigeUpgradeDef] = {}
 
 
 static func load_dir(dir_path: String) -> Content:
@@ -112,6 +115,8 @@ static func from_data(data: Dictionary) -> Content:
 	content._parse_demand_events(data.get("demand_events", {}))
 	# Research names colors, so parse it after the colors.
 	content._parse_research(data.get("research", {}))
+	# Prestige upgrades name colors, so parse them after the colors.
+	content._parse_prestige_upgrades(data.get("prestige_upgrades", {}))
 	content._check_remoteness()
 	return content
 
@@ -193,6 +198,41 @@ func research_unlocking(color: StringName) -> Array[ResearchDef]:
 		if def.unlocks_color(color):
 			defs.append(def)
 	return defs
+
+
+## All prestige upgrades, in data order.
+func prestige_upgrades() -> Array[PrestigeUpgradeDef]:
+	return _prestige_upgrades.duplicate()
+
+
+## The prestige upgrade with [param id], or null.
+func prestige_upgrade(id: StringName) -> PrestigeUpgradeDef:
+	return _prestige_upgrades_by_id.get(id)
+
+
+## The prestige upgrades that unlock [param color], in data order. Empty for
+## a color that no prestige upgrade unlocks.
+func prestige_upgrades_unlocking(color: StringName) -> Array[PrestigeUpgradeDef]:
+	var defs: Array[PrestigeUpgradeDef] = []
+	for def in _prestige_upgrades:
+		if def.unlocks_color(color):
+			defs.append(def)
+	return defs
+
+
+## The names of what can unlock [param color], as its unlock says: the
+## research or the prestige upgrades that unlock it, in data order. Empty for
+## a color that is available from the start.
+func unlocker_names(color: ColorDef) -> PackedStringArray:
+	var names := PackedStringArray()
+	match color.unlock:
+		ColorDef.Unlock.RESEARCH:
+			for def in research_unlocking(color.id):
+				names.append(def.name)
+		ColorDef.Unlock.PRESTIGE_UPGRADE:
+			for def in prestige_upgrades_unlocking(color.id):
+				names.append(def.name)
+	return names
 
 
 func _parse_colors(data: Dictionary) -> void:
@@ -514,7 +554,7 @@ func _parse_research(data: Dictionary) -> void:
 			if not _research_by_id.has(required):
 				_errors.append("%s: requires %s, which must be a research earlier in research.json" % [id, required])
 		var unlocks: Variant = entry.get("unlocks")
-		var unlock_colors := _parse_unlocks(id, unlocks)
+		var unlock_colors := _parse_unlocks(id, unlocks, ColorDef.Unlock.RESEARCH, ResearchDef.UNLOCK_KINDS)
 		var accuracy := _parse_forecast_accuracy(id, unlocks)
 		if unlocks is Dictionary and unlock_colors.is_empty() and accuracy == 0.0:
 			_errors.append("%s: unlocks nothing" % id)
@@ -524,6 +564,48 @@ func _parse_research(data: Dictionary) -> void:
 	for def in _colors:
 		if def.unlock == ColorDef.Unlock.RESEARCH and research_unlocking(def.id).is_empty():
 			_errors.append("%s: no research unlocks it, but its unlock is research" % def.id)
+
+
+func _parse_prestige_upgrades(data: Dictionary) -> void:
+	for entry in _read_entries(data, "prestige_upgrades.json", "upgrades", "prestige upgrade", true):
+		var id := StringName(entry.id)
+		var bonuses: Variant = entry.get("bonuses", {})
+		if not bonuses is Dictionary:
+			_errors.append("%s: bonuses must be an object" % id)
+			bonuses = {}
+		for key: Variant in bonuses:
+			if not PrestigeUpgradeDef.BONUS_KINDS.has(str(key)):
+				_errors.append("%s: bonuses has %s, but it can have only %s" % [
+					id, key, ", ".join(PrestigeUpgradeDef.BONUS_KINDS)])
+		var speed := 1.0
+		if bonuses.has("production_speed"):
+			speed = _read_bonus(bonuses, "production_speed", id, 1)
+		var money := 0.0
+		if bonuses.has("starting_money"):
+			money = _read_bonus(bonuses, "starting_money", id, 0)
+		var unlock_colors: Array[StringName] = []
+		if entry.has("unlocks"):
+			unlock_colors = _parse_unlocks(id, entry.unlocks, ColorDef.Unlock.PRESTIGE_UPGRADE,
+				PrestigeUpgradeDef.UNLOCK_KINDS)
+		if speed == 1.0 and money == 0.0 and unlock_colors.is_empty():
+			_errors.append("%s: gives no bonus and unlocks nothing" % id)
+		var def := PrestigeUpgradeDef.new(id, entry.name, _read_positive_int(entry, "price", id),
+			speed, BigNumber.from_float(money), unlock_colors)
+		_prestige_upgrades.append(def)
+		_prestige_upgrades_by_id[id] = def
+	for def in _colors:
+		if def.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE and prestige_upgrades_unlocking(def.id).is_empty():
+			_errors.append("%s: no prestige upgrade unlocks it, but its unlock is prestige_upgrade" % def.id)
+
+
+## A bonus of a prestige upgrade: a finite number of more than
+## [param above]. On an error, returns [param above], which is no bonus.
+func _read_bonus(bonuses: Dictionary, key: String, upgrade_id: StringName, above: int) -> float:
+	var value: Variant = bonuses[key]
+	if _is_number(value) and float(value) > above:
+		return float(value)
+	_errors.append("%s: bonuses.%s must be a number of more than %d" % [upgrade_id, key, above])
+	return above
 
 
 ## A research cost: an object of color id to a positive count, with at least
@@ -544,25 +626,29 @@ func _parse_research_cost(research_id: StringName, data: Variant) -> Dictionary[
 	return cost
 
 
-## The unlocks of a research: an object with keys from
-## [constant ResearchDef.UNLOCK_KINDS]. Returns the colors it unlocks. Each
-## must be a color whose unlock is research.
-func _parse_unlocks(research_id: StringName, data: Variant) -> Array[StringName]:
+## The unlocks of a research or a prestige upgrade, in one form: an object
+## with keys from [param kinds]. Returns the colors it unlocks. Each must be a
+## color whose unlock is [param source], so that the data says in one place
+## what unlocks each color.
+func _parse_unlocks(owner_id: StringName, data: Variant, source: ColorDef.Unlock,
+		kinds: PackedStringArray) -> Array[StringName]:
 	var colors: Array[StringName] = []
 	if not data is Dictionary:
-		_errors.append("%s: unlocks must be an object" % research_id)
+		_errors.append("%s: unlocks must be an object" % owner_id)
 		return colors
 	for key: Variant in data:
-		if not ResearchDef.UNLOCK_KINDS.has(str(key)):
+		if not kinds.has(str(key)):
 			_errors.append("%s: unlocks has %s, but it can have only %s" % [
-				research_id, key, " or ".join(ResearchDef.UNLOCK_KINDS)])
-	colors = _read_id_list(research_id, data, "colors", "unlocks")
+				owner_id, key, " or ".join(kinds)])
+	colors = _read_id_list(owner_id, data, "colors", "unlocks")
+	var source_name: String = ColorDef.UNLOCK_NAMES.find_key(source)
 	for color_id in colors:
 		var def := color(color_id)
 		if def == null:
-			_errors.append("%s: unlocks %s, which is not a color" % [research_id, color_id])
-		elif def.unlock != ColorDef.Unlock.RESEARCH:
-			_errors.append("%s: unlocks %s, but the unlock of %s is not research" % [research_id, color_id, color_id])
+			_errors.append("%s: unlocks %s, which is not a color" % [owner_id, color_id])
+		elif def.unlock != source:
+			_errors.append("%s: unlocks %s, but the unlock of %s is not %s" % [owner_id, color_id, color_id,
+				source_name])
 	return colors
 
 

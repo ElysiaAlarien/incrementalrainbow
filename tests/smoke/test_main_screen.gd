@@ -560,6 +560,71 @@ func test_buying_a_prism_with_too_little_money_shows_the_reason() -> void:
 	assert_string_contains(message.text, "A prism costs")
 
 
+# --- Prestige upgrades -----------------------------------------------------------
+
+func _upgrade_row(main: Control, id: StringName) -> PrestigeUpgradeRow:
+	return main.find_child("PrestigeUpgrade_%s" % id, true, false)
+
+
+func test_the_screen_shows_each_prestige_upgrade_with_its_price() -> void:
+	var main := await _open_main()
+
+	var rows := main.find_children("PrestigeUpgrade_*", "PrestigeUpgradeRow", true, false)
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	assert_eq(rows.size(), content.prestige_upgrades().size())
+	for def in content.prestige_upgrades():
+		var row := _upgrade_row(main, def.id)
+		assert_string_contains(row.text(), def.name)
+		assert_string_contains(row.text(), "Price: %s" % PrestigeUpgradeRow.prisms_text(def.price))
+		assert_false(row.buy_button().disabled)
+	assert_eq(_upgrade_row(main, &"quick_lines").text(),
+		"Quick lines | Price: 1 prism | Factories make widgets 1.25 times as fast.")
+	assert_eq(_upgrade_row(main, &"seed_money").text(),
+		"Seed money | Price: 1 prism | Each run starts with 200 more money.")
+
+
+func test_a_prestige_upgrade_with_too_few_prisms_shows_the_reason() -> void:
+	var main := await _open_main()
+
+	_upgrade_row(main, &"quick_lines").buy_button().pressed.emit()
+	await wait_process_frames(1)
+
+	var message: Label = main.find_child("MessageLabel", true, false)
+	assert_true(message.visible)
+	assert_eq(message.text, "Quick lines costs 1 prism, but you have only 0 prisms.")
+	assert_false(main.simulation().prestige_upgrade(&"quick_lines").owned)
+
+
+func test_a_bought_prestige_upgrade_shows_as_owned_and_stays_after_a_prestige() -> void:
+	var main := await _open_main()
+	var sim: Simulation = main.simulation()
+	main.find_child("BuyPrism", true, false).pressed.emit()
+	var row := _upgrade_row(main, &"seed_money")
+
+	row.buy_button().pressed.emit()
+	await wait_process_frames(1)
+
+	assert_true(sim.prestige_upgrade(&"seed_money").owned)
+	assert_string_contains(row.text(), "Owned")
+	assert_true(row.buy_button().disabled)
+	assert_eq((main.find_child("PrismLabel", true, false) as Label).text, "Prisms: 0")
+	assert_eq((main.find_child("MoneyLabel", true, false) as Label).text, "Money: 250", "the money comes at once")
+
+	main.find_child("BuyPrism", true, false).pressed.emit()
+	main.find_child("PrestigeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+	var confirm: ConfirmationDialog = main.find_child("PrestigeConfirm", true, false)
+	assert_string_contains(confirm.dialog_text, "Prestige upgrades and their unlocks")
+	confirm.confirmed.emit()
+	await wait_process_frames(1)
+
+	assert_string_contains(row.text(), "Owned", "the next run shows the upgrade as owned")
+	assert_eq((main.find_child("MoneyLabel", true, false) as Label).text, "Money: 300")
+	var saved := _read_save()
+	assert_true(saved.ok, saved.message)
+	assert_true(saved.simulation.prestige_upgrade(&"seed_money").owned, "the save keeps the upgrade")
+
+
 func test_a_prestige_with_no_prisms_shows_the_reason() -> void:
 	var main: Control = await _main_with_red_factory()
 
@@ -664,6 +729,17 @@ func test_a_color_that_needs_research_shows_it_instead_of_a_build_button() -> vo
 	var red_orange := _card(main, &"red_orange")
 	assert_true(red_orange.is_locked())
 	assert_false(red_orange.build_button().visible)
+
+
+func test_a_color_that_needs_a_prestige_upgrade_names_the_upgrade() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.prestige_colors_data()))
+	var card := ColorCard.new(content.color(&"white"), content)
+	add_child_autofree(card)
+
+	card.show_state(false, BigNumber.from_int(10))
+
+	assert_true(card.is_locked())
+	assert_eq(card.locked_text(), "Needs a prestige upgrade:\nWhite light")
 
 
 ## Selects the item with [param text] in the option button [param name].

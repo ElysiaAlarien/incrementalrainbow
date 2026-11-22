@@ -7,8 +7,9 @@ extends Control
 ## shipments, automatic transport, and throughput, labs and research with its
 ## progress and unlocks, the split of each source with automatic links, the
 ## active demand events,
-## and markets with their remoteness, population, income, capacity, community
-## investment, and the price and demand of each color.
+## markets with their remoteness, population, income, capacity, community
+## investment, and the price and demand of each color, and the prestige
+## upgrades with their prices and which the player owns.
 ##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
@@ -66,6 +67,7 @@ var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0
 @onready var _splits_empty_label: Label = %SplitsEmptyLabel
 @onready var _forecast_label: Label = %ForecastLabel
 @onready var _market_list: VBoxContainer = %MarketList
+@onready var _prestige_upgrade_list: VBoxContainer = %PrestigeUpgradeList
 @onready var _money_label: Label = %MoneyLabel
 @onready var _prism_label: Label = %PrismLabel
 @onready var _buy_prism_button: Button = %BuyPrism
@@ -87,6 +89,8 @@ var _split_rows: Dictionary[String, SplitRow] = {}
 var _market_rows: Dictionary[StringName, MarketRow] = {}
 ## One row for each research in the content. A new run shows them again.
 var _research_rows: Dictionary[StringName, ResearchRow] = {}
+## One row for each prestige upgrade in the content.
+var _prestige_upgrade_rows: Dictionary[StringName, PrestigeUpgradeRow] = {}
 ## The rows of the active demand events, by [member DemandEventRow.key].
 ## Events start in order, so the rows are in start order.
 var _demand_event_rows: Dictionary[String, DemandEventRow] = {}
@@ -163,6 +167,11 @@ func _ready() -> void:
 		row.select_pressed.connect(func(id: StringName) -> void: _show_result(_sim.select_research(id)))
 		_research_rows[view.id] = row
 		_research_list.add_child(row)
+	for view in _sim.prestige_upgrades():
+		var row := PrestigeUpgradeRow.new(view, _content)
+		row.buy_pressed.connect(func(id: StringName) -> void: _show_result(_sim.buy_prestige_upgrade(id)))
+		_prestige_upgrade_rows[view.id] = row
+		_prestige_upgrade_list.add_child(row)
 	_refresh()
 
 
@@ -490,6 +499,9 @@ func _refresh() -> void:
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
 		market_row.show_state(view, _content.transport_tier(view.needed_tier).plural_name, forecast)
+
+	for view in _sim.prestige_upgrades():
+		_prestige_upgrade_rows[view.id].show_state(view)
 
 
 func _refresh_research() -> void:

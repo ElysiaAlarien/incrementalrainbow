@@ -93,6 +93,9 @@ func _rich_game() -> Simulation:
 	assert_true(sim.buy_automatic_transport(9).ok)
 	var split := sim.set_split({3: 60, 9: 40})
 	assert_true(split.ok, split.message)
+	# A prestige upgrade, which makes factories faster from now on.
+	var upgrade := sim.buy_prestige_upgrade(&"quick_lines")
+	assert_true(upgrade.ok, upgrade.message)
 	sim.tick(1)
 	return sim
 
@@ -185,6 +188,7 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 		[&"truck", &"cart", &"truck", &"truck"])
 	assert_eq(sim.link(7).destination_market_id, &"farpoint")
 	assert_eq(sim.labs(), [1] as Array[int])
+	assert_true(sim.prestige_upgrade(&"quick_lines").owned, "a prestige upgrade")
 	assert_eq([sim.link(11).destination_kind, sim.link(11).vehicle], [LinkView.Destination.LAB, &"truck"])
 	assert_gt(sim.link(11).shipments_in_transit.size(), 0, "green widgets on their way to the lab")
 	assert_eq(sim.research_item(&"earth_tones").status, ResearchView.Status.COMPLETE)
@@ -253,9 +257,11 @@ func test_save_then_load_gives_the_same_state() -> void:
 			[view.population, view.income, view.capacity, view.capacity_used, view.capacity_in_transit])
 		for goal: MarketView.Investment in MarketView.Investment.values():
 			assert_true(got.investment_cost(goal).equals(view.investment_cost(goal)), "investment cost")
-	assert_eq(sim.prisms().owned, 2, "the rich game has prisms")
-	assert_eq(loaded.prisms().owned, 2)
+	assert_eq(sim.prisms().owned, 1, "the rich game has a prism left after its prestige upgrade")
+	assert_eq(loaded.prisms().owned, 1)
 	assert_eq(loaded.prisms().total_bought, 2)
+	assert_eq(loaded.prestige_upgrades().map(func(v: PrestigeUpgradeView) -> bool: return v.owned),
+		[true, false], "the owned prestige upgrades are kept")
 	assert_true(loaded.prisms().next_price.equals(sim.prisms().next_price))
 	var event_fields := func(v: DemandEventView) -> Array: return [v.id, v.started_at_ms, v.remaining_ms]
 	assert_eq(loaded.demand_events().map(event_fields), sim.demand_events().map(event_fields),
@@ -304,8 +310,9 @@ func test_save_then_load_after_a_prestige_gives_the_same_state() -> void:
 
 	assert_true(result.ok, result.message)
 	var loaded := result.simulation
-	assert_eq(loaded.prisms().owned, 2)
+	assert_eq(loaded.prisms().owned, 1)
 	assert_eq(loaded.prisms().total_bought, 2)
+	assert_true(loaded.prestige_upgrade(&"quick_lines").owned, "a prestige keeps the prestige upgrade")
 	assert_eq(loaded.factories().size(), 1)
 	assert_eq(loaded.labs(), [] as Array[int], "a prestige clears the labs")
 	assert_eq(loaded.selected_research(), &"")
