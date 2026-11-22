@@ -11,3 +11,7 @@ The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 ### Domain docs
 
 Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Save state
+
+A ticket that changes the core state adds a save migration file and a fixture. See `docs/agents/save-migrations.md`.

@@ -1,0 +1,179 @@
+{
+	"applied": [
+		"add_links",
+		"add_automatic_transport",
+		"add_demand",
+		"add_prisms",
+		"add_mixed_factories",
+		"add_demand_events",
+		"add_markets",
+		"add_warehouses",
+		"add_transport_tier",
+		"add_research",
+		"add_splits",
+		"add_save_time"
+	],
+	"format": "incremental-rainbow-save",
+	"saved_at_unix_ms": 1795000000000,
+	"state": {
+		"completed_research": [],
+		"demand_events": [
+			{
+				"ends_at_ms": 27427,
+				"event_id": "red_blue_spike",
+				"started_at_ms": 7427
+			}
+		],
+		"drift_key": 1946051765,
+		"factories": [
+			{
+				"color": "red",
+				"id": 1,
+				"input_bays": [],
+				"output_bay_count": 6,
+				"progress_ms": 0,
+				"size": 1
+			},
+			{
+				"color": "purple",
+				"id": 2,
+				"input_bays": [
+					{
+						"color": "red",
+						"count": 0
+					},
+					{
+						"color": "blue",
+						"count": 0
+					}
+				],
+				"output_bay_count": 0,
+				"progress_ms": 0,
+				"size": 1
+			},
+			{
+				"color": "purple",
+				"id": 3,
+				"input_bays": [
+					{
+						"color": "red",
+						"count": 0
+					},
+					{
+						"color": "blue",
+						"count": 0
+					}
+				],
+				"output_bay_count": 0,
+				"progress_ms": 0,
+				"size": 1
+			}
+		],
+		"lab_stock": [],
+		"labs": [],
+		"links": [
+			{
+				"automatic_status": "shipped",
+				"color": "red",
+				"destination_kind": "market",
+				"destination_market_id": "millbrook",
+				"id": 1,
+				"next_automatic_ms": 10000,
+				"recent_starts": [
+					{
+						"count": 4,
+						"started_at_ms": 5000
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 10000,
+						"count": 4,
+						"id": 1
+					}
+				],
+				"source_factory_id": 1,
+				"source_kind": "factory",
+				"split_percent": 75,
+				"split_shipped": 4,
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "shipped",
+				"color": "red",
+				"destination_factory_id": 2,
+				"destination_kind": "factory",
+				"id": 2,
+				"next_automatic_ms": 10000,
+				"recent_starts": [
+					{
+						"count": 1,
+						"started_at_ms": 5000
+					}
+				],
+				"shipments": [
+					{
+						"arrives_at_ms": 10000,
+						"count": 1,
+						"id": 2
+					}
+				],
+				"source_factory_id": 1,
+				"source_kind": "factory",
+				"split_percent": 25,
+				"split_shipped": 1,
+				"vehicle": "cart"
+			},
+			{
+				"automatic_status": "manual",
+				"color": "red",
+				"destination_factory_id": 3,
+				"destination_kind": "factory",
+				"id": 3,
+				"next_automatic_ms": 0,
+				"recent_starts": [],
+				"shipments": [],
+				"source_factory_id": 1,
+				"source_kind": "factory",
+				"split_percent": 0,
+				"split_shipped": 0,
+				"vehicle": "cart"
+			}
+		],
+		"markets": [
+			{
+				"capacity_used": 0,
+				"id": "millbrook",
+				"income": 100,
+				"income_investments": 0,
+				"population": 1000,
+				"population_investments": 0
+			}
+		],
+		"money": [
+			2.6,
+			1
+		],
+		"next_demand_event_ms": 15401,
+		"next_factory_id": 4,
+		"next_lab_id": 1,
+		"next_link_id": 4,
+		"next_shipment_id": 3,
+		"next_warehouse_id": 1,
+		"prisms": 0,
+		"prisms_bought": 0,
+		"research_progress": [],
+		"rng": [
+			706348839,
+			2967611476,
+			286749727,
+			3455046959
+		],
+		"saturation": [],
+		"selected_research": "",
+		"time_ms": 9000,
+		"transport_tier": "cart",
+		"warehouses": []
+	},
+	"version": 14
+}

@@ -10,11 +10,13 @@ The load is strict. Each value must be present and valid, or the load fails with
 
 One exception: the state of each market (#10) is a list keyed by the market id from the content. A market that the list does not have starts as in the content at the start of a run. A migration step gets no content, so it cannot write the start values of each market, and content can add markets later (#11, #12) with no change to the shape of the state. The load still fails on a market id that the content does not have, on a market that is in the list twice, and on each missing or bad value inside a market that the list has.
 
-Each change to the shape of the state adds one migration step to `SaveCodec.migrations()`. A change is a value that is added, removed, renamed, or changed in meaning. A step turns the state of one version into the state of the next version. The version number is the count of steps plus one, so the version and the migrations always agree. A save of a newer version than the game fails. It does not load in part.
+Each change to the shape of the state adds one migration. A change is a value that is added, removed, renamed, or changed in meaning. A save of a newer game fails. It does not load in part.
+
+_Superseded in part by ADR-0014._ Until version 13, the migrations were one ordered list, and the version number was the count of steps plus one. From version 14, each migration is a named file, and the save lists the migrations that its state has. The version is now the version of the save format.
 
 We save only the state of the random number generator, not the seed. The seed only sets the first state, and no rule uses it after that.
 
 These tests keep the save correct as the core grows:
 - A round trip of a game that has a value that is not the default in each part of the state.
 - Generic tests that remove each value, or give it the wrong kind, and expect a failure.
-- A committed save of each version in `tests/fixtures/saves/`. It must load in each later version of the game.
+- A committed save of each version in `tests/fixtures/saves/`, and from version 14 of each migration (ADR-0014). It must load in each later version of the game.

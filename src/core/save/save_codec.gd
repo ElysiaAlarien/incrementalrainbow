@@ -1,186 +1,61 @@
 class_name SaveCodec
 extends RefCounted
-## Turns the core state into save text and back. See ADR-0009.
+## Turns the core state into save text and back. See ADR-0009 and ADR-0014.
 ##
 ## A save is JSON:
-## [code]{"format": FORMAT, "version": N, "saved_at_unix_ms": T, "state": {...}}[/code].
+## [code]{"format": FORMAT, "version": VERSION, "applied": [...],
+## "saved_at_unix_ms": T, "state": {...}}[/code].
 ## The state is [method Simulation.snapshot]. The save time T is the device
 ## clock time that the state is for, in Unix milliseconds. It is beside the
 ## state, not in it, because the core has no clock. A load makes a new
 ## [Simulation] and never changes the current one.
 ##
-## Each change to the shape of the state (a value added, removed, renamed, or
-## changed in meaning) adds one step to [method migrations]. The step turns the
-## state of the version before it into the new shape, so old saves still load.
-## The version number is the number of steps plus one.
+## "applied" lists the names of the migrations that the state has. Each change
+## to the shape of the state (a value added, removed, renamed, or changed in
+## meaning) adds one [SaveMigration] file to [constant SaveMigrations.FOLDER].
+## A load runs each migration that the save does not list, so old saves still
+## load, and a save that lists a migration that the game does not know fails.
 
 const FORMAT := "incremental-rainbow-save"
+## The version of the save format. Saves of versions 1 to 13 had a version
+## number for each change to the state and no "applied" list (see
+## [constant NUMBERED_MIGRATIONS]). From version 14, the "applied" list tells
+## the changes, and the version changes only when the format around the state
+## changes. A game of version 13 or older reads a version 14 save as a save of
+## a newer game.
+const VERSION := 14
+## The start of the message of a save of a newer game. [ExportCode] changes
+## "save" to "export code" in it.
+const NEWER_SAVE := "A newer version of the game made this save"
 ## The first save version with a save time. An older save has none.
 const SAVE_TIME_VERSION := 13
-
-
-## The migration steps, in order. Step [code]i[/code] turns the state of
-## version [code]i + 1[/code] into the state of version [code]i + 2[/code]. A
-## step gets the state as parsed JSON and returns the new state. It must not
-## stop on damaged data, because the load checks the result.
-static func migrations() -> Array[Callable]:
-	return [_v1_add_links, _v2_add_automatic_transport, _v3_add_demand, _v4_add_prisms,
-		_v5_add_mixed_factories, _v6_add_demand_events,
-		_v7_add_markets, _v8_add_warehouses, _v9_add_transport_tier, _v10_add_research,
-		_v11_add_splits, _v12_add_save_time]
-
-
-## Version 2 (#3) adds links and their shipments. A version 1 game had none.
-static func _v1_add_links(state: Dictionary) -> Dictionary:
-	state.next_link_id = 1
-	state.links = []
-	state.next_shipment_id = 1
-	return state
-
-
-## Version 3 (#7) adds automatic transport and the recent starts that give
-## throughput. A version 2 link was manual, and it has no starts to count.
-static func _v2_add_automatic_transport(state: Dictionary) -> Dictionary:
-	var links: Variant = state.get("links")
-	if links is Array:
-		for link: Variant in links:
-			if link is Dictionary:
-				link.automatic_status = "manual"
-				link.next_automatic_ms = 0
-				link.recent_starts = []
-	return state
-
-
-## Version 4 (#8) adds demand: the drift key and saturation. A version 3 game
-## had no sales that saturate. Its drift key is a fixed 0, not a draw from its
-## random number generator, so that this step does not change the generator
-## state. Any key gives valid drift.
-static func _v3_add_demand(state: Dictionary) -> Dictionary:
-	state.drift_key = 0
-	state.saturation = []
-	return state
-
-
-## Version 5 (#18) adds prisms. A version 4 game had bought none.
-static func _v4_add_prisms(state: Dictionary) -> Dictionary:
-	state.prisms = 0
-	state.prisms_bought = 0
-	return state
-
-
-## Version 6 (#6) adds mixed factories: each factory has input bays, and a
-## link goes to a market or to a factory. A version 5 game had only base
-## factories, which have no input bays, and only links to markets.
-static func _v5_add_mixed_factories(state: Dictionary) -> Dictionary:
-	for key: String in ["factories", "links"]:
-		var items: Variant = state.get(key)
-		if not items is Array:
-			continue
-		for item: Variant in items:
-			if not item is Dictionary:
-				continue
-			if key == "factories":
-				item.input_bays = []
-			else:
-				item.destination_kind = "market"
-	return state
-
-
-## Version 7 (#9) adds demand events. A version 6 game had none, and its next
-## start is not set, so that this step does not draw from the random number
-## generator. The first tick after the load sets it.
-static func _v6_add_demand_events(state: Dictionary) -> Dictionary:
-	state.demand_events = []
-	state.next_demand_event_ms = -1
-	return state
-
-
-## Version 8 (#10) adds the state of each market: population, income,
-## community investments, and capacity used in the current period. A step gets
-## no content, so it cannot know the markets. It writes none, and the load
-## starts each market that a save does not have as at the start of a run. A
-## version 7 game had made no community investments, so that is its state.
-## Capacity used is 0, so the market can buy its full capacity in the period
-## of the load.
-static func _v7_add_markets(state: Dictionary) -> Dictionary:
-	state.markets = []
-	return state
-
-
-## Version 9 (#13) adds warehouses, and a link starts at a factory or at a
-## warehouse. A version 8 game had no warehouses, so each link starts at a
-## factory.
-static func _v8_add_warehouses(state: Dictionary) -> Dictionary:
-	state.next_warehouse_id = 1
-	state.warehouses = []
-	var links: Variant = state.get("links")
-	if links is Array:
-		for link: Variant in links:
-			if link is Dictionary:
-				link.source_kind = "factory"
-	return state
-
-
-## Version 10 (#11) adds the transport tier that the player has. A version 9
-## game had only carts, the first tier, so its tier is "cart". The id is
-## fixed here, because a step gets no content; carts were the only tier in
-## the content of version 9, and every version 9 link uses them.
-static func _v9_add_transport_tier(state: Dictionary) -> Dictionary:
-	state.transport_tier = "cart"
-	return state
-
-
-## Version 11 (#16) adds labs and research. A version 10 game had no labs and
-## no research, so no link went to a lab.
-static func _v10_add_research(state: Dictionary) -> Dictionary:
-	state.next_lab_id = 1
-	state.labs = []
-	state.selected_research = ""
-	state.research_progress = []
-	state.completed_research = []
-	state.lab_stock = []
-	return state
-
-
-## Version 12 (#14) adds splits: each link has a split percentage and the
-## widgets it shipped since the split was set. A version 11 game had no splits.
-static func _v11_add_splits(state: Dictionary) -> Dictionary:
-	var links: Variant = state.get("links")
-	if links is Array:
-		for link: Variant in links:
-			if link is Dictionary:
-				link.split_percent = -1
-				link.split_shipped = 0
-	return state
-
-
-## Version 13 (#22) adds the save time, beside the state (see
-## [constant SAVE_TIME_VERSION]). The state does not change. A save of an older
-## version has no save time, so it loads with no offline progress.
-static func _v12_add_save_time(state: Dictionary) -> Dictionary:
-	return state
-
-
-## The version that [method encode] writes.
-static func current_version(steps: Array[Callable] = migrations()) -> int:
-	return steps.size() + 1
+## The migrations of the numbered save versions, in order. A save of version
+## [code]N[/code] below [constant VERSION] has the first [code]N - 1[/code] of
+## them. Do not change this list: a new migration is a new file only.
+const NUMBERED_MIGRATIONS: Array[StringName] = [&"add_links", &"add_automatic_transport",
+	&"add_demand", &"add_prisms", &"add_mixed_factories", &"add_demand_events", &"add_markets",
+	&"add_warehouses", &"add_transport_tier", &"add_research", &"add_splits", &"add_save_time"]
 
 
 ## The save text of the current state of [param sim], which is the state at
-## the device clock time [param saved_at_unix_ms].
-static func encode(sim: Simulation, saved_at_unix_ms: int) -> String:
+## the device clock time [param saved_at_unix_ms]. [param migrations] is for
+## tests; the game uses the default.
+static func encode(sim: Simulation, saved_at_unix_ms: int,
+		migrations: SaveMigrations = SaveMigrations.found()) -> String:
 	return JSON.stringify({
 		"format": FORMAT,
-		"version": current_version(),
+		"version": VERSION,
+		"applied": migrations.names(),
 		"saved_at_unix_ms": saved_at_unix_ms,
 		"state": sim.snapshot(),
 	}, "\t", true, true)
 
 
-## Loads [param text] into a new simulation with [param content]. A save of an
-## older version is migrated first. [param steps] is for tests; the game uses
-## the default.
-static func decode(content: Content, text: String, steps: Array[Callable] = migrations()) -> LoadResult:
+## Loads [param text] into a new simulation with [param content]. Each
+## migration that the save does not list runs first, in run order.
+## [param migrations] is for tests; the game uses the default.
+static func decode(content: Content, text: String,
+		migrations: SaveMigrations = SaveMigrations.found()) -> LoadResult:
 	var json := JSON.new()
 	if json.parse(text) != OK:
 		return LoadResult.failure(LoadResult.Reason.NOT_JSON,
@@ -196,11 +71,28 @@ static func decode(content: Content, text: String, steps: Array[Callable] = migr
 	if not envelope.errors().is_empty():
 		return LoadResult.failure(LoadResult.Reason.BAD_VERSION,
 			"The save is damaged: %s." % envelope.errors()[0])
-	var current := current_version(steps)
-	if version > current:
+	if version > VERSION:
 		return LoadResult.failure(LoadResult.Reason.NEWER_VERSION,
-			"A newer version of the game made this save (save version %d). This version reads saves up to version %d." % [
-				version, current])
+			"%s (save version %d). This version reads saves up to version %d." % [
+				NEWER_SAVE, version, VERSION])
+	var applied := _applied(envelope, version)
+	if not envelope.errors().is_empty():
+		return LoadResult.failure(LoadResult.Reason.BAD_VERSION,
+			"The save is damaged: %s." % envelope.errors()[0])
+	var unknown: Array[String] = []
+	for migration_name in applied:
+		if not migrations.has(migration_name):
+			unknown.append(String(migration_name))
+	if not unknown.is_empty():
+		return LoadResult.failure(LoadResult.Reason.NEWER_VERSION,
+			"%s. It has changes that this version does not know: %s." % [
+				NEWER_SAVE, ", ".join(unknown)])
+	for migration_name in applied:
+		for need in migrations.all_needs(migration_name):
+			if not applied.has(need):
+				return LoadResult.failure(LoadResult.Reason.BAD_VERSION,
+					"The save is damaged: save.applied: %s needs %s, which the list does not have." % [
+						migration_name, need])
 	var saved_at_unix_ms := LoadResult.NO_SAVE_TIME
 	if version >= SAVE_TIME_VERSION:
 		saved_at_unix_ms = envelope.integer("saved_at_unix_ms", 0)
@@ -209,19 +101,41 @@ static func decode(content: Content, text: String, steps: Array[Callable] = migr
 				"The save is damaged: %s." % envelope.errors()[0])
 
 	var state: Variant = data.get("state")
-	for from_version in range(version, current):
+	var to_run := migrations.missing(applied)
+	for migration in to_run:
 		if not state is Dictionary:
 			break
-		state = steps[from_version - 1].call(state)
+		state = migration.apply(state)
+	var migrated := not to_run.is_empty()
 	if not state is Dictionary:
-		return LoadResult.failure(LoadResult.Reason.DAMAGED_STATE,
-			"The save is damaged: state: must be an object.")
+		return _damaged("The save is damaged: state: must be an object.", migrated)
 
 	var reader := SnapshotReader.new(state)
 	var sim := Simulation.from_snapshot(content, reader)
 	var problems := reader.errors()
 	if not problems.is_empty():
 		var more := "" if problems.size() == 1 else " (and %d more problems)" % (problems.size() - 1)
-		return LoadResult.failure(LoadResult.Reason.DAMAGED_STATE,
-			"The save is damaged: %s%s." % [problems[0], more])
-	return LoadResult.success(sim, saved_at_unix_ms)
+		return _damaged("The save is damaged: %s%s." % [problems[0], more], migrated)
+	var result := LoadResult.success(sim, saved_at_unix_ms)
+	result.migrated = migrated
+	return result
+
+
+## The names of the migrations that a save of [param version] has. A save of a
+## numbered version has no list. Problems go to [param envelope].
+static func _applied(envelope: SnapshotReader, version: int) -> Array[StringName]:
+	if version < VERSION:
+		return NUMBERED_MIGRATIONS.slice(0, version - 1)
+	var applied := envelope.text_id_list("applied")
+	var seen: Array[StringName] = []
+	for migration_name in applied:
+		if seen.has(migration_name):
+			envelope.fail("applied", "lists %s twice" % migration_name)
+		seen.append(migration_name)
+	return applied
+
+
+static func _damaged(message: String, migrated: bool) -> LoadResult:
+	var result := LoadResult.failure(LoadResult.Reason.DAMAGED_STATE, message)
+	result.migrated = migrated
+	return result

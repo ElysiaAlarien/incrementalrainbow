@@ -20,9 +20,9 @@ func _game() -> Simulation:
 	return sim
 
 
-func _import(code: String, steps: Array[Callable] = SaveCodec.migrations(),
+func _import(code: String, migrations: SaveMigrations = SaveMigrations.found(),
 		content: Content = ContentFixture.make_mixed(700, 6)) -> LoadResult:
-	return ExportCode.decode(content, code, steps)
+	return ExportCode.decode(content, code, migrations)
 
 
 func test_export_then_import_gives_the_same_state() -> void:
@@ -50,7 +50,7 @@ func test_the_code_has_a_version_and_a_checksum() -> void:
 	var parts := code.split(".")
 
 	assert_eq(parts.size(), 3)
-	assert_eq(parts[0], "IR%d" % SaveCodec.current_version())
+	assert_eq(parts[0], "IR%d" % SaveCodec.VERSION)
 	assert_eq(parts[2].length(), ExportCode.CHECKSUM_LENGTH)
 	assert_eq(parts[2], (parts[0] + "." + parts[1]).sha256_text().substr(0, ExportCode.CHECKSUM_LENGTH))
 
@@ -72,11 +72,11 @@ func test_spaces_and_line_breaks_in_the_code_do_not_matter() -> void:
 ## message that has [param message_part], and that the current game does not
 ## change.
 func _assert_import_fails(code: String, reason: LoadResult.Reason, message_part: String,
-		steps: Array[Callable] = SaveCodec.migrations()) -> void:
+		migrations: SaveMigrations = SaveMigrations.found()) -> void:
 	var current := _game()
 	var before := current.snapshot()
 
-	var result := _import(code, steps)
+	var result := _import(code, migrations)
 
 	assert_false(result.ok, "the import fails")
 	assert_eq(result.reason, reason, result.message)
@@ -118,7 +118,7 @@ func test_a_code_that_is_cut_off_fails_its_checksum() -> void:
 
 func test_a_code_with_a_changed_version_fails_its_checksum() -> void:
 	var code := ExportCode.encode(_game(), SAVED_AT_UNIX_MS)
-	var changed := code.replace("IR%d." % SaveCodec.current_version(), "IR1.")
+	var changed := code.replace("IR%d." % SaveCodec.VERSION, "IR1.")
 
 	_assert_import_fails(changed, LoadResult.Reason.BAD_CHECKSUM, "checksum does not match")
 
@@ -147,7 +147,7 @@ func test_a_code_with_no_valid_version_fails() -> void:
 func test_a_code_with_a_payload_that_is_not_compressed_fails() -> void:
 	var payload := Marshalls.utf8_to_base64(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
 
-	_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.current_version(), payload]),
+	_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.VERSION, payload]),
 		LoadResult.Reason.NOT_A_CODE, "its save cannot be read")
 	assert_engine_error("incorrect header check")
 	assert_engine_error("Method/function failed")
@@ -159,19 +159,19 @@ func test_a_code_of_a_save_too_large_to_import_fails() -> void:
 	huge.fill(32)
 	var payload := Marshalls.raw_to_base64(huge.compress(FileAccess.COMPRESSION_DEFLATE))
 
-	_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.current_version(), payload]),
+	_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.VERSION, payload]),
 		LoadResult.Reason.NOT_A_CODE, "its save cannot be read")
 	assert_engine_error("Method/function failed")
 
 
 func test_a_code_with_a_payload_that_is_not_base64_fails() -> void:
 	for payload in ["!!!!", "abc", "ab=c", "===="]:
-		_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.current_version(), payload]),
+		_assert_import_fails(_signed("IR%d.%s" % [SaveCodec.VERSION, payload]),
 			LoadResult.Reason.NOT_A_CODE, "its save cannot be read")
 
 
 func test_a_code_of_text_that_is_not_a_save_fails() -> void:
-	_assert_import_fails(ExportCode.from_save("[1, 2, 3]", SaveCodec.current_version()),
+	_assert_import_fails(ExportCode.from_save("[1, 2, 3]", SaveCodec.VERSION),
 		LoadResult.Reason.NOT_A_SAVE, "not a save")
 
 
@@ -179,15 +179,15 @@ func test_a_code_of_a_damaged_save_fails() -> void:
 	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
 	data.state.factories[0].color = "magenta"
 
-	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), SaveCodec.current_version()),
+	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), SaveCodec.VERSION),
 		LoadResult.Reason.DAMAGED_STATE, "state.factories[0].color: there is no color \"magenta\"")
 
 
 # --- Versions -------------------------------------------------------------------
 
-func test_a_code_from_a_newer_game_fails() -> void:
+func test_a_code_of_a_newer_format_fails() -> void:
 	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
-	var newer := SaveCodec.current_version() + 1
+	var newer := SaveCodec.VERSION + 1
 	data.version = newer
 
 	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), newer), LoadResult.Reason.NEWER_VERSION,
@@ -196,42 +196,71 @@ func test_a_code_from_a_newer_game_fails() -> void:
 		"Update the game")
 
 
-## A test migration: in its version 1, the state named time "clock_ms".
+## A newer game can add a migration and keep the same save version, so the
+## import finds it in the save.
+func test_a_code_from_a_newer_game_with_the_same_version_fails() -> void:
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
+	data.applied.append("add_rainbows")
+
+	_assert_import_fails(ExportCode.from_save(JSON.stringify(data), SaveCodec.VERSION),
+		LoadResult.Reason.NEWER_VERSION,
+		"A newer version of the game made this export code. It has changes that this version does not know: add_rainbows. Update the game, then import the code again.")
+
+
+## A test migration: before it, the state named time "clock_ms".
 static func _rename_clock(state: Dictionary) -> Dictionary:
 	state.time_ms = state.get("clock_ms")
 	state.erase("clock_ms")
 	return state
 
 
-## A test migration that cannot turn a version 1 state into version 2.
+## A test migration that loses the time.
 static func _lose_time(state: Dictionary) -> Dictionary:
 	state.erase("clock_ms")
 	return state
 
 
-## The code of a version 1 save in which time is named "clock_ms".
-func _version_1_code() -> String:
-	var state: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS)).state
-	state.clock_ms = state.time_ms
-	state.erase("time_ms")
-	return ExportCode.from_save(JSON.stringify({"format": SaveCodec.FORMAT, "version": 1, "state": state}), 1)
+## The real migrations and [param apply] as a migration named "rename_clock",
+## which runs last.
+func _with_rename_clock(apply: Callable) -> SaveMigrations:
+	var list: Array[SaveMigration] = SaveMigrations.found().missing([])
+	list.append(MigrationFixture.new(&"rename_clock", apply,
+		[SaveCodec.NUMBERED_MIGRATIONS[-1]] as Array[StringName]))
+	return SaveMigrations.new(list)
 
 
-func test_a_code_of_an_older_version_migrates() -> void:
-	var steps: Array[Callable] = [_rename_clock]
+## The code of a save from before "rename_clock", in which time is named
+## "clock_ms".
+func _old_code() -> String:
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
+	data.state.clock_ms = data.state.time_ms
+	data.state.erase("time_ms")
+	return ExportCode.from_save(JSON.stringify(data), SaveCodec.VERSION)
 
-	var result := _import(_version_1_code(), steps)
+
+func test_a_code_of_an_older_game_migrates() -> void:
+	var result := _import(_old_code(), _with_rename_clock(_rename_clock))
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.snapshot(), _game().snapshot())
 
 
-func test_a_code_of_an_older_version_that_cannot_migrate_fails() -> void:
-	var steps: Array[Callable] = [_lose_time]
+func test_a_code_of_an_older_game_that_cannot_migrate_fails() -> void:
+	var migrations := _with_rename_clock(_lose_time)
 
-	_assert_import_fails(_version_1_code(), LoadResult.Reason.DAMAGED_STATE,
-		"from an older version of the game (save version 1), and this version cannot read it", steps)
-	_assert_import_fails(_version_1_code(), LoadResult.Reason.DAMAGED_STATE, "state.time_ms: is missing", steps)
+	_assert_import_fails(_old_code(), LoadResult.Reason.DAMAGED_STATE,
+		"This export code is from an older version of the game, and this version cannot read it", migrations)
+	_assert_import_fails(_old_code(), LoadResult.Reason.DAMAGED_STATE, "state.time_ms: is missing", migrations)
+
+
+func test_a_damaged_code_of_the_current_game_does_not_say_that_it_is_old() -> void:
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_game(), SAVED_AT_UNIX_MS))
+	data.state.erase("time_ms")
+
+	var result := _import(ExportCode.from_save(JSON.stringify(data), SaveCodec.VERSION))
+
+	assert_eq(result.reason, LoadResult.Reason.DAMAGED_STATE)
+	assert_false(result.message.contains("older version"), result.message)
 
 
 ## The save of each version in tests/fixtures/saves/ imports as a code, with the
@@ -245,7 +274,7 @@ func test_each_saved_version_imports_as_a_code() -> void:
 		var version := int(JSON.parse_string(save_text).version)
 
 		var from_file := SaveCodec.decode(ContentFixture.make_for_saves(), save_text)
-		var from_code := _import(ExportCode.from_save(save_text, version), SaveCodec.migrations(),
+		var from_code := _import(ExportCode.from_save(save_text, version), SaveMigrations.found(),
 			ContentFixture.make_for_saves())
 
 		assert_true(from_code.ok, "%s: %s" % [file, from_code.message])
