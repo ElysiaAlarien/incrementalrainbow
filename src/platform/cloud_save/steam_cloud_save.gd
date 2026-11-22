@@ -5,7 +5,8 @@ extends CloudSave
 ## check them with a fake. No one has tested this on Steam yet. See README.md
 ## in this folder for the steps.
 ##
-## This adapter never starts Steam. It uses Steam only after a start that
+## This adapter never starts Steam: [method CloudSaves.for_device] starts it
+## once through [method PlatformSdks.steam]. It uses Steam only after a start that
 ## worked ([code]get_steam_init_result()[/code] has the status 0), because
 ## each Remote Storage call before a start logs an engine error. Only
 ## [code]steamInitEx[/code] sets that result, also when the project setting

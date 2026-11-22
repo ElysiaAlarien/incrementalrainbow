@@ -59,8 +59,8 @@ func _snapshot_json(text: String, unique_name: String = CloudSave.SAVE_NAME) -> 
 	})
 
 
-func test_the_adapter_starts_the_plugin_and_asks_for_the_sign_in() -> void:
-	assert_eq(_play.calls, ["initialize", "isAuthenticated"] as Array[String])
+func test_the_adapter_asks_for_the_sign_in_and_does_not_initialize_the_plugin() -> void:
+	assert_eq(_play.calls, ["isAuthenticated"] as Array[String], "PlatformSdks initializes the plugin, once")
 
 
 func test_a_signed_in_player_has_google_play() -> void:

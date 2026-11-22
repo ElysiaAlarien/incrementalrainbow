@@ -13,7 +13,8 @@ extends CloudSave
 ##
 ## The plugin answers with signals, so each operation finishes later. The
 ## answer to the sign-in check also comes later: an operation before it waits
-## for it. While the player is signed out, each operation asks again. One read and one write can wait at a time. The plugin sends no
+## for it. While the player is signed out, each operation asks again.
+## One read and one write can wait at a time. The plugin sends no
 ## signal for most errors, so such an operation fails only at the timeout of
 ## [method CloudOperation.wait].
 
@@ -44,19 +45,18 @@ var _pending_write: CloudOperation
 var _pending_write_description := ""
 
 
-## [param plugin] is the plugin singleton, or a fake in tests. Null finds the
-## singleton, if the build has one.
+## [param plugin] is the plugin singleton after [code]initialize()[/code],
+## from [method PlatformSdks.play_games], or a fake in tests. Null is a build
+## with no plugin. This adapter never initializes the plugin: PlatformSdks
+## does that once for the achievements and the cloud save.
 func _init(plugin: Object = null) -> void:
-	_plugin = plugin if plugin != null else _find_singleton()
+	_plugin = plugin
 	if _plugin == null:
 		return
 	_plugin.connect(&"userAuthenticated", _on_user_authenticated)
 	_plugin.connect(&"gameLoaded", _on_game_loaded)
 	_plugin.connect(&"gameSaved", _on_game_saved)
 	_plugin.connect(&"conflictEmitted", _on_conflict)
-	# The achievements of #25 can also start the plugin. Whether a second
-	# start is safe is on the device checklist in README.md.
-	_plugin.call(&"initialize")
 	# The answer comes later, with the signal userAuthenticated.
 	_plugin.call(&"isAuthenticated")
 
@@ -202,6 +202,3 @@ static func _bytes(content: Variant) -> Variant:
 	# Each number becomes its low byte, so -1 becomes 255.
 	return PackedByteArray(content)
 
-
-static func _find_singleton() -> Object:
-	return Engine.get_singleton(SINGLETON) if Engine.has_singleton(SINGLETON) else null

@@ -2,9 +2,7 @@ class_name PlatformSdks
 extends RefCounted
 ## Starts each platform SDK once in the process, for each of its users: the
 ## achievements (#25) and the cloud save (#24). A second start of an SDK can
-## fail or log errors, so each user must get the SDK from here. (On this
-## branch, only the achievements do. The cloud save adapters must change to
-## use it.)
+## fail or log errors, so each user must get the SDK from here.
 ##
 ## It names no SDK class, so it loads in a build with no SDK, and then each
 ## function returns null. The names come from the plugin sources that

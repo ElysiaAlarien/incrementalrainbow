@@ -24,7 +24,11 @@ static func for_device(os_name: String = OS.get_name(),
 		"iOS":
 			return ICloudSave.new()
 		"Android":
-			return GooglePlayCloudSave.new()
+			return GooglePlayCloudSave.new(PlatformSdks.play_games())
 		"Windows", "macOS", "Linux", "FreeBSD", "NetBSD", "OpenBSD", "BSD":
+			# Starts Steam once, for the cloud save and the achievements. When
+			# Steam does not start, the adapter finds the singleton itself and
+			# tells the player that Steam is not running.
+			PlatformSdks.steam()
 			return SteamCloudSave.new()
 	return CloudSave.new()
