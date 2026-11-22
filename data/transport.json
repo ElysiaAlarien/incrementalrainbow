@@ -1,5 +1,5 @@
 {
-	"_about": "Transport tiers, lowest first. A run starts with the first tier, and the player buys each later tier in order for its price. max_remoteness: the highest market remoteness that the tier reaches (see markets.json); it cannot go down along the list. A new link uses the tier the player has as its vehicle. A link keeps its vehicle until the player pays vehicle_upgrade_cost to move it onto the tier the player has now. plural_name is the name of more than one vehicle, such as Trucks. transit_time_ms and shipment_cost are per shipment. The first tier has no price and no vehicle_upgrade_cost. automatic_transport_cost is the price of automatic transport for one link. PLACEHOLDER values until playtests set them.",
+	"_about": "Transport tiers, lowest first. A run starts with the first tier, and the player buys each later tier in order for its price. max_remoteness: the highest market remoteness that the tier reaches (see markets.json); each tier must reach more than the tier before it. The last tier can have the max_remoteness any, as text: it reaches a market at any remoteness, so every generated market (see markets.json) can open. No tier can come after it. A new link uses the tier the player has as its vehicle. A link keeps its vehicle until the player pays vehicle_upgrade_cost to move it onto the tier the player has now. plural_name is the name of more than one vehicle, such as Trucks. transit_time_ms and shipment_cost are per shipment. The first tier has no price and no vehicle_upgrade_cost. automatic_transport_cost is the price of automatic transport for one link. PLACEHOLDER values until playtests set them. The number of tiers between planes and the portal (rockets and shuttles) and all their values are placeholders too.",
 	"placeholder": true,
 	"automatic_transport_cost": 25,
 	"tiers": [
@@ -7,6 +7,9 @@
 		{"id": "truck", "name": "Truck", "plural_name": "Trucks", "max_remoteness": 2, "transit_time_ms": 3500, "shipment_cost": 4, "price": 250, "vehicle_upgrade_cost": 20},
 		{"id": "train", "name": "Train", "plural_name": "Trains", "max_remoteness": 4, "transit_time_ms": 2500, "shipment_cost": 8, "price": 2000, "vehicle_upgrade_cost": 120},
 		{"id": "ship", "name": "Ship", "plural_name": "Ships", "max_remoteness": 6, "transit_time_ms": 2000, "shipment_cost": 15, "price": 15000, "vehicle_upgrade_cost": 700},
-		{"id": "plane", "name": "Plane", "plural_name": "Planes", "max_remoteness": 8, "transit_time_ms": 1200, "shipment_cost": 30, "price": 100000, "vehicle_upgrade_cost": 4000}
+		{"id": "plane", "name": "Plane", "plural_name": "Planes", "max_remoteness": 8, "transit_time_ms": 1200, "shipment_cost": 30, "price": 100000, "vehicle_upgrade_cost": 4000},
+		{"id": "rocket", "name": "Rocket", "plural_name": "Rockets", "max_remoteness": 12, "transit_time_ms": 900, "shipment_cost": 60, "price": 750000, "vehicle_upgrade_cost": 30000},
+		{"id": "shuttle", "name": "Shuttle", "plural_name": "Shuttles", "max_remoteness": 16, "transit_time_ms": 700, "shipment_cost": 120, "price": 5000000, "vehicle_upgrade_cost": 200000},
+		{"id": "portal", "name": "Portal", "plural_name": "Portals", "max_remoteness": "any", "transit_time_ms": 500, "shipment_cost": 250, "price": 40000000, "vehicle_upgrade_cost": 1500000}
 	]
 }

@@ -254,14 +254,32 @@ func test_the_game_data_has_10_to_15_hand_made_markets_that_tiers_reach() -> voi
 	var content := Content.load_dir(Content.DEFAULT_DIR)
 	assert_eq(content.errors, PackedStringArray())
 	assert_between(content.markets().size(), 10, 15)
-	assert_eq(content.transport_tiers().map(func(t: TransportTier) -> StringName: return t.id),
-		[&"cart", &"truck", &"train", &"ship", &"plane"])
-	# Each tier after carts opens at least one more market.
+	# Each tier after carts, up to the one that the most remote hand-made market
+	# needs, opens at least one more hand-made market. The tiers after it open
+	# generated markets.
 	var tiers := content.transport_tiers()
-	for i in range(1, tiers.size()):
+	var most_remote := 0
+	for def in content.markets():
+		most_remote = maxi(most_remote, def.remoteness)
+	for i in range(1, content.tier_for_remoteness(most_remote).rank + 1):
 		var opened := content.markets().filter(func(m: MarketDef) -> bool:
 			return content.tier_for_remoteness(m.remoteness) == tiers[i])
 		assert_gt(opened.size(), 0, "%s opens a market" % tiers[i].id)
+
+
+func test_the_game_data_has_tiers_after_planes_that_end_in_a_portal() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	var tiers := content.transport_tiers()
+	var ids := tiers.map(func(t: TransportTier) -> StringName: return t.id)
+	assert_eq(ids.slice(0, 5), [&"cart", &"truck", &"train", &"ship", &"plane"])
+	assert_gt(ids.size(), 6, "at least one tier between planes and the portal")
+	assert_eq(ids[-1], &"portal")
+	assert_true(tiers[-1].reaches_any_remoteness)
+	assert_true(tiers[-1].reaches(1_000_000_000), "the portal has no remoteness limit")
+	for i in range(1, tiers.size() - 1):
+		assert_false(tiers[i].reaches_any_remoteness, "%s has a limit" % tiers[i].id)
+		assert_gt(tiers[i].max_remoteness, tiers[i - 1].max_remoteness,
+			"%s reaches more than %s" % [tiers[i].id, tiers[i - 1].id])
 
 
 func test_the_game_data_has_a_recipe_for_each_mixed_color() -> void:
@@ -506,7 +524,40 @@ func _transport_errors(markets: Dictionary, transport: Dictionary) -> String:
 
 func test_reports_a_tier_that_reaches_less_than_the_tier_before_it() -> void:
 	assert_string_contains(_transport_errors(ContentFixture.markets_data(), _two_tiers(3, 2)),
-		"truck: max_remoteness cannot be less than that of cart, the tier before it")
+		"truck: max_remoteness must be more than that of cart, the tier before it")
+
+
+func test_reports_a_tier_that_reaches_the_same_as_the_tier_before_it() -> void:
+	assert_string_contains(_transport_errors(ContentFixture.markets_data(), _two_tiers(2, 2)),
+		"truck: max_remoteness must be more than that of cart, the tier before it")
+
+
+func test_reads_a_last_tier_that_reaches_any_remoteness() -> void:
+	var markets := ContentFixture.markets_data(ContentFixture.PRICE, ContentFixture.colors_data(),
+		["millbrook", "atlantis"], ContentFixture.POPULATION, ContentFixture.INCOME, [0, 1_000_000])
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(), markets, ContentFixture.portal_transport_data()))
+	assert_eq(content.errors, PackedStringArray(), "the portal reaches atlantis")
+	var portal := content.transport_tier(&"portal")
+	assert_true(portal.reaches_any_remoteness)
+	assert_true(portal.reaches(1_000_000))
+	assert_false(content.transport_tier(&"train").reaches_any_remoteness)
+	assert_eq(content.tier_for_remoteness(4).id, &"train")
+	assert_eq(content.tier_for_remoteness(5).id, &"portal")
+
+
+func test_reports_a_tier_after_a_tier_that_reaches_any_remoteness() -> void:
+	var transport := _two_tiers(0, 2)
+	transport.tiers[0].max_remoteness = "any"
+	assert_string_contains(_transport_errors(ContentFixture.markets_data(), transport),
+		"truck: comes after cart, which reaches any remoteness, so cart must be the last tier")
+
+
+func test_reports_a_max_remoteness_that_is_text_but_not_any() -> void:
+	var transport := _two_tiers(0, 2)
+	transport.tiers[1].max_remoteness = "far"
+	assert_string_contains(_transport_errors(ContentFixture.markets_data(), transport),
+		"truck.max_remoteness must be a whole number of at least 0 or \"any\"")
 
 
 func test_reports_a_price_on_the_first_tier() -> void:

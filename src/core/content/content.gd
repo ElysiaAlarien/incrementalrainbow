@@ -12,6 +12,9 @@ extends RefCounted
 ## [method from_data].
 
 const DEFAULT_DIR := "res://data"
+## The max_remoteness of a transport tier that reaches a market at any
+## remoteness, such as a portal. Only the last tier can have it.
+const ANY_REMOTENESS := "any"
 ## Section name to file name. [method from_data] takes one Dictionary per section.
 const FILES: Dictionary[String, String] = {
 	"colors": "colors.json",
@@ -541,9 +544,15 @@ func _parse_transport(data: Dictionary) -> void:
 	for entry in _read_entries(data, "transport.json", "tiers", "transport tier"):
 		var id := StringName(entry.id)
 		var rank := _tiers.size()
-		var max_remoteness := _read_whole_number(entry, "max_remoteness", id)
-		if rank > 0 and max_remoteness < _tiers[-1].max_remoteness:
-			_errors.append("%s: max_remoteness cannot be less than that of %s, the tier before it" % [
+		var any_remoteness: bool = entry.get("max_remoteness") is String
+		if any_remoteness and entry.max_remoteness != ANY_REMOTENESS:
+			_errors.append("%s.max_remoteness must be a whole number of at least 0 or \"%s\"" % [id, ANY_REMOTENESS])
+		var max_remoteness := 0 if any_remoteness else _read_whole_number(entry, "max_remoteness", id)
+		if rank > 0 and _tiers[-1].reaches_any_remoteness:
+			_errors.append("%s: comes after %s, which reaches any remoteness, so %s must be the last tier" % [
+				id, _tiers[-1].id, _tiers[-1].id])
+		elif rank > 0 and not any_remoteness and max_remoteness <= _tiers[-1].max_remoteness:
+			_errors.append("%s: max_remoteness must be more than that of %s, the tier before it" % [
 				id, _tiers[-1].id])
 		var price := BigNumber.ZERO
 		var upgrade_cost := BigNumber.ZERO
@@ -559,7 +568,8 @@ func _parse_transport(data: Dictionary) -> void:
 			_errors.append("%s: plural_name is missing" % id)
 		var tier := TransportTier.new(id, entry.name,
 			_read_positive_int(entry, "transit_time_ms", id),
-			_read_money(entry, "shipment_cost", id), rank, max_remoteness, price, upgrade_cost, plural_name)
+			_read_money(entry, "shipment_cost", id), rank, max_remoteness, price, upgrade_cost, plural_name,
+			any_remoteness)
 		_tiers.append(tier)
 		_tiers_by_id[id] = tier
 

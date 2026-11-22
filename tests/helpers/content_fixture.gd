@@ -36,6 +36,10 @@ const TRAIN_PRICE := 60
 const TRAIN_UPGRADE_COST := 10
 const TRAIN_TRANSIT_TIME_MS := 1000
 const TRAIN_SHIPMENT_COST := 4
+const PORTAL_PRICE := 90
+const PORTAL_UPGRADE_COST := 15
+const PORTAL_TRANSIT_TIME_MS := 500
+const PORTAL_SHIPMENT_COST := 5
 ## 24 hours, as in the game data.
 const MAX_OFFLINE_MS := 86_400_000
 ## The forecast accuracy with no forecast research, and the time ahead that the
@@ -223,6 +227,16 @@ static func transport_data(transit_time_ms: int = TRANSIT_TIME_MS,
 		{"id": "train", "name": "Train", "plural_name": "Trains", "max_remoteness": 4, "transit_time_ms": TRAIN_TRANSIT_TIME_MS,
 			"shipment_cost": TRAIN_SHIPMENT_COST, "price": TRAIN_PRICE, "vehicle_upgrade_cost": TRAIN_UPGRADE_COST},
 	]}
+
+
+## [method transport_data], then a portal that reaches any remoteness, with the
+## PORTAL_ constants.
+static func portal_transport_data() -> Dictionary:
+	var data := transport_data()
+	data.tiers.append({"id": "portal", "name": "Portal", "plural_name": "Portals", "max_remoteness": "any",
+		"transit_time_ms": PORTAL_TRANSIT_TIME_MS, "shipment_cost": PORTAL_SHIPMENT_COST, "price": PORTAL_PRICE,
+		"vehicle_upgrade_cost": PORTAL_UPGRADE_COST})
+	return data
 
 
 ## Demand events: a spike of red and blue by 0.5 for 20 s ("red_blue_spike"),

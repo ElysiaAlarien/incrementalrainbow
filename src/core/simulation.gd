@@ -688,6 +688,8 @@ func _add_link(state: LinkState) -> CommandResult:
 	_links.append(state)
 	if state.destination_kind == LinkView.Destination.MARKET:
 		_reach_guided_start(GuidedStartView.Step.START_SHIPMENT)
+		# With a portal, a market with a link no longer counts as a market to reach.
+		_add_generated_markets()
 	return CommandResult.success(state.id)
 
 
@@ -1552,23 +1554,39 @@ func _market_defs() -> Array[MarketDef]:
 
 ## The rule for when the next generated market comes, in one place: the game
 ## makes generated markets until at least
-## [member MarketGenerator.closed_markets_shown] markets are closed to the
-## transport tier, so the player can always see the next markets to reach. A
-## new game, a new transport tier, and a load apply it. It never removes a
-## market. Remoteness goes up with each generated market, so the loop ends.
+## [member MarketGenerator.closed_markets_shown] markets are still to reach
+## (see [method _is_still_to_reach]), so the player can always see the next
+## markets to reach. A new game, a new transport tier, a new link to a market,
+## and a load apply it. It never removes a market. Each new generated market
+## is still to reach: a limited tier does not reach it, because remoteness
+## goes up with each one, and no link goes to it yet. So the loop ends.
 func _add_generated_markets() -> void:
 	var generator := _content.market_generator
 	if generator == null:
 		return
-	var closed := 0
+	var still_to_reach := 0
 	for def in _market_defs():
-		if not _transport_tier.reaches(def.remoteness):
-			closed += 1
-	while closed < generator.closed_markets_shown:
+		if _is_still_to_reach(def):
+			still_to_reach += 1
+	while still_to_reach < generator.closed_markets_shown:
 		var def := generator.generate(_demand.drift_key, _generated.size() + 1)
 		_add_generated_market(def)
-		if not _transport_tier.reaches(def.remoteness):
-			closed += 1
+		if _is_still_to_reach(def):
+			still_to_reach += 1
+
+
+## True if [param def] is a market for the generator rule to count: a market
+## that is closed to the transport tier. A tier that reaches any remoteness
+## closes no market, so with it a market counts while no link goes to it.
+func _is_still_to_reach(def: MarketDef) -> bool:
+	if not _transport_tier.reaches(def.remoteness):
+		return true
+	if not _transport_tier.reaches_any_remoteness:
+		return false
+	for link in _links:
+		if link.goes_to_market(def.id):
+			return false
+	return true
 
 
 func _add_generated_market(def: MarketDef) -> void:

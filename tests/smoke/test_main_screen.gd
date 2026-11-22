@@ -954,26 +954,52 @@ func test_the_screen_shows_each_market_remoteness_and_the_tier_it_needs() -> voi
 	assert_true(destinations.is_item_disabled(far[0]), "a closed market cannot be picked")
 
 
-func test_the_screen_shows_generated_markets_that_no_tier_reaches() -> void:
-	var main := await _main_with_money(1_000_000)
+func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> void:
+	var main := await _main_with_money(1_000_000_000)
 	var sim: Simulation = main.simulation()
 	var button: Button = main.find_child("BuyTransportTier", true, false)
-	while sim.next_transport_tier() != null:
+	while sim.next_transport_tier().id != &"portal":
 		button.pressed.emit()
 		await wait_process_frames(1)
 
 	var generated := sim.markets().filter(func(v: MarketView) -> bool: return not v.is_open)
-	assert_gt(generated.size(), 0, "planes reach all hand-made markets, so the game shows generated ones")
+	assert_gt(generated.size(), 0, "the tier before the portal shows closed generated markets")
 	for view: MarketView in generated:
+		assert_eq(view.needed_tier, &"portal")
 		var row: MarketRow = main.find_child("Market_%s" % view.id, true, false)
-		assert_eq(row.reach_label_text(), "Remoteness %d, no transport tier reaches it yet" % view.remoteness)
+		assert_eq(row.reach_label_text(), "Remoteness %d, needs portals" % view.remoteness)
 	var destinations: OptionButton = main.find_child("NewLinkDestination", true, false)
 	var first: MarketView = generated[0]
 	var item := range(destinations.item_count).filter(func(i: int) -> bool:
 		return destinations.get_item_metadata(i) == [&"market", first.id])
-	assert_eq(destinations.get_item_text(item[0]), "%s (no tier reaches it yet)" % first.name)
+	assert_eq(destinations.get_item_text(item[0]), "%s (needs portals)" % first.name)
 	assert_true(destinations.is_item_disabled(item[0]))
+	assert_eq(MarketRow.reach_text(first, ""), "Remoteness %d, no transport tier reaches it yet" % first.remoteness,
+		"the text for content with no tier that reaches a market")
 
+	button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(sim.transport_tier().id, &"portal")
+	var label: Label = main.find_child("TransportLabel", true, false)
+	assert_eq(label.text, "Transport tier: Portal, reaches any distance")
+	assert_eq(button.text, "Highest tier")
+	assert_true(button.disabled)
+	var first_row: MarketRow = main.find_child("Market_%s" % first.id, true, false)
+	assert_eq(first_row.reach_label_text(), "Remoteness %d, open to portals" % first.remoteness)
+	item = range(destinations.item_count).filter(func(i: int) -> bool:
+		return destinations.get_item_metadata(i) == [&"market", first.id])
+	assert_eq(destinations.get_item_text(item[0]), first.name)
+	assert_false(destinations.is_item_disabled(item[0]), "the portal opens every generated market")
+	# With the portal, a link to a market makes the next market when too few
+	# markets have no link, and the screen shows a row for it.
+	assert_true(sim.build_factory(&"red").ok)
+	var before := sim.markets().size()
+	for view: MarketView in sim.markets():
+		assert_true(sim.make_link(2, view.id).ok)
+	await wait_process_frames(1)
+	assert_gt(sim.markets().size(), before, "links made more markets")
+	assert_eq(main.find_children("Market_*", "MarketRow", true, false).size(), sim.markets().size())
 
 	# A prestige starts a run at carts, which has no generated markets yet.
 	assert_true(sim.buy_prism().ok)

@@ -36,7 +36,9 @@ const _MASK32 := 0xFFFFFFFF
 
 ## The game makes generated markets until at least this many markets are
 ## closed to the player's transport tier, so that the player can always see
-## the next markets to reach.
+## the next markets to reach. A tier that reaches any remoteness, such as the
+## portal, closes no market, so with it the game counts the markets that no
+## link goes to (see [code]Simulation._is_still_to_reach[/code]).
 var closed_markets_shown: int:
 	get:
 		return _closed_markets_shown
