@@ -1,26 +1,18 @@
 name: Builds
 
 # Exports the builds that need no signing, and starts the desktop builds.
-# See docs/building.md. This workflow is apart from CI, so that "Import and
-# test" stays fast. It runs when a change touches the build files, and on
-# request (Actions > Builds > Run workflow).
+# See docs/building.md for why it runs on each change.
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - export_presets.cfg
-      - project.godot
-      - tools/build.sh
-      - tools/start_check.sh
-      - .github/workflows/builds.yml
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
   push:
     branches: [main]
-    paths:
-      - export_presets.cfg
-      - project.godot
-      - tools/build.sh
-      - tools/start_check.sh
-      - .github/workflows/builds.yml
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
 
 concurrency:
   group: builds-${{ github.ref }}
@@ -116,18 +108,19 @@ jobs:
           fi
 
       # An iOS export needs an Apple team id, and only macOS can build the
-      # .ipa. So CI exports only the Xcode project, with a placeholder team
-      # id in this copy of the presets. The tracked file does not change.
+      # .ipa. So CI exports only the Xcode project. When the presets have no
+      # team id, this copy of the presets gets a placeholder team id. The
+      # tracked file does not change.
       - name: Export the iOS Xcode project
         run: |
           set -euo pipefail
           sed -i \
-            -e 's|^application/app_store_team_id=""|application/app_store_team_id="ABCDE12345"|' \
+            -e 's|^application/app_store_team_id=""$|application/app_store_team_id="ABCDE12345"|' \
             -e 's|^application/export_project_only=false|application/export_project_only=true|' \
             -e 's|build/ios/IncrementalRainbow.ipa|build/ios/IncrementalRainbow.xcodeproj|' \
             export_presets.cfg
           # Stop if a pattern did not match, for example after a preset change.
-          grep -q '^application/app_store_team_id="ABCDE12345"' export_presets.cfg
+          grep -q '^application/app_store_team_id="[A-Z0-9]\{10\}"$' export_presets.cfg
           grep -q '^application/export_project_only=true' export_presets.cfg
           grep -q 'build/ios/IncrementalRainbow.xcodeproj' export_presets.cfg
           GODOT="$GODOT_DIR/godot" tools/build.sh iOS
