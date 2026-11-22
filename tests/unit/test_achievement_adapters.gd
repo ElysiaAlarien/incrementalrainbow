@@ -343,6 +343,31 @@ func test_game_center_logs_a_report_that_failed() -> void:
 	assert_eq(service.failed_unlocks, ["incrementalrainbow.first_sale"] as Array[String])
 
 
+## The plugin's GameCenterManager, with no device.
+class FakeManager:
+	extends RefCounted
+	signal authentication_result(status: bool)
+	signal authentication_error(message: String)
+	var authentications := 0
+
+	func authenticate() -> void:
+		authentications += 1
+
+
+func test_game_kit_passes_on_the_sign_in_of_the_manager() -> void:
+	var manager := FakeManager.new()
+	var kit := GameKit.new(manager)
+	watch_signals(kit)
+
+	kit.authenticate()
+	manager.authentication_result.emit(true)
+	manager.authentication_error.emit("no network")
+
+	assert_eq(manager.authentications, 1)
+	assert_signal_emitted_with_parameters(kit, "authentication_result", [true])
+	assert_signal_emitted_with_parameters(kit, "authentication_error", ["no network"])
+
+
 func test_game_kit_is_not_in_this_build() -> void:
 	assert_null(GameKit.for_this_build())
 
