@@ -2,25 +2,15 @@ name: Builds
 
 # Exports the builds that need no signing, and starts the desktop builds.
 # See docs/building.md. This workflow is apart from CI, so that "Import and
-# test" stays fast. It runs when a change touches the build files, and on
-# request (Actions > Builds > Run workflow).
+# test" stays fast. It runs on each pull request and each push to main,
+# because a change to src/, data/, or addons/ can break an exported build
+# when the tests still pass. To run it at other times, use
+# Actions > Builds > Run workflow.
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - export_presets.cfg
-      - project.godot
-      - tools/build.sh
-      - tools/start_check.sh
-      - .github/workflows/builds.yml
   push:
     branches: [main]
-    paths:
-      - export_presets.cfg
-      - project.godot
-      - tools/build.sh
-      - tools/start_check.sh
-      - .github/workflows/builds.yml
 
 concurrency:
   group: builds-${{ github.ref }}
