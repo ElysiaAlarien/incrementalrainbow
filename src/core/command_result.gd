@@ -76,6 +76,8 @@ enum Reason {
 	PRESTIGE_UPGRADE_OWNED,
 	## The player has fewer prisms than the command costs.
 	NOT_ENOUGH_PRISMS,
+	## The guided start is done or skipped already.
+	GUIDED_START_OVER,
 }
 
 var ok: bool

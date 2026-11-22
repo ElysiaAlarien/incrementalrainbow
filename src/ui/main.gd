@@ -16,7 +16,8 @@ extends Control
 ## and saves at intervals and when the game exits or goes to the background.
 ## The Export or import button exports the game as a code and imports a code.
 ## The Prestige button shows what a prestige keeps and clears, and asks the
-## player to confirm.
+## player to confirm. A banner shows the step of the guided start, with a
+## button to skip it.
 ##
 ## When the player returns (the game starts from a save, a code imports, or a
 ## phone game comes back from the background), the screen applies offline
@@ -121,6 +122,7 @@ var _paused_at_unix_ms: int = -1
 var _drop_next_frame := false
 var _catch_up_screen: CatchUpScreen
 var _summary_dialog: OfflineSummaryDialog
+var _guided_start_banner: GuidedStartBanner
 
 
 func _ready() -> void:
@@ -135,6 +137,10 @@ func _ready() -> void:
 	_summary_dialog = OfflineSummaryDialog.new()
 	add_child(_summary_dialog)
 	_sim = _load_or_start_game()
+	_guided_start_banner = GuidedStartBanner.new()
+	_message_label.add_sibling(_guided_start_banner)
+	_message_label.get_parent().move_child(_guided_start_banner, _message_label.get_index())
+	_guided_start_banner.skip_pressed.connect(func() -> void: _show_result(_sim.skip_guided_start()))
 	var autosave := Timer.new()
 	autosave.name = "Autosave"
 	autosave.wait_time = AUTOSAVE_INTERVAL_S
@@ -457,6 +463,7 @@ func _on_add_line_requested(factory_id: int) -> void:
 
 
 func _refresh() -> void:
+	_guided_start_banner.show_state(_sim.guided_start())
 	_money_label.text = "Money: %s" % _sim.money().format()
 	var prisms := _sim.prisms()
 	_prism_label.text = "Prisms: %s" % BigNumber.from_int(prisms.owned).format()
