@@ -330,12 +330,14 @@ func _replace_game(imported: LoadResult) -> void:
 
 
 ## Shows the run of the game after an import or a prestige replaced the last
-## run. It removes the rows of the last run, and saves the game at once.
+## run. It removes the rows of the last run, and saves the game at once. The
+## market rows go too, because each run has its own generated markets.
 func _show_replaced_run() -> void:
 	for row: Node in _rows.values() + _link_rows.values() + _warehouse_rows.values() \
-			+ _split_rows.values():
+			+ _split_rows.values() + _market_rows.values():
 		row.get_parent().remove_child(row)
 		row.queue_free()
+	_market_rows.clear()
 	_rows.clear()
 	_link_rows.clear()
 	_warehouse_rows.clear()
@@ -505,10 +507,17 @@ func _refresh() -> void:
 			market_row.invest_pressed.connect(_on_invest_pressed)
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
-		market_row.show_state(view, _content.transport_tier(view.needed_tier).plural_name, forecast)
+		market_row.show_state(view, _needed_tier_plural(view), forecast)
 
 	for view in _sim.prestige_upgrades():
 		_prestige_upgrade_rows[view.id].show_state(view)
+
+
+## The plural name of the transport tier that [param view] needs, such as
+## "Trucks", or "" when no tier reaches it.
+func _needed_tier_plural(view: MarketView) -> String:
+	var tier := _content.transport_tier(view.needed_tier)
+	return "" if tier == null else tier.plural_name
 
 
 func _refresh_research() -> void:
@@ -576,7 +585,7 @@ func _refresh_warehouses() -> void:
 			_warehouse_list.add_child(row)
 		var held_names := PackedStringArray()
 		for market_id in view.held_market_ids:
-			held_names.append(_content.market(market_id).name)
+			held_names.append(_sim.market(market_id).name)
 		row.show_state(view, held_names)
 	_warehouses_empty_label.visible = _warehouse_rows.is_empty()
 
@@ -634,8 +643,9 @@ func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Arra
 				if market.is_open:
 					choice.add_item(market.name)
 				else:
-					choice.add_item("%s (needs %s)" % [market.name,
-						_content.transport_tier(market.needed_tier).plural_name.to_lower()])
+					var plural := _needed_tier_plural(market)
+					choice.add_item("%s (%s)" % [market.name,
+						"no tier reaches it yet" if plural.is_empty() else "needs %s" % plural.to_lower()])
 					choice.set_item_disabled(i, true)
 		choice.set_item_metadata(i, key)
 	var keep := keys.find(selected)

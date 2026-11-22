@@ -35,6 +35,7 @@ const PREVIEW_NAME_OF_KEY := {
 	"completed_research": "Research, its progress, and the lab stock",
 	"lab_stock": "Research, its progress, and the lab stock",
 	"guided_start": "Guided start, when done or skipped",
+	"generated_markets": "Generated markets",
 }
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.
@@ -277,7 +278,7 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 		"Links, with their vehicles and shipments", "Demand and saturation",
 		"Community investments and capacity used in each market",
 		"Warehouses and the widgets in them", "Transport tier", "Labs",
-		"Research, its progress, and the lab stock"]))
+		"Research, its progress, and the lab stock", "Generated markets"]))
 
 
 func test_the_preview_with_no_prisms_gives_the_reason() -> void:

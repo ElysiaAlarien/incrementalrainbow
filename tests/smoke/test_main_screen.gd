@@ -954,6 +954,40 @@ func test_the_screen_shows_each_market_remoteness_and_the_tier_it_needs() -> voi
 	assert_true(destinations.is_item_disabled(far[0]), "a closed market cannot be picked")
 
 
+func test_the_screen_shows_generated_markets_that_no_tier_reaches() -> void:
+	var main := await _main_with_money(1_000_000)
+	var sim: Simulation = main.simulation()
+	var button: Button = main.find_child("BuyTransportTier", true, false)
+	while sim.next_transport_tier() != null:
+		button.pressed.emit()
+		await wait_process_frames(1)
+
+	var generated := sim.markets().filter(func(v: MarketView) -> bool: return not v.is_open)
+	assert_gt(generated.size(), 0, "planes reach all hand-made markets, so the game shows generated ones")
+	for view: MarketView in generated:
+		var row: MarketRow = main.find_child("Market_%s" % view.id, true, false)
+		assert_eq(row.reach_label_text(), "Remoteness %d, no transport tier reaches it yet" % view.remoteness)
+	var destinations: OptionButton = main.find_child("NewLinkDestination", true, false)
+	var first: MarketView = generated[0]
+	var item := range(destinations.item_count).filter(func(i: int) -> bool:
+		return destinations.get_item_metadata(i) == [&"market", first.id])
+	assert_eq(destinations.get_item_text(item[0]), "%s (no tier reaches it yet)" % first.name)
+	assert_true(destinations.is_item_disabled(item[0]))
+
+
+	# A prestige starts a run at carts, which has no generated markets yet.
+	assert_true(sim.buy_prism().ok)
+	main.find_child("PrestigeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+	(main.find_child("PrestigeConfirm", true, false) as ConfirmationDialog).confirmed.emit()
+	await wait_process_frames(1)
+	sim = main.simulation()
+	assert_eq(sim.transport_tier().id, &"cart", "the new run started")
+	for view: MarketView in generated:
+		assert_null(main.find_child("Market_%s" % view.id, true, false), "no row for %s" % view.id)
+	assert_eq(main.find_children("Market_*", "MarketRow", true, false).size(), sim.markets().size())
+
+
 func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
 	var main := await _main_with_money(10_000)
 	var sim: Simulation = main.simulation()

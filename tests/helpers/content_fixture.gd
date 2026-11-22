@@ -167,6 +167,42 @@ static func markets_data(price: float = PRICE, colors: Dictionary = colors_data(
 	return {"markets": markets}
 
 
+## Rules for the "generator" object of markets.json: the game shows
+## [param closed_markets_shown] closed markets. Each generated market is 1 more
+## remote than the one before it. Population is 1000 plus 100 for each step of
+## remoteness, and income 100 plus 10, each within 20% of that. One random
+## color has double the base price. Names come from two starts and two ends,
+## so the fifth market has the name of the first with a 2. [param overrides]
+## replaces values by key.
+static func generator_data(closed_markets_shown: int = 2, overrides: Dictionary = {}) -> Dictionary:
+	var rules := {
+		"closed_markets_shown": closed_markets_shown,
+		"remoteness_step": 1,
+		"population_base": POPULATION,
+		"population_per_remoteness": 100,
+		"income_base": INCOME,
+		"income_per_remoteness": 10,
+		"spread": 0.2,
+		"favored_colors": 1,
+		"favored_price_factor": 2.0,
+		"name_starts": ["North", "South"],
+		"name_ends": ["port", "field"],
+	}
+	for key: String in overrides:
+		assert(rules.has(key), "unknown generator key %s" % key)
+		rules[key] = overrides[key]
+	return rules
+
+
+## [method remote_markets_data] with the market generator of
+## [method generator_data].
+static func generated_markets_data(colors: Dictionary = colors_data(),
+		closed_markets_shown: int = 2) -> Dictionary:
+	var data := remote_markets_data(colors)
+	data.generator = generator_data(closed_markets_shown)
+	return data
+
+
 ## Three markets for transport tier tests: millbrook (remoteness 0, carts reach
 ## it), farpoint (2, trucks), and lastport (4, trains).
 static func remote_markets_data(colors: Dictionary = colors_data()) -> Dictionary:
@@ -274,9 +310,14 @@ static func make_mixed(widget_time_ms: int = 1000, output_bay_capacity: int = 10
 
 ## The content that the save fixtures in tests/fixtures/saves/ load with: like
 ## [code]make_mixed(700, 6)[/code], with the demand events of
-## [method demand_events_data].
+## [method demand_events_data] and the market generator of
+## [method generator_data], which shows 1 closed market. The first generated
+## market has remoteness 1, so trucks reach two of them.
 static func make_for_saves() -> Content:
-	return from_data(data(mixed_colors_data(), balance_data(700, 6), null, transport_data(),
+	var colors := mixed_colors_data()
+	var markets := markets_data(PRICE, colors)
+	markets.generator = generator_data(1)
+	return from_data(data(colors, balance_data(700, 6), markets, transport_data(),
 		demand_events_data()))
 
 

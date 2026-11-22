@@ -52,7 +52,11 @@ const _PRESTIGE_CLEARS: PackedStringArray = [
 	"Transport tier",
 	"Labs",
 	"Research, its progress, and the lab stock",
+	"Generated markets",
 ]
+## The most generated markets that a save can have, so that a damaged save
+## cannot make the load take forever.
+const _MAX_SAVED_GENERATED_MARKETS := 1_000_000
 
 var _content: Content
 var _rng: SimRng
@@ -68,8 +72,15 @@ var _next_warehouse_id: int = 1
 var _warehouses: Array[WarehouseState] = []
 var _next_shipment_id: int = 1
 var _demand: DemandState
-## Market id to the state of that market, for each market in the content.
+## Market id to the state of that market, for each hand-made and generated
+## market.
 var _markets: Dictionary[StringName, MarketState] = {}
+## The generated markets of this run, in order: generated market n is at
+## n - 1. Each one comes from [member Content.market_generator] with the drift
+## key of the run, so the save keeps only their count.
+var _generated: Array[MarketDef] = []
+## The same markets as [member _generated], by id.
+var _generated_by_id: Dictionary[StringName, MarketDef] = {}
 ## The transport tier the player has. New links use it as their vehicle, and
 ## it sets which markets are open.
 var _transport_tier: TransportTier
@@ -107,9 +118,10 @@ func _init(p_content: Content, p_seed: int) -> void:
 	_demand = DemandState.new(_rng.next_u32())
 	_demand.schedule_events(0, _rng, _content)
 	_money = _starting_money()
-	for def in _content.markets():
+	for def in _market_defs():
 		_markets[def.id] = MarketState.from_def(def)
 	_transport_tier = _content.transport_tiers()[0]
+	_add_generated_markets()
 
 
 ## Makes a simulation from saved state: the inverse of [method snapshot].
@@ -141,10 +153,12 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		sim._factories_by_id[state.id] = state
 	sim._read_warehouses(reader)
 	sim._read_transport_tier(reader)
+	sim._read_generated_markets(reader)
 	sim._read_labs(reader)
 	sim._research = ResearchState.from_snapshot(reader, p_content)
 	sim._read_links(reader)
-	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms)
+	sim._demand = DemandState.from_snapshot(reader, p_content, sim._time_ms,
+		func(id: StringName) -> bool: return sim._market_def(id) != null)
 	sim._read_markets(reader)
 	sim._prisms_bought = reader.integer("prisms_bought", 0)
 	sim._prisms = reader.integer("prisms", 0)
@@ -152,6 +166,9 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 		reader.fail("prisms", "cannot be more than prisms_bought (%d)" % sim._prisms_bought)
 	sim._read_prestige_upgrades(reader)
 	sim._check_input_bay_space(factory_readers)
+	# A save from before generated markets has none, so the load makes them
+	# as a new game would.
+	sim._add_generated_markets()
 	sim._check_warehouse_space(reader)
 	sim._read_guided_start(reader)
 	return sim
@@ -290,6 +307,9 @@ func _read_links(reader: SnapshotReader) -> void:
 				destination_text = "lab #%d" % state.destination_lab_id
 				if not _labs.has(state.destination_lab_id):
 					link_reader.fail(destination_key, "there is no lab #%d" % state.destination_lab_id)
+			LinkView.Destination.MARKET:
+				if state.destination_market_id != &"" and _market_def(state.destination_market_id) == null:
+					link_reader.fail(destination_key, "there is no market \"%s\"" % state.destination_market_id)
 		var ends := [state.source_key(), state.destination_key()]
 		if routes.has(ends):
 			link_reader.fail(destination_key, "%s has more than one link to %s" % [source_text, destination_text])
@@ -318,6 +338,23 @@ func _check_splits(readers: Array[SnapshotReader]) -> void:
 			readers[i].fail("split_percent", "the split percentages of the links from this source add up to %d, not 100" % total)
 
 
+## Reads the count of generated markets for [method from_snapshot], and makes
+## them again from the drift key in the save.
+func _read_generated_markets(reader: SnapshotReader) -> void:
+	for def in _generated:
+		_markets.erase(def.id)
+	_generated = []
+	_generated_by_id = {}
+	var key := reader.integer("drift_key", 0, 0xFFFFFFFF)
+	var count := reader.integer("generated_markets", 0, _MAX_SAVED_GENERATED_MARKETS)
+	var generator := _content.market_generator
+	if count > 0 and generator == null:
+		reader.fail("generated_markets", "the content has no market generator")
+		return
+	for index in range(1, count + 1):
+		_add_generated_market(generator.generate(key, index))
+
+
 ## Reads the markets for [method from_snapshot]. A market that the save does
 ## not have, such as one that is new in the content, starts as at the start of
 ## a run. The widgets on their way to a market are not checked against its
@@ -330,7 +367,7 @@ func _read_markets(reader: SnapshotReader) -> void:
 		var state := MarketState.from_snapshot(market_reader, _time_ms, _content.market_balance)
 		if state.id == &"":
 			continue
-		if _content.market(state.id) == null:
+		if _market_def(state.id) == null:
 			market_reader.fail("id", "there is no market \"%s\"" % state.id)
 		elif seen.has(state.id):
 			market_reader.fail("id", "market %s is in the save more than once" % state.id)
@@ -427,7 +464,7 @@ func make_link(factory_id: int, market_id: StringName) -> CommandResult:
 	if source == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_FACTORY,
 			"There is no factory #%d." % factory_id)
-	var market := _content.market(market_id)
+	var market := _market_def(market_id)
 	if market == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_MARKET,
 			"There is no market \"%s\"." % market_id)
@@ -516,7 +553,7 @@ func link_warehouse_to_market(warehouse_id: int, market_id: StringName) -> Comma
 	var source := _warehouse_state(warehouse_id)
 	if source == null:
 		return _unknown_warehouse(warehouse_id)
-	var market := _content.market(market_id)
+	var market := _market_def(market_id)
 	if market == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_MARKET,
 			"There is no market \"%s\"." % market_id)
@@ -626,9 +663,11 @@ func _unknown_factory(id: int) -> CommandResult:
 
 
 func _too_remote(market: MarketDef) -> CommandResult:
+	var needed := _content.tier_for_remoteness(market.remoteness)
+	var reason := "no transport tier reaches it yet" if needed == null \
+		else "it needs %s" % needed.plural_name.to_lower()
 	return CommandResult.failure(CommandResult.Reason.MARKET_TOO_REMOTE,
-		"%s is too remote for %s: it needs %s." % [market.name, _transport_tier.plural_name.to_lower(),
-			_content.tier_for_remoteness(market.remoteness).plural_name.to_lower()])
+		"%s is too remote for %s: %s." % [market.name, _transport_tier.plural_name.to_lower(), reason])
 
 
 func _unknown_lab(id: int) -> CommandResult:
@@ -705,6 +744,7 @@ func buy_transport_tier() -> CommandResult:
 
 	_money = _money.sub(tier.price)
 	_transport_tier = tier
+	_add_generated_markets()
 	return CommandResult.success(tier.id)
 
 
@@ -982,7 +1022,7 @@ func make_community_investment(market_id: StringName, goal: MarketView.Investmen
 	if _money.is_less_than(cost):
 		var what := "population" if goal == MarketView.Investment.POPULATION else "income"
 		return _not_enough_money("A community investment for %s in %s" % [what,
-			_content.market(market_id).name], cost)
+			_market_def(market_id).name], cost)
 
 	_money = _money.sub(cost)
 	state.invest(goal, _content.market_balance)
@@ -1003,7 +1043,7 @@ func _accepts_nothing_text(state: LinkState) -> String:
 			return "lab #%d has no research selected." % state.destination_lab_id
 		return "%s needs no more %s, with the widgets on the way and in the lab stock." % [
 			_content.research_def(_research.selected).name, _color_text(state.color)]
-	var market := _content.market(state.destination_market_id)
+	var market := _market_def(state.destination_market_id)
 	return "%s has no capacity left in this period, with the widgets on the way. Its capacity is %d widgets in each period." % [
 		market.name, _markets[market.id].capacity(_content.market_balance)]
 
@@ -1339,12 +1379,13 @@ func factory(id: int) -> FactoryView:
 	return null if state == null else _factory_view(state)
 
 
-## All markets, open or not, in content order, with the remoteness of each,
+## All markets, open or not: the hand-made markets in content order, then the
+## generated markets in the order the game made them. With the remoteness of each,
 ## whether it is open, the demand and price of each color now, and the
 ## population, income, and capacity.
 func markets() -> Array[MarketView]:
 	var views: Array[MarketView] = []
-	for def in _content.markets():
+	for def in _market_defs():
 		views.append(_market_view(def))
 	return views
 
@@ -1364,7 +1405,7 @@ func forecast(ahead_ms: int) -> ForecastView:
 	view.ahead_ms = maxi(0, ahead_ms)
 	view.at_ms = _time_ms + view.ahead_ms
 	view.accuracy = forecast_accuracy()
-	for def in _content.markets():
+	for def in _market_defs():
 		var colors: Dictionary[StringName, float] = {}
 		for color in def.prices:
 			colors[color] = _demand.forecast(def.id, color, view.at_ms, view.accuracy, _content.demand_balance)
@@ -1388,7 +1429,7 @@ func forecast_horizon_ms() -> int:
 
 ## The market with [param id], or null.
 func market(id: StringName) -> MarketView:
-	var def := _content.market(id)
+	var def := _market_def(id)
 	return null if def == null else _market_view(def)
 
 
@@ -1478,6 +1519,7 @@ func snapshot() -> Dictionary:
 		"prisms_bought": _prisms_bought,
 		"prestige_upgrades": _prestige_upgrades.map(func(id: StringName) -> String: return String(id)),
 		"markets": _markets_to_dicts(),
+		"generated_markets": _generated.size(),
 		"transport_tier": _transport_tier.id,
 		"next_lab_id": _next_lab_id,
 		"labs": _labs.map(func(id: int) -> Dictionary: return {"id": id}),
@@ -1485,15 +1527,54 @@ func snapshot() -> Dictionary:
 	}.merged(_demand.to_dict()).merged(_research.to_dict(_content))
 
 
-## The markets for [method snapshot], in content order.
+## The markets for [method snapshot], in the order of [method markets].
 func _markets_to_dicts() -> Array[Dictionary]:
 	var dicts: Array[Dictionary] = []
-	for def in _content.markets():
+	for def in _market_defs():
 		dicts.append(_markets[def.id].to_dict())
 	return dicts
 
 
 # --- Internal -----------------------------------------------------------------
+
+## The hand-made or generated market with [param id], or null.
+func _market_def(id: StringName) -> MarketDef:
+	var def := _content.market(id)
+	return def if def != null else _generated_by_id.get(id)
+
+
+## The hand-made markets in content order, then the generated markets.
+func _market_defs() -> Array[MarketDef]:
+	var defs := _content.markets()
+	defs.append_array(_generated)
+	return defs
+
+
+## The rule for when the next generated market comes, in one place: the game
+## makes generated markets until at least
+## [member MarketGenerator.closed_markets_shown] markets are closed to the
+## transport tier, so the player can always see the next markets to reach. A
+## new game, a new transport tier, and a load apply it. It never removes a
+## market. Remoteness goes up with each generated market, so the loop ends.
+func _add_generated_markets() -> void:
+	var generator := _content.market_generator
+	if generator == null:
+		return
+	var closed := 0
+	for def in _market_defs():
+		if not _transport_tier.reaches(def.remoteness):
+			closed += 1
+	while closed < generator.closed_markets_shown:
+		var def := generator.generate(_demand.drift_key, _generated.size() + 1)
+		_add_generated_market(def)
+		if not _transport_tier.reaches(def.remoteness):
+			closed += 1
+
+
+func _add_generated_market(def: MarketDef) -> void:
+	_generated.append(def)
+	_generated_by_id[def.id] = def
+	_markets[def.id] = MarketState.from_def(def)
 
 ## The shipment size rule, in one place: how many of [param available] widgets
 ## a shipment on [param state] carries, which is what its destination accepts
@@ -1654,7 +1735,7 @@ func _deliver(state: LinkState, shipment: ShipmentState) -> void:
 func _sell(state: LinkState, shipment: ShipmentState) -> void:
 	var market_id := state.destination_market_id
 	var at_ms := shipment.arrives_at_ms
-	var def := _content.market(market_id)
+	var def := _market_def(market_id)
 	var price := _price(def, state.color, _demand.demand(market_id, state.color, at_ms, _content.demand_balance))
 	var earned := price.mul(BigNumber.from_int(shipment.count))
 	_money = _money.add(earned)
@@ -1802,7 +1883,7 @@ func _destination_name(state: LinkState) -> String:
 			return _warehouse_name(_warehouse_state(state.destination_warehouse_id))
 		LinkView.Destination.LAB:
 			return "Lab #%d" % state.destination_lab_id
-	return _content.market(state.destination_market_id).name
+	return _market_def(state.destination_market_id).name
 
 
 func _warehouse_view(state: WarehouseState) -> WarehouseView:

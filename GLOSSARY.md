@@ -140,6 +140,10 @@ _Avoid_: Seller, shop, store, outlet
 How hard a market is to reach. A market is open only when the player's transport tier is high enough for its remoteness.
 _Avoid_: Distance, range
 
+**Generated market**:
+A market that the game makes after the hand-made markets, from rules in the data and the run's seed, so that the game has no end. The game makes the next one when too few markets are closed to the player's transport tier. Each one is more remote than the one before it.
+_Avoid_: Random market, procedural market
+
 **Capacity**:
 The total number of widgets of all colors that a market can buy in one period.
 _Avoid_: Sales limit, throughput
