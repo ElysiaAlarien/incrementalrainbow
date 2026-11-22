@@ -273,13 +273,14 @@ func _parse_colors(data: Dictionary) -> void:
 		if not ColorDef.SYMBOL_MARK_NAMES.has(mark_name):
 			_errors.append("%s: symbol_mark must be one of %s, but it is %s" % [
 				id, ", ".join(ColorDef.SYMBOL_MARK_NAMES.keys()), mark_name])
-		# The symbol with its mark, such as "square" or "square with the tint mark".
-		var shown := String(symbol) if mark == ColorDef.SymbolMark.NONE \
-			else "%s with the %s mark" % [symbol, mark_name]
+		# The symbol and its mark together are different for each color.
+		var shown := [symbol, mark]
 		if symbol == &"":
 			_errors.append("%s: symbol is missing" % id)
 		elif symbol_owner.has(shown):
-			_errors.append("%s: symbol %s is already used by %s" % [id, shown, symbol_owner[shown]])
+			var symbol_text := String(symbol) if mark == ColorDef.SymbolMark.NONE \
+				else "%s with the %s mark" % [symbol, mark_name]
+			_errors.append("%s: symbol %s is already used by %s" % [id, symbol_text, symbol_owner[shown]])
 		else:
 			symbol_owner[shown] = id
 		var display := str(entry.get("display", ""))

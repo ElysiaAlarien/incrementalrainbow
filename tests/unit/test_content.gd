@@ -1,6 +1,12 @@
 extends GutTest
 ## Content (colors, symbols, recipes, and balance values) comes from data files.
 
+## The 12 hues of the game data: each has one tint and one shade.
+const HUES: Array[StringName] = [&"red", &"yellow", &"blue", &"green", &"orange", &"purple",
+	&"red_orange", &"yellow_orange", &"yellow_green", &"blue_green", &"blue_purple", &"red_purple"]
+
+
+
 
 func test_the_game_data_loads_with_no_errors() -> void:
 	var content := Content.load_dir(Content.DEFAULT_DIR)
@@ -342,10 +348,6 @@ func test_research_unlocks_the_tertiary_colors_and_brown() -> void:
 		assert_false(content.research_unlocking(id).is_empty(), "research in the data unlocks %s" % id)
 
 
-const HUES: Array[StringName] = [&"red", &"yellow", &"blue", &"green", &"orange", &"purple",
-	&"red_orange", &"yellow_orange", &"yellow_green", &"blue_green", &"blue_purple", &"red_purple"]
-
-
 func test_the_game_data_has_white_and_black_base_colors_that_prestige_upgrades_unlock() -> void:
 	var content := Content.load_dir(Content.DEFAULT_DIR)
 	for id in [&"white", &"black"]:
@@ -406,11 +408,14 @@ func test_every_market_of_the_game_data_has_a_price_for_tints_and_shades() -> vo
 	var markets := content.markets()
 	for index in range(1, 4):
 		markets.append(content.market_generator.generate(21, index))
+	# Tints and shades: the colors made with white or black.
+	var mixed := content.colors().filter(func(c: ColorDef) -> bool:
+		return c.recipe.has(&"white") or c.recipe.has(&"black"))
+	assert_eq(mixed.size(), 24)
 	for market in markets:
-		for hue in HUES:
-			for kind in ["tint", "shade"]:
-				var id := StringName("%s_%s" % [hue, kind])
-				assert_true(market.prices.has(id) and not market.prices[id].is_zero(), "%s pays for %s" % [market.id, id])
+		for color: ColorDef in mixed:
+			assert_true(market.prices.has(color.id) and not market.prices[color.id].is_zero(),
+				"%s pays for %s" % [market.id, color.id])
 
 
 func test_reads_research_and_the_lab_cost() -> void:

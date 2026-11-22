@@ -475,10 +475,10 @@ func _on_add_line_requested(factory_id: int) -> void:
 	_show_result(_sim.add_production_line(factory_id))
 
 
-## Shows the game. When [param all] is false, as in each frame, the market
-## section shows only each [constant MARKETS_REFRESH_MS] of game time. Its
+## Shows the game. When [param markets_now] is false, as in each frame, the
+## market section shows only each [constant MARKETS_REFRESH_MS] of game time. Its
 ## many prices are slow to show, and they change slowly.
-func _refresh(all: bool = true) -> void:
+func _refresh(markets_now: bool = true) -> void:
 	_guided_start_banner.show_state(_sim.guided_start())
 	_money_label.text = "Money: %s" % _sim.money().format()
 	var prisms := _sim.prisms()
@@ -512,7 +512,7 @@ func _refresh(all: bool = true) -> void:
 
 	_refresh_demand_events()
 	var since_ms := _sim.time_ms() - _markets_shown_at_ms
-	if all or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS:
+	if markets_now or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS:
 		_refresh_markets()
 
 	for view in _sim.prestige_upgrades():
@@ -797,7 +797,7 @@ func _symbol_icon(color: ColorDef) -> Texture2D:
 		var dot_fill := ColorSymbol.mark_fill(color.symbol_mark)
 		mark = "<circle cx='%.2f' cy='%.2f' r='%.2f' fill='#%s' stroke='#%s' stroke-width='%.1f'/>" % [
 			dot.get_center().x, dot.get_center().y, dot.size.x / 2.0, dot_fill.to_html(false),
-			ColorSymbol.outline_color(dot_fill).to_html(false), ColorSymbol.OUTLINE_WIDTH * 0.75]
+			ColorSymbol.outline_color(dot_fill).to_html(false), ColorSymbol.MARK_OUTLINE_WIDTH]
 	var svg := "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'><path d='M%sZ' fill='#%s' stroke='#%s' stroke-width='%.1f' stroke-linejoin='round'/>%s</svg>" % [
 		SIZE, SIZE, " L".join(path), color.display_color.to_html(false),
 		ColorSymbol.outline_color(color.display_color).to_html(false), ColorSymbol.OUTLINE_WIDTH, mark]

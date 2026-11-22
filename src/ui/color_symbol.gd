@@ -12,6 +12,8 @@ const LIGHT_OUTLINE_COLOR := Color(0.86, 0.87, 0.9)
 const OUTLINE_WIDTH := 2.0
 ## A fill with a luminance below this gets the light outline.
 const DARK_FILL_LUMINANCE := 0.2
+## The outline width of the dot of a mark.
+const MARK_OUTLINE_WIDTH := OUTLINE_WIDTH * 0.75
 const TINT_MARK_FILL := Color(1, 1, 1)
 const SHADE_MARK_FILL := Color(0, 0, 0)
 
@@ -60,7 +62,7 @@ func _draw() -> void:
 		var dot_fill := ColorSymbol.mark_fill(mark)
 		draw_circle(dot.get_center(), dot.size.x / 2.0, dot_fill)
 		draw_circle(dot.get_center(), dot.size.x / 2.0, ColorSymbol.outline_color(dot_fill), false,
-			OUTLINE_WIDTH * 0.75, true)
+			MARK_OUTLINE_WIDTH, true)
 
 
 ## The outline color for a shape filled with [param p_fill]: dark, or light
@@ -82,6 +84,7 @@ static func mark_dot(p_mark: ColorDef.SymbolMark, box: Rect2) -> Rect2:
 	return Rect2()
 
 
+## The fill of the dot of [param p_mark]: white for a tint, black for a shade.
 static func mark_fill(p_mark: ColorDef.SymbolMark) -> Color:
 	return SHADE_MARK_FILL if p_mark == ColorDef.SymbolMark.SHADE else TINT_MARK_FILL
 

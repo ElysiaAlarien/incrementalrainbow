@@ -7,8 +7,8 @@ const SEED := 21
 const TRANSIT_MS := 5000
 
 
-## One widget per second for each line, much money, shipments that take 5
-## seconds, and the colors and upgrades of
+## One widget per second for each line, 10,000 starting money, shipments that
+## take 5 seconds, and the colors and upgrades of
 ## [method ContentFixture.tints_and_shades_colors_data].
 func _content() -> Content:
 	var colors := ContentFixture.tints_and_shades_colors_data()
