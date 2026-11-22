@@ -1420,8 +1420,10 @@ func factory(id: int) -> FactoryView:
 ## population, income, and capacity.
 func markets() -> Array[MarketView]:
 	var views: Array[MarketView] = []
+	var in_transit := _widgets_in_transit_by_market()
+	var at := _demand.moment(_time_ms, _content.demand_balance)
 	for def in _market_defs():
-		views.append(_market_view(def))
+		views.append(_market_view(def, in_transit, at))
 	return views
 
 
@@ -1440,10 +1442,14 @@ func forecast(ahead_ms: int) -> ForecastView:
 	view.ahead_ms = maxi(0, ahead_ms)
 	view.at_ms = _time_ms + view.ahead_ms
 	view.accuracy = forecast_accuracy()
+	var balance := _content.demand_balance
+	var at := _demand.moment(view.at_ms, balance)
 	for def in _market_defs():
+		var color_ids := def.price_colors()
+		var values := _demand.forecasts(def.id, color_ids, at, view.accuracy)
 		var colors: Dictionary[StringName, float] = {}
-		for color in def.prices:
-			colors[color] = _demand.forecast(def.id, color, view.at_ms, view.accuracy, _content.demand_balance)
+		for i in color_ids.size():
+			colors[color_ids[i]] = values[i]
 		view.demands[def.id] = colors
 	return view
 
@@ -1468,10 +1474,21 @@ func market_count() -> int:
 	return _content.markets().size() + _generated.size()
 
 
+## The ids of all markets, in the order of [method markets], with no views to
+## make.
+func market_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for def in _market_defs():
+		ids.append(def.id)
+	return ids
+
+
 ## The market with [param id], or null.
 func market(id: StringName) -> MarketView:
 	var def := _market_def(id)
-	return null if def == null else _market_view(def)
+	if def == null:
+		return null
+	return _market_view(def, _widgets_in_transit_by_market(), _demand.moment(_time_ms, _content.demand_balance))
 
 
 ## All links, in the order they were made.
@@ -1669,9 +1686,26 @@ func _accepted_count(state: LinkState, available: int) -> int:
 ## The capacity that [param market] has left now for a shipment that leaves
 ## now. It can be less than 0 after a load of an old save.
 func _capacity_left(market: MarketState) -> int:
+	return _capacity_left_with(market, _widgets_in_transit_to_market(market.id))
+
+
+## [method _capacity_left] with [param in_transit] widgets on their way to
+## [param market].
+func _capacity_left_with(market: MarketState, in_transit: int) -> int:
 	return market.capacity(_content.market_balance) \
-		- market.capacity_used(_time_ms, _content.market_balance) \
-		- _widgets_in_transit_to_market(market.id)
+		- market.capacity_used(_time_ms, _content.market_balance) - in_transit
+
+
+## Market id to the widgets in shipments on their way to it, for each market
+## that a link goes to: [method _widgets_in_transit_to_market] of all markets,
+## with one pass over the links.
+func _widgets_in_transit_by_market() -> Dictionary[StringName, int]:
+	var counts: Dictionary[StringName, int] = {}
+	for state in _links:
+		if state.destination_kind == LinkView.Destination.MARKET:
+			counts[state.destination_market_id] = counts.get(state.destination_market_id, 0) \
+				+ state.widgets_in_transit()
+	return counts
 
 
 ## Widgets in shipments on their way to the market [param market_id].
@@ -1808,7 +1842,7 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 ## the base price times demand, times the factor from the market's income.
 func _price(def: MarketDef, color: StringName, demand: float) -> BigNumber:
 	var factor := _content.market_balance.income_factor(_markets[def.id].income)
-	return def.price(color).mul(BigNumber.from_float(demand * factor))
+	return def.price(color).times_float(demand * factor)
 
 
 func _investment_cost(state: MarketState, goal: MarketView.Investment) -> BigNumber:
@@ -1960,7 +1994,10 @@ func _link_view(state: LinkState) -> LinkView:
 	return state.to_view(_content.transport_tier(state.vehicle), _time_ms)
 
 
-func _market_view(def: MarketDef) -> MarketView:
+## The view of [param def]. [param in_transit] is
+## [method _widgets_in_transit_by_market], and [param at] is the demand moment
+## of now.
+func _market_view(def: MarketDef, in_transit: Dictionary[StringName, int], at: DemandState.Moment) -> MarketView:
 	var balance := _content.market_balance
 	var state := _markets[def.id]
 	var view := MarketView.new()
@@ -1970,8 +2007,8 @@ func _market_view(def: MarketDef) -> MarketView:
 	view.income = state.income
 	view.capacity = state.capacity(balance)
 	view.capacity_used = state.capacity_used(_time_ms, balance)
-	view.capacity_in_transit = _widgets_in_transit_to_market(def.id)
-	view.capacity_left = maxi(0, _capacity_left(state))
+	view.capacity_in_transit = in_transit.get(def.id, 0)
+	view.capacity_left = maxi(0, _capacity_left_with(state, view.capacity_in_transit))
 	view.period_ends_in_ms = balance.period_end_ms(_time_ms) - _time_ms
 	view.population_investment_cost = _investment_cost(state, MarketView.Investment.POPULATION)
 	view.income_investment_cost = _investment_cost(state, MarketView.Investment.INCOME)
@@ -1979,8 +2016,13 @@ func _market_view(def: MarketDef) -> MarketView:
 	var needed := _content.tier_for_remoteness(def.remoteness)
 	view.needed_tier = &"" if needed == null else needed.id
 	view.is_open = _transport_tier.reaches(def.remoteness)
-	for color in def.prices:
-		var demand := _demand.demand(def.id, color, _time_ms, _content.demand_balance)
-		view.demands[color] = demand
-		view.prices[color] = _price(def, color, demand)
+	var colors := def.price_colors()
+	var base_prices := def.base_prices()
+	var demands := _demand.demands(def.id, colors, at)
+	var factor := balance.income_factor(state.income)
+	for i in colors.size():
+		var color := colors[i]
+		view.demands[color] = demands[i]
+		# As in [method _price], with the factor from income computed once.
+		view.prices[color] = base_prices[i].times_float(demands[i] * factor)
 	return view

@@ -33,6 +33,9 @@ var remoteness: int:
 var _id: StringName
 var _name: String
 var _prices: Dictionary[StringName, BigNumber]
+## The keys of [member _prices], in their order, and their values.
+var _price_colors: Array[StringName] = []
+var _price_values: Array[BigNumber] = []
 var _start_population: int
 var _start_income: int
 var _remoteness: int
@@ -43,6 +46,8 @@ func _init(p_id: StringName, p_name: String, p_prices: Dictionary[StringName, Bi
 	_id = p_id
 	_name = p_name
 	_prices = p_prices.duplicate()
+	_price_colors.assign(_prices.keys())
+	_price_values.assign(_prices.values())
 	_start_population = p_start_population
 	_start_income = p_start_income
 	_remoteness = p_remoteness
@@ -52,3 +57,15 @@ func _init(p_id: StringName, p_name: String, p_prices: Dictionary[StringName, Bi
 ## not in the content.
 func price(color: StringName) -> BigNumber:
 	return _prices.get(color)
+
+
+## The ids of the colors that [member prices] has, in its order. Returns a
+## copy.
+func price_colors() -> Array[StringName]:
+	return _price_colors.duplicate()
+
+
+## The base prices of [method price_colors], in the same order. Returns a
+## copy.
+func base_prices() -> Array[BigNumber]:
+	return _price_values.duplicate()

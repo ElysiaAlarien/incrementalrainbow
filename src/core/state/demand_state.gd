@@ -47,15 +47,202 @@ var next_event_ms: int = UNSCHEDULED
 ## The demand events that have started and that a tick has not forgotten yet,
 ## in start order.
 var _events: Array[DemandEventState] = []
-## Drift values that a sale used, so that the next sale does not compute them
-## again. It is not state: a new DemandState computes the same values. Market
-## id to color id to [code][pair, knot, a, b][/code]: the pair hash, the knot
-## index, and the values of that knot and the next one.
-var _drift_cache: Dictionary[StringName, Dictionary] = {}
+## The most knot values that [member _knot_values] holds. When a tick finds
+## more, they become [member _old_knot_values], so the cache forgets the values
+## that no query used since then. The markets and the forecast of a game with
+## 100 markets and 39 colors use about 25 000.
+const _MAX_CACHED_KNOTS := 200_000
+## The most knots of one market that [member _rows] holds. When a query needs
+## one more, it forgets the others. The screen asks for two: now and the
+## forecast horizon.
+const _MAX_ROWS_PER_MARKET := 4
+## How many colors of a market a query computes in advance for the knot after
+## the next one (see [method _compute_ahead]). With 39 colors, 20 queries
+## compute them all.
+const _COLORS_AHEAD_PER_QUERY := 2
+
+## Knot values that a query or a sale used, so that the next one does not
+## compute them again. The seed of a knot (see [method _knot_seed]) to its
+## value. It is not state: a new DemandState computes the same values.
+var _knot_values: Dictionary[int, float] = {}
+## The knot values from before the last time that [member _knot_values] was
+## full. A value that a query reads here moves back to [member _knot_values].
+var _old_knot_values: Dictionary[int, float] = {}
+## The pair hashes of each market and color, so that a query does not compute
+## them again. Market id to color id to
+## [code]PackedInt64Array([pair hash, forecast pair hash])[/code]. Not state.
+var _pairs: Dictionary[StringName, Dictionary] = {}
+## The knot values of the colors of a market for a query of all colors, so
+## that each query reads them from arrays. Market id to knot index to
+## [_KnotRow]. Not state.
+var _rows: Dictionary[StringName, Dictionary] = {}
+
+
+## The parts of demand at one time that are the same in each market. A query
+## of all markets makes one with [method moment] and computes them once. Valid
+## only until the next change of the state.
+class Moment:
+	extends RefCounted
+	var at_ms: int
+	## The index of the drift knot at or before [member at_ms].
+	var knot: int
+	## How far drift moves from the value of [member knot] to the next one:
+	## the smoothstep of the time since [member knot].
+	var smooth: float
+	var amplitude: float
+	var saturation_ms_per_widget: int
+	var saturation_half_widgets: float
+	## The saturation factor of a color with no recent widgets.
+	var no_saturation: float
+	## True when a demand event is active at [member at_ms].
+	var has_events: bool
+	## Color id to [method DemandState.event_factor] at [member at_ms], filled
+	## as a query needs them.
+	var event_factors: Dictionary[StringName, float] = {}
+
+
+## The knot values of [member colors] in one market, for one knot index: for
+## each color, the value of the knot and of the next knot, of drift and of
+## forecast noise.
+class _KnotRow:
+	extends RefCounted
+	var colors: Array[StringName] = []
+	var real_a := PackedFloat64Array()
+	var real_b := PackedFloat64Array()
+	var noise_a := PackedFloat64Array()
+	var noise_b := PackedFloat64Array()
+	## The colors whose values of the knot after the next one are in the
+	## cache, from the first color.
+	var computed_ahead := 0
 
 
 func _init(p_drift_key: int) -> void:
 	drift_key = p_drift_key & _MASK32
+
+
+## The parts of demand at [param at_ms] that are the same in each market, for
+## [method demands] and [method forecasts]. Use it only until the state
+## changes.
+func moment(at_ms: int, balance: DemandBalance) -> Moment:
+	var result := Moment.new()
+	result.at_ms = at_ms
+	result.amplitude = balance.drift_amplitude
+	if result.amplitude != 0.0:
+		@warning_ignore("integer_division")
+		result.knot = at_ms / balance.drift_period_ms
+		result.smooth = _smooth(result.knot, at_ms, balance)
+	result.saturation_ms_per_widget = balance.saturation_ms_per_widget
+	result.saturation_half_widgets = balance.saturation_half_widgets
+	result.no_saturation = 1.0 / (1.0 + 0.0 / result.saturation_half_widgets)
+	for event in _events:
+		if event.is_active_at(at_ms):
+			result.has_events = true
+	return result
+
+
+## [method demand] of each of [param colors] in [param market_id] at the time
+## of [param at], in the order of [param colors]. It gives the same values as
+## [method demand], with the same float operations, faster.
+func demands(market_id: StringName, colors: Array[StringName], at: Moment) -> PackedFloat64Array:
+	var values := PackedFloat64Array()
+	values.resize(colors.size())
+	var row := null if at.amplitude == 0.0 else _row(market_id, colors, at.knot)
+	var saturated: Dictionary = _saturated_until_ms.get(market_id, {})
+	var has_saturation := not saturated.is_empty() and at.saturation_ms_per_widget != 0
+	# The helpers are inline, because a call for each color costs more than
+	# its math. The float operations are those of [method demand].
+	for i in colors.size():
+		var drift_value := 1.0
+		if row != null:
+			drift_value = 1.0 + at.amplitude * (2.0 * lerpf(row.real_a[i], row.real_b[i], at.smooth) - 1.0)
+		var saturation := at.no_saturation
+		if has_saturation:
+			saturation = _saturation_at(at, saturated, colors[i])
+		values[i] = drift_value * saturation * (_event_factor_at(at, colors[i]) if at.has_events else 1.0)
+	return values
+
+
+## [method forecast] of each of [param colors] in [param market_id] at the
+## time of [param at], in the order of [param colors]. It gives the same
+## values as [method forecast], with the same float operations, faster.
+func forecasts(market_id: StringName, colors: Array[StringName], at: Moment,
+		accuracy: float) -> PackedFloat64Array:
+	var values := PackedFloat64Array()
+	values.resize(colors.size())
+	var row := null if at.amplitude == 0.0 else _row(market_id, colors, at.knot)
+	var saturated: Dictionary = _saturated_until_ms.get(market_id, {})
+	var has_saturation := not saturated.is_empty() and at.saturation_ms_per_widget != 0
+	# Inline, as in [method demands]. The float operations are those of
+	# [method forecast].
+	for i in colors.size():
+		var real := 1.0
+		var noise := 1.0
+		if row != null:
+			real = 1.0 + at.amplitude * (2.0 * lerpf(row.real_a[i], row.real_b[i], at.smooth) - 1.0)
+			noise = 1.0 + at.amplitude * (2.0 * lerpf(row.noise_a[i], row.noise_b[i], at.smooth) - 1.0)
+		var saturation := at.no_saturation
+		if has_saturation:
+			saturation = _saturation_at(at, saturated, colors[i])
+		values[i] = lerpf(noise, real, accuracy) * saturation \
+			* (_event_factor_at(at, colors[i]) if at.has_events else 1.0)
+	return values
+
+
+## [method saturation_factor] of [param color] at the time of [param at], from
+## [param saturated], the saturation of its market.
+static func _saturation_at(at: Moment, saturated: Dictionary, color: StringName) -> float:
+	var remaining_ms: int = saturated.get(color, 0) - at.at_ms
+	if remaining_ms <= 0:
+		return at.no_saturation
+	var widgets := float(remaining_ms) / at.saturation_ms_per_widget
+	return 1.0 / (1.0 + widgets / at.saturation_half_widgets)
+
+
+## [method event_factor] of [param color] at the time of [param at], computed
+## once for each color.
+func _event_factor_at(at: Moment, color: StringName) -> float:
+	var factor: float = at.event_factors.get(color, NAN)
+	if is_nan(factor):
+		factor = event_factor(color, at.at_ms)
+		at.event_factors[color] = factor
+	return factor
+
+
+## The knot values of [param colors] in [param market_id] for [param knot],
+## from [member _rows].
+func _row(market_id: StringName, colors: Array[StringName], knot: int) -> _KnotRow:
+	var rows: Dictionary = _rows.get(market_id, {})
+	var row: _KnotRow = rows.get(knot)
+	if row != null and row.colors == colors:
+		_compute_ahead(market_id, row, knot + 2)
+		return row
+	if rows.size() >= _MAX_ROWS_PER_MARKET:
+		rows.clear()
+	row = _KnotRow.new()
+	row.colors = colors.duplicate()
+	for color in colors:
+		var pair := _pairs_for(market_id, color)
+		row.real_a.append(_knot_value(pair[0], knot))
+		row.real_b.append(_knot_value(pair[0], knot + 1))
+		row.noise_a.append(_knot_value(pair[1], knot))
+		row.noise_b.append(_knot_value(pair[1], knot + 1))
+	rows[knot] = row
+	_rows[market_id] = rows
+	return row
+
+
+## Computes the values of [param knot] for the next
+## [constant _COLORS_AHEAD_PER_QUERY] colors of [param row] that do not have
+## them yet. When the time reaches the next knot, the row of that knot needs
+## [param knot], and without this each market computes all of them in one
+## query: a spike of time on the screen once each drift period.
+func _compute_ahead(market_id: StringName, row: _KnotRow, knot: int) -> void:
+	var end := mini(row.colors.size(), row.computed_ahead + _COLORS_AHEAD_PER_QUERY)
+	for i in range(row.computed_ahead, end):
+		var pair := _pairs_for(market_id, row.colors[i])
+		_knot_value(pair[0], knot)
+		_knot_value(pair[1], knot)
+	row.computed_ahead = end
 
 
 ## The demand of [param color] in [param market_id] at [param at_ms].
@@ -82,7 +269,7 @@ func _with_known_factors(drift_value: float, market_id: StringName, color: Strin
 func forecast(market_id: StringName, color: StringName, at_ms: int, accuracy: float,
 		balance: DemandBalance) -> float:
 	var real := drift(market_id, color, at_ms, balance)
-	var noise := _drift_of_pair(_forecast_pair_hash(market_id, color), at_ms, balance)
+	var noise := _drift_of_pair(_pairs_for(market_id, color)[1], at_ms, balance)
 	return _with_known_factors(lerpf(noise, real, accuracy), market_id, color, at_ms, balance)
 
 
@@ -131,29 +318,29 @@ static func _event_interval(rng: SimRng, balance: DemandBalance) -> int:
 
 ## The drift part of demand: from 1 - amplitude to 1 + amplitude.
 func drift(market_id: StringName, color: StringName, at_ms: int, balance: DemandBalance) -> float:
-	if balance.drift_amplitude == 0.0:
-		return 1.0
-	@warning_ignore("integer_division")
-	var knot := at_ms / balance.drift_period_ms
-	var knots := _knots(market_id, color, knot)
-	return _between_knots(knots[2], knots[3], knot, at_ms, balance)
+	return _drift_of_pair(_pairs_for(market_id, color)[0], at_ms, balance)
 
 
-## A drift value, as in [method drift], from knot values of [param pair],
-## with no cache.
+## A drift value, as in [method drift], from knot values of [param pair].
 func _drift_of_pair(pair: int, at_ms: int, balance: DemandBalance) -> float:
 	if balance.drift_amplitude == 0.0:
 		return 1.0
 	@warning_ignore("integer_division")
 	var knot := at_ms / balance.drift_period_ms
-	return _between_knots(_knot_value(pair, knot), _knot_value(pair, knot + 1), knot, at_ms, balance)
+	return _between_knots(_knot_value(pair, knot), _knot_value(pair, knot + 1),
+		_smooth(knot, at_ms, balance), balance)
 
 
-## The drift at [param at_ms], from the values [param a] of [param knot] and
-## [param b] of the knot after it: a smooth move from a to b.
-static func _between_knots(a: float, b: float, knot: int, at_ms: int, balance: DemandBalance) -> float:
+## How far drift at [param at_ms] moves from the value of [param knot] to the
+## value of the next knot: a smooth move from 0 to 1.
+static func _smooth(knot: int, at_ms: int, balance: DemandBalance) -> float:
 	var t := float(at_ms - knot * balance.drift_period_ms) / balance.drift_period_ms
-	var smooth := t * t * (3.0 - 2.0 * t)
+	return t * t * (3.0 - 2.0 * t)
+
+
+## The drift from the value [param a] of a knot and [param b] of the knot after
+## it, [param smooth] of the way from a to b.
+static func _between_knots(a: float, b: float, smooth: float, balance: DemandBalance) -> float:
 	return 1.0 + balance.drift_amplitude * (2.0 * lerpf(a, b, smooth) - 1.0)
 
 
@@ -203,6 +390,9 @@ func prune(now_ms: int) -> void:
 				colors.erase(color)
 		if colors.is_empty():
 			_saturated_until_ms.erase(market_id)
+	if _knot_values.size() > _MAX_CACHED_KNOTS:
+		_old_knot_values = _knot_values
+		_knot_values = {}
 
 
 ## The state as plain data for [method Simulation.snapshot]: the keys
@@ -295,32 +485,50 @@ func _until_ms(market_id: StringName, color: StringName) -> int:
 	return colors.get(color, 0)
 
 
-## For [member _drift_cache]: [code][pair, knot, a, b][/code], with the
-## values a and b of [param knot] and the knot after it, for
+## The pair hashes of [param market_id] in [member _pairs], color id to
+## [code]PackedInt64Array([pair hash, forecast pair hash])[/code].
+func _pairs_of(market_id: StringName) -> Dictionary:
+	var pairs: Dictionary = _pairs.get(market_id, {})
+	if pairs.is_empty():
+		_pairs[market_id] = pairs
+	return pairs
+
+
+## [code]PackedInt64Array([pair hash, forecast pair hash])[/code] of
 ## [param market_id] and [param color].
-func _knots(market_id: StringName, color: StringName, knot: int) -> Array:
-	if not _drift_cache.has(market_id):
-		_drift_cache[market_id] = {}
-	var colors: Dictionary = _drift_cache[market_id]
-	var entry: Array = colors.get(color, [])
-	if entry.is_empty():
-		entry = [_pair_hash(market_id, color), knot, 0.0, 0.0]
-		entry[2] = _knot_value(entry[0], knot)
-		entry[3] = _knot_value(entry[0], knot + 1)
-		colors[color] = entry
-	elif entry[1] != knot:
-		var pair: int = entry[0]
-		entry[2] = entry[3] if knot == entry[1] + 1 else _knot_value(pair, knot)
-		entry[3] = _knot_value(pair, knot + 1)
-		entry[1] = knot
-	return entry
+func _pairs_for(market_id: StringName, color: StringName) -> PackedInt64Array:
+	var pairs := _pairs_of(market_id)
+	var pair: PackedInt64Array = pairs.get(color, PackedInt64Array())
+	return _add_pairs(pairs, market_id, color) if pair.is_empty() else pair
+
+
+static func _add_pairs(pairs: Dictionary, market_id: StringName, color: StringName) -> PackedInt64Array:
+	var pair := PackedInt64Array([_pair_hash(market_id, color), _forecast_pair_hash(market_id, color)])
+	pairs[color] = pair
+	return pair
 
 
 ## The drift value of knot [param knot] for the market and color with
 ## [param pair]: a float in [0, 1). The value depends only on the key, the
 ## pair, and the knot, so any knot is known at any time.
 func _knot_value(pair: int, knot: int) -> float:
-	var rng := SimRng.new(((knot & _MASK32) << 32) | (pair ^ drift_key))
+	var knot_seed := _knot_seed(pair, knot)
+	var value: float = _knot_values.get(knot_seed, -1.0)
+	if value < 0.0:
+		value = _old_knot_values.get(knot_seed, -1.0)
+		if value < 0.0:
+			value = _new_knot_value(knot_seed)
+		_knot_values[knot_seed] = value
+	return value
+
+
+## The seed of the generator of a knot value. The value depends only on it.
+func _knot_seed(pair: int, knot: int) -> int:
+	return ((knot & _MASK32) << 32) | (pair ^ drift_key)
+
+
+static func _new_knot_value(knot_seed: int) -> float:
+	var rng := SimRng.new(knot_seed)
 	# The first outputs of xoshiro128** come from only part of the seed, so
 	# skip them until the knot index has an effect.
 	for i in 3:
