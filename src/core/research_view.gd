@@ -28,6 +28,8 @@ var in_transit: Dictionary[StringName, int] = {}
 var requires: Array[StringName] = []
 ## The colors that it unlocks.
 var unlock_colors: Array[StringName] = []
+## The forecast accuracy that it adds, from 0 to 1.
+var forecast_accuracy: float = 0.0
 
 
 ## Paid widgets of all colors, from 0 to [method total_cost].

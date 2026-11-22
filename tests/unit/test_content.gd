@@ -339,7 +339,7 @@ func test_reports_bad_research() -> void:
 		"bad: cost of red must be a positive integer",
 		"bad: requires later, which must be a research earlier in research.json",
 		"bad: each item of research.requires must be a text id",
-		"bad: unlocks has flight, but it can have only colors",
+		"bad: unlocks has flight, but it can have only colors or forecast_accuracy",
 		"bad: unlocks green, but the unlock of green is not research",
 		"bad: unlocks teal, which is not a color",
 		"later: cost must be an object with at least one color",
@@ -619,3 +619,62 @@ func test_reports_bad_demand_event_intervals() -> void:
 	content = _events_content([], {"event_interval_min_ms": 1, "event_interval_max_ms": 1 + (1 << 31)})
 	assert_string_contains("\n".join(content.errors),
 		"demand.event_interval_max_ms can be at most 2147483647 more than demand.event_interval_min_ms")
+
+
+func test_reads_the_forecast_balance() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.colors_data(),
+		ContentFixture.balance_data(1000, 10, {"base_accuracy": 0.25, "horizon_ms": 30_000})))
+
+	assert_almost_eq(content.forecast_balance.base_accuracy, 0.25, 1e-9)
+	assert_eq(content.forecast_balance.horizon_ms, 30_000)
+
+
+func test_reports_a_bad_forecast_balance() -> void:
+	for case: Array in [
+		[{"base_accuracy": -0.1}, "forecast.base_accuracy must be a number of at least 0"],
+		[{"base_accuracy": 1.5}, "forecast.base_accuracy must be at most 1"],
+		[{"horizon_ms": 0}, "forecast.horizon_ms must be a positive integer"],
+	]:
+		var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(),
+			ContentFixture.balance_data(1000, 10, case[0])))
+		assert_string_contains("\n".join(content.errors), case[1])
+	var balance := ContentFixture.balance_data()
+	balance.forecast = "none"
+	var content := Content.from_data(ContentFixture.data(ContentFixture.colors_data(), balance))
+	assert_string_contains("\n".join(content.errors), "balance.json: \"forecast\" must be an object")
+
+
+func test_reads_the_forecast_accuracy_of_research() -> void:
+	var entries := _valid_research()
+	entries.append({"id": "surveys", "name": "Surveys", "cost": {"red": 1},
+		"unlocks": {"forecast_accuracy": 0.3}})
+
+	assert_eq(_research_errors(entries), "")
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.mixed_colors_data(),
+		ContentFixture.balance_data(), null, ContentFixture.transport_data(), {"events": []},
+		{"lab_build_cost": 30, "research": entries}))
+	assert_almost_eq(content.research_def(&"surveys").forecast_accuracy, 0.3, 1e-9)
+	assert_eq(content.research_def(&"surveys").unlock_colors, [] as Array[StringName])
+	assert_eq(content.research_def(&"earth_tones").forecast_accuracy, 0.0, "no forecast accuracy")
+
+
+func test_reports_a_bad_forecast_accuracy_of_research() -> void:
+	for value: Variant in [0, -0.2, 1.5, "much"]:
+		var entries := _valid_research()
+		entries.append({"id": "surveys", "name": "Surveys", "cost": {"red": 1},
+			"unlocks": {"forecast_accuracy": value}})
+		var errors := _research_errors(entries)
+		assert_string_contains(errors,
+			"surveys: unlocks.forecast_accuracy must be a number of more than 0 and at most 1", str(value))
+		assert_string_contains(errors, "surveys: unlocks nothing", str(value))
+
+
+func test_research_in_the_game_data_makes_the_forecast_more_accurate() -> void:
+	var content := Content.load_dir(Content.DEFAULT_DIR)
+	var total := content.forecast_balance.base_accuracy
+	for def in content.research():
+		total += def.forecast_accuracy
+
+	assert_lt(content.forecast_balance.base_accuracy, 0.25, "with no research, the forecast is nearly random")
+	assert_gt(total, content.forecast_balance.base_accuracy + 0.5, "research makes it much more accurate")
+	assert_true(total <= 1.0 + 1e-9, "the accuracy that the data gives is at most 1")

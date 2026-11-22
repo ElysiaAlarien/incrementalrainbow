@@ -33,6 +33,10 @@ var factory_balance: FactoryBalance:
 var demand_balance: DemandBalance:
 	get:
 		return _demand_balance
+## Balance values for the forecast.
+var forecast_balance: ForecastBalance:
+	get:
+		return _forecast_balance
 ## The money the player has at the start of a run.
 var starting_money: BigNumber:
 	get:
@@ -64,6 +68,7 @@ var lab_build_cost: BigNumber:
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
 var _demand_balance := DemandBalance.new(1, 0.0, 0, 1.0, 1, 1)
+var _forecast_balance := ForecastBalance.new(0.0, 1)
 var _starting_money := BigNumber.ZERO
 var _max_offline_ms := 0
 var _automatic_transport_cost := BigNumber.ZERO
@@ -262,6 +267,7 @@ func _parse_balance(data: Dictionary) -> void:
 	else:
 		_errors.append("balance.json: \"run\" must be an object")
 	_parse_demand_balance(data.get("demand", {}))
+	_parse_forecast_balance(data.get("forecast", {}))
 	_parse_prism_balance(data.get("prism", {}))
 	_parse_market_balance(data.get("market", {}))
 	_parse_warehouse_balance(data.get("warehouse", {}))
@@ -322,6 +328,18 @@ func _parse_demand_balance(demand: Variant) -> void:
 	_demand_balance = DemandBalance.new(maxi(1, _read_positive_int(demand, "drift_period_ms", "demand")),
 		amplitude, _read_whole_number(demand, "saturation_ms_per_widget", "demand"), float(half),
 		interval_min, interval_max)
+
+
+func _parse_forecast_balance(forecast: Variant) -> void:
+	if not forecast is Dictionary:
+		_errors.append("balance.json: \"forecast\" must be an object")
+		return
+	var base := _read_number(forecast, "base_accuracy", "forecast", 0.0)
+	if base > 1.0:
+		_errors.append("forecast.base_accuracy must be at most 1")
+		base = 0.0
+	_forecast_balance = ForecastBalance.new(base,
+		maxi(1, _read_positive_int(forecast, "horizon_ms", "forecast")))
 
 
 func _parse_prism_balance(prism: Variant) -> void:
@@ -495,8 +513,12 @@ func _parse_research(data: Dictionary) -> void:
 		for required in requires:
 			if not _research_by_id.has(required):
 				_errors.append("%s: requires %s, which must be a research earlier in research.json" % [id, required])
-		var unlock_colors := _parse_unlocks(id, entry.get("unlocks"))
-		var def := ResearchDef.new(id, entry.name, cost, requires, unlock_colors)
+		var unlocks: Variant = entry.get("unlocks")
+		var unlock_colors := _parse_unlocks(id, unlocks)
+		var accuracy := _parse_forecast_accuracy(id, unlocks)
+		if unlocks is Dictionary and unlock_colors.is_empty() and accuracy == 0.0:
+			_errors.append("%s: unlocks nothing" % id)
+		var def := ResearchDef.new(id, entry.name, cost, requires, unlock_colors, accuracy)
 		_research.append(def)
 		_research_by_id[id] = def
 	for def in _colors:
@@ -523,8 +545,8 @@ func _parse_research_cost(research_id: StringName, data: Variant) -> Dictionary[
 
 
 ## The unlocks of a research: an object with keys from
-## [constant ResearchDef.UNLOCK_KINDS]. It must unlock at least one thing.
-## Returns the colors it unlocks. Each must be a color whose unlock is research.
+## [constant ResearchDef.UNLOCK_KINDS]. Returns the colors it unlocks. Each
+## must be a color whose unlock is research.
 func _parse_unlocks(research_id: StringName, data: Variant) -> Array[StringName]:
 	var colors: Array[StringName] = []
 	if not data is Dictionary:
@@ -533,7 +555,7 @@ func _parse_unlocks(research_id: StringName, data: Variant) -> Array[StringName]
 	for key: Variant in data:
 		if not ResearchDef.UNLOCK_KINDS.has(str(key)):
 			_errors.append("%s: unlocks has %s, but it can have only %s" % [
-				research_id, key, ", ".join(ResearchDef.UNLOCK_KINDS)])
+				research_id, key, " or ".join(ResearchDef.UNLOCK_KINDS)])
 	colors = _read_id_list(research_id, data, "colors", "unlocks")
 	for color_id in colors:
 		var def := color(color_id)
@@ -541,9 +563,19 @@ func _parse_unlocks(research_id: StringName, data: Variant) -> Array[StringName]
 			_errors.append("%s: unlocks %s, which is not a color" % [research_id, color_id])
 		elif def.unlock != ColorDef.Unlock.RESEARCH:
 			_errors.append("%s: unlocks %s, but the unlock of %s is not research" % [research_id, color_id, color_id])
-	if colors.is_empty():
-		_errors.append("%s: unlocks nothing" % research_id)
 	return colors
+
+
+## The forecast accuracy that a research adds: [code]unlocks.forecast_accuracy[/code],
+## a number of more than 0 and at most 1, or 0 when it is not there.
+func _parse_forecast_accuracy(research_id: StringName, unlocks: Variant) -> float:
+	if not unlocks is Dictionary or not unlocks.has("forecast_accuracy"):
+		return 0.0
+	var value: Variant = unlocks.forecast_accuracy
+	if _is_number(value) and value > 0 and value <= 1:
+		return float(value)
+	_errors.append("%s: unlocks.forecast_accuracy must be a number of more than 0 and at most 1" % research_id)
+	return 0.0
 
 
 ## An optional list of unique text ids at [param key] in [param section]. A

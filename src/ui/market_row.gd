@@ -4,8 +4,8 @@ extends PanelContainer
 ## transport tier it needs, and a button for each kind of community
 ## investment, with its cost. On the right, the first line has its population,
 ## income, the capacity used in this period, and the time until the next
-## period. Below it, the current price and demand of each color there. The
-## colors wrap to more lines when they do not fit.
+## period. Below it, the current price, demand, and forecast of each color
+## there. The colors wrap to more lines when they do not fit.
 
 signal invest_pressed(market_id: StringName, goal: MarketView.Investment)
 
@@ -22,7 +22,7 @@ var _period_label := Label.new()
 ## Investment goal to its button.
 var _invest_buttons: Dictionary[MarketView.Investment, Button] = {}
 var _reach_label := Label.new()
-## Color id to the label that shows its price and demand.
+## Color id to the label that shows its price, demand, and forecast.
 var _color_labels: Dictionary[StringName, Label] = {}
 
 
@@ -83,17 +83,18 @@ func _init(view: MarketView, colors: Array[ColorDef]) -> void:
 		symbol.custom_minimum_size = Vector2(32, 32)
 		item.add_child(symbol)
 		var label := Label.new()
-		# Room for "Price 12.3K, demand 100%", so the layout does not jump as
-		# values change.
-		label.custom_minimum_size.x = 250
+		# Room for "Price 31.47, demand 112%, forecast 110%", so the layout
+		# does not jump as values change.
+		label.custom_minimum_size.x = 410
 		item.add_child(label)
 		flow.add_child(item)
 		_color_labels[color.id] = label
 
 
-## Shows [param view]. [param needed_tier_plural] is the plural name of the
-## transport tier that the market needs, such as "Trucks".
-func show_state(view: MarketView, needed_tier_plural: String) -> void:
+## Shows [param view] and the demand in [param forecast]. [param needed_tier_plural]
+## is the plural name of the transport tier that the market needs, such as
+## "Trucks".
+func show_state(view: MarketView, needed_tier_plural: String, forecast: ForecastView) -> void:
 	_reach_label.text = reach_text(view, needed_tier_plural)
 	_reach_label.add_theme_color_override(&"font_color", MUTED_COLOR if view.is_open else BLOCKED_COLOR)
 	_population_label.text = "Population: %s" % BigNumber.from_int(view.population).format()
@@ -110,8 +111,8 @@ func show_state(view: MarketView, needed_tier_plural: String) -> void:
 			view.investment_cost(goal).format()]
 	for color_id in _color_labels:
 		var label := _color_labels[color_id]
-		label.text = "Price %s, demand %s" % [view.price(color_id).format(),
-			format_demand(view.demand(color_id))]
+		label.text = "Price %s, demand %s, forecast %s" % [view.price(color_id).format(),
+			format_demand(view.demand(color_id)), format_demand(forecast.demand(market_id, color_id))]
 
 
 ## Such as "Remoteness 2, open to trucks" or "Remoteness 4, needs trains".
@@ -125,7 +126,7 @@ func reach_label_text() -> String:
 	return _reach_label.text
 
 
-## The text that shows the price and demand of [param color_id].
+## The text that shows the price, demand, and forecast of [param color_id].
 func color_text(color_id: StringName) -> String:
 	return _color_labels[color_id].text
 
@@ -151,6 +152,17 @@ static func capacity_text(view: MarketView) -> String:
 	return text
 
 
-## Demand as a whole percent of normal demand: "100%", "87%".
+## Such as "Forecast: the demand in 60s, 10% accurate. Forecast research
+## makes it more accurate."
+static func forecast_text(forecast: ForecastView) -> String:
+	var text := "Forecast: the demand in %s, %s accurate." % [LinkRow.format_seconds(forecast.ahead_ms),
+		format_demand(forecast.accuracy)]
+	if forecast.accuracy < 1.0:
+		text += " Forecast research makes it more accurate."
+	return text
+
+
+## Demand as a whole percent of normal demand, or an accuracy as a whole
+## percent: "100%", "87%".
 static func format_demand(demand: float) -> String:
 	return "%d%%" % roundi(demand * 100.0)

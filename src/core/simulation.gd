@@ -1169,6 +1169,37 @@ func demand_events() -> Array[DemandEventView]:
 	return _demand.active_events(_time_ms)
 
 
+## The forecast of the demand of each color in each market, open or not, at
+## [param ahead_ms] from now (0 or more), and its accuracy. See
+## [ForecastView]. A query draws nothing from the random number generator, so
+## it does not change the future demand.
+func forecast(ahead_ms: int) -> ForecastView:
+	var view := ForecastView.new()
+	view.ahead_ms = maxi(0, ahead_ms)
+	view.at_ms = _time_ms + view.ahead_ms
+	view.accuracy = forecast_accuracy()
+	for def in _content.markets():
+		var colors: Dictionary[StringName, float] = {}
+		for color in def.prices:
+			colors[color] = _demand.forecast(def.id, color, view.at_ms, view.accuracy, _content.demand_balance)
+		view.demands[def.id] = colors
+	return view
+
+
+## How accurate the forecast is now, from 0 to 1: the base accuracy plus the
+## forecast accuracy of each complete research, at most 1.
+func forecast_accuracy() -> float:
+	var accuracy := _content.forecast_balance.base_accuracy
+	for id in _research.completed():
+		accuracy += _content.research_def(id).forecast_accuracy
+	return minf(1.0, accuracy)
+
+
+## The time ahead that the screen shows the forecast for.
+func forecast_horizon_ms() -> int:
+	return _content.forecast_balance.horizon_ms
+
+
 ## The market with [param id], or null.
 func market(id: StringName) -> MarketView:
 	var def := _content.market(id)

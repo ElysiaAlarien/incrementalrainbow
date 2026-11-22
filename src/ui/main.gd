@@ -64,6 +64,7 @@ var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0
 @onready var _demand_events_empty_label: Label = %DemandEventsEmptyLabel
 @onready var _split_list: VBoxContainer = %SplitList
 @onready var _splits_empty_label: Label = %SplitsEmptyLabel
+@onready var _forecast_label: Label = %ForecastLabel
 @onready var _market_list: VBoxContainer = %MarketList
 @onready var _money_label: Label = %MoneyLabel
 @onready var _prism_label: Label = %PrismLabel
@@ -471,6 +472,8 @@ func _refresh() -> void:
 
 	_refresh_demand_events()
 
+	var forecast := _sim.forecast(_sim.forecast_horizon_ms())
+	_forecast_label.text = MarketRow.forecast_text(forecast)
 	for view in _sim.markets():
 		var market_row: MarketRow = _market_rows.get(view.id)
 		if market_row == null:
@@ -478,7 +481,7 @@ func _refresh() -> void:
 			market_row.invest_pressed.connect(_on_invest_pressed)
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
-		market_row.show_state(view, _content.transport_tier(view.needed_tier).plural_name)
+		market_row.show_state(view, _content.transport_tier(view.needed_tier).plural_name, forecast)
 
 
 func _refresh_research() -> void:

@@ -75,7 +75,7 @@ func show_state(view: ResearchView) -> void:
 		_cost_labels[color_id].text = cost_text(_content.color(color_id).name, view.paid[color_id],
 			view.cost[color_id], view.in_transit[color_id])
 	var parts := PackedStringArray()
-	parts.append("Unlocks: %s" % _color_names(view.unlock_colors))
+	parts.append("Unlocks: %s" % unlocks_text(_color_names(view.unlock_colors), view.forecast_accuracy))
 	if view.status == ResearchView.Status.LOCKED:
 		parts.append("Needs research first: %s" % ", ".join(_content.research_names(view.requires)))
 	_unlocks_label.text = ". ".join(parts)
@@ -102,6 +102,18 @@ static func cost_text(color_name: String, paid: int, cost: int, in_transit: int)
 	if in_transit > 0:
 		text += " (+%s on the way)" % BigNumber.from_int(in_transit).format()
 	return text
+
+
+## Such as "Brown", "Forecast accuracy +30%", or both, with a comma.
+## [param color_names] is the names of the colors that it unlocks, such as
+## "Red-orange, Yellow-orange", or "".
+static func unlocks_text(color_names: String, forecast_accuracy: float) -> String:
+	var parts := PackedStringArray()
+	if not color_names.is_empty():
+		parts.append(color_names)
+	if forecast_accuracy > 0.0:
+		parts.append("Forecast accuracy +%s" % MarketRow.format_demand(forecast_accuracy))
+	return ", ".join(parts)
 
 
 ## Such as "Complete".

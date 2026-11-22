@@ -38,6 +38,10 @@ const TRAIN_TRANSIT_TIME_MS := 1000
 const TRAIN_SHIPMENT_COST := 4
 ## 24 hours, as in the game data.
 const MAX_OFFLINE_MS := 86_400_000
+## The forecast accuracy with no forecast research, and the time ahead that the
+## screen shows the forecast for, in [method balance_data].
+const FORECAST_BASE_ACCURACY := 0.1
+const FORECAST_HORIZON_MS := 10_000
 
 
 static func colors_data() -> Dictionary:
@@ -112,15 +116,16 @@ static func balance_data(widget_time_ms: int = 1000, output_bay_capacity: int = 
 	}
 	var warehouse := {"cost": WAREHOUSE_COST, "space": WAREHOUSE_SPACE, "unlock_factory_count": 0}
 	var offline := {"max_time_away_ms": MAX_OFFLINE_MS}
+	var forecast := {"base_accuracy": FORECAST_BASE_ACCURACY, "horizon_ms": FORECAST_HORIZON_MS}
 	for key: String in overrides:
 		var section: Dictionary = {}
-		for candidate: Dictionary in [run, factory, demand, prism, market, warehouse, offline]:
+		for candidate: Dictionary in [run, factory, demand, prism, market, warehouse, offline, forecast]:
 			if candidate.has(key):
 				section = candidate
 		assert(not section.is_empty(), "unknown balance key %s" % key)
 		section[key] = overrides[key]
 	return {"run": run, "factory": factory, "demand": demand, "prism": prism, "market": market,
-		"warehouse": warehouse, "offline": offline}
+		"warehouse": warehouse, "offline": offline, "forecast": forecast}
 
 
 ## Overrides for [method balance_data] that turn on drift (up to 30%, with a

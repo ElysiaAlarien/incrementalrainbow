@@ -166,8 +166,12 @@ How much a market currently values a color. It sets that color's price there.
 _Avoid_: Popularity, price level
 
 **Forecast**:
-The player's view of future demand. It starts nearly random, and upgrades make it more accurate.
+The player's view of the demand of each color in each market at a future time. It has the saturation and the demand events of now, as they will be at that time, but not demand events that have not started. Its drift is part real drift and part noise. It starts nearly random, and research makes it more accurate.
 _Avoid_: Prediction, projection
+
+**Forecast accuracy**:
+The share of the forecast drift that is the real drift, from 0% to 100%. The rest is noise. It starts low, and each forecast research adds to it.
+_Avoid_: Confidence, precision
 
 **Drift**:
 The slow, continuous change of each color's demand over time.
