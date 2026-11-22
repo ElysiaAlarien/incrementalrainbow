@@ -65,6 +65,31 @@ func _draw() -> void:
 			MARK_OUTLINE_WIDTH, true)
 
 
+## A color's symbol as a vector texture for a button icon, 24 logical pixels
+## wide. Godot draws a [DPITexture] again at the scale of the screen, so it
+## stays sharp. Null for an unknown symbol.
+static func icon(color: ColorDef) -> Texture2D:
+	const SIZE := 24.0
+	var box := Rect2(1.5, 1.5, SIZE - 3.0, SIZE - 3.0)
+	var points := shape_points(color.symbol, box)
+	if points.is_empty():
+		return null
+	var path := PackedStringArray()
+	for point in points:
+		path.append("%.2f,%.2f" % [point.x, point.y])
+	var mark := ""
+	if color.symbol_mark != ColorDef.SymbolMark.NONE:
+		var dot := mark_dot(color.symbol_mark, box)
+		var dot_fill := mark_fill(color.symbol_mark)
+		mark = "<circle cx='%.2f' cy='%.2f' r='%.2f' fill='#%s' stroke='#%s' stroke-width='%.1f'/>" % [
+			dot.get_center().x, dot.get_center().y, dot.size.x / 2.0, dot_fill.to_html(false),
+			outline_color(dot_fill).to_html(false), MARK_OUTLINE_WIDTH]
+	var svg := "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'><path d='M%sZ' fill='#%s' stroke='#%s' stroke-width='%.1f' stroke-linejoin='round'/>%s</svg>" % [
+		SIZE, SIZE, " L".join(path), color.display_color.to_html(false),
+		outline_color(color.display_color).to_html(false), OUTLINE_WIDTH, mark]
+	return DPITexture.create_from_string(svg)
+
+
 ## The outline color for a shape filled with [param p_fill]: dark, or light
 ## for a dark fill.
 static func outline_color(p_fill: Color) -> Color:

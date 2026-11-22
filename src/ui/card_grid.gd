@@ -1,8 +1,9 @@
 class_name CardGrid
 extends GridContainer
 ## A grid that has as many columns as fit its width, each at least
-## [member min_column_width] wide, and at least as wide as its widest child. The cells fill the width, so the grid has no
-## empty space at its right edge. Its children should expand horizontally.
+## [member min_column_width] wide, and at least as wide as its widest child.
+## The cells fill the width, so the grid has no empty space at its right edge.
+## Its children should expand horizontally.
 
 ## The narrowest that a column can be, in logical pixels.
 @export var min_column_width := 200.0

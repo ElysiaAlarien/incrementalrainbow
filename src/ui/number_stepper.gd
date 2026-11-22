@@ -37,10 +37,12 @@ func _init(min_value: float, max_value: float, suffix: String = "") -> void:
 	_show_limits()
 
 
+## The button that steps the number down. For smoke tests.
 func down_button() -> Button:
 	return _down_button
 
 
+## The button that steps the number up. For smoke tests.
 func up_button() -> Button:
 	return _up_button
 

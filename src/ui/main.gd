@@ -206,7 +206,7 @@ func _ready() -> void:
 	for color in _content.colors():
 		_add_color_card(color)
 	for color in _content.colors():
-		_new_warehouse_color.add_icon_item(symbol_icon(color), color.name)
+		_new_warehouse_color.add_icon_item(ColorSymbol.icon(color), color.name)
 		_new_warehouse_color.set_item_metadata(_new_warehouse_color.item_count - 1, color.id)
 	_build_warehouse_button.pressed.connect(_on_build_warehouse_pressed)
 	_market_picker.item_selected.connect(func(index: int) -> void:
@@ -223,6 +223,7 @@ func _ready() -> void:
 	_prestige_confirm.ok_button_text = "Prestige"
 	_prestige_confirm.confirmed.connect(_on_prestige_confirmed)
 	_prestige_text.name = "PrestigeText"
+	_prestige_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_prestige_scroll = DialogFit.wrap(_prestige_confirm, _prestige_text)
 	add_child(_prestige_confirm)
 	_prestige_button.pressed.connect(_on_prestige_pressed)
@@ -830,10 +831,10 @@ func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Arra
 		match key[0]:
 			&"factory":
 				var view := _sim.factory(key[1])
-				choice.add_icon_item(symbol_icon(_content.color(view.color)), _factory_name(view))
+				choice.add_icon_item(ColorSymbol.icon(_content.color(view.color)), _factory_name(view))
 			&"warehouse":
 				var view := _sim.warehouse(key[1])
-				choice.add_icon_item(symbol_icon(_content.color(view.color)), _warehouse_name(view))
+				choice.add_icon_item(ColorSymbol.icon(_content.color(view.color)), _warehouse_name(view))
 			&"lab":
 				choice.add_item(_lab_name(key[1]))
 			_:
@@ -957,28 +958,3 @@ func _refresh_splits(links: Array[LinkView]) -> void:
 func _show_message(text: String) -> void:
 	_message_label.text = text
 	_message_label.visible = not text.is_empty()
-
-
-## A color's symbol as a vector texture for a button icon, 24 logical pixels
-## wide. Godot draws a [DPITexture] again at the scale of the screen, so it
-## stays sharp. Null for an unknown symbol.
-static func symbol_icon(color: ColorDef) -> Texture2D:
-	const SIZE := 24.0
-	var box := Rect2(1.5, 1.5, SIZE - 3.0, SIZE - 3.0)
-	var points := ColorSymbol.shape_points(color.symbol, box)
-	if points.is_empty():
-		return null
-	var path := PackedStringArray()
-	for point in points:
-		path.append("%.2f,%.2f" % [point.x, point.y])
-	var mark := ""
-	if color.symbol_mark != ColorDef.SymbolMark.NONE:
-		var dot := ColorSymbol.mark_dot(color.symbol_mark, box)
-		var dot_fill := ColorSymbol.mark_fill(color.symbol_mark)
-		mark = "<circle cx='%.2f' cy='%.2f' r='%.2f' fill='#%s' stroke='#%s' stroke-width='%.1f'/>" % [
-			dot.get_center().x, dot.get_center().y, dot.size.x / 2.0, dot_fill.to_html(false),
-			ColorSymbol.outline_color(dot_fill).to_html(false), ColorSymbol.MARK_OUTLINE_WIDTH]
-	var svg := "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'><path d='M%sZ' fill='#%s' stroke='#%s' stroke-width='%.1f' stroke-linejoin='round'/>%s</svg>" % [
-		SIZE, SIZE, " L".join(path), color.display_color.to_html(false),
-		ColorSymbol.outline_color(color.display_color).to_html(false), ColorSymbol.OUTLINE_WIDTH, mark]
-	return DPITexture.create_from_string(svg)

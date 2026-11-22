@@ -26,6 +26,9 @@ const ACCENT_COLOR := Color(0.55, 0.66, 1.0)
 const FIELD_COLOR := Color(0.09, 0.1, 0.14)
 
 const CORNER_RADIUS := 8
+## The space between the items of a list. With the font, it makes each item
+## [constant UiScale.MIN_TOUCH_TARGET] high or more.
+const POPUP_ITEM_SEPARATION := 20
 ## The space around the text of a button. With the font, it makes a button
 ## [constant UiScale.MIN_TOUCH_TARGET] high or more.
 const BUTTON_MARGIN := Vector2(14, 10)
@@ -38,6 +41,7 @@ const HEADING_LABEL := &"HeadingLabel"
 const RAIL_BUTTON := &"RailButton"
 
 
+## The theme of the main screen and its dialogs.
 static func make() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = FONT_SIZE
@@ -64,7 +68,9 @@ static func make() -> Theme:
 	theme.set_color(&"font_hover_pressed_color", RAIL_BUTTON, TEXT_COLOR)
 	theme.set_constant(&"align_to_largest_stylebox", RAIL_BUTTON, 1)
 
-	theme.set_constant(&"v_separation", &"PopupMenu", int(UiScale.MIN_TOUCH_TARGET) - 24)
+	# An item of a list, such as the colors of a choice, is as high as a touch
+	# target: the font is about 25 high.
+	theme.set_constant(&"v_separation", &"PopupMenu", POPUP_ITEM_SEPARATION)
 	theme.set_constant(&"item_start_padding", &"PopupMenu", 12)
 	theme.set_constant(&"item_end_padding", &"PopupMenu", 12)
 	theme.set_constant(&"h_separation", &"PopupMenu", 10)
@@ -96,7 +102,8 @@ static func make() -> Theme:
 	theme.set_stylebox(&"embedded_border", &"Window", _window_border())
 	theme.set_stylebox(&"embedded_unfocused_border", &"Window", _window_border())
 	theme.set_font_size(&"title_font_size", &"Window", FONT_SIZE)
-	theme.set_constant(&"title_height", &"Window", 40)
+	# The title bar holds the close button, so it is as high as a touch target.
+	theme.set_constant(&"title_height", &"Window", int(UiScale.MIN_TOUCH_TARGET))
 	theme.set_color(&"title_color", &"Window", TEXT_COLOR)
 	theme.set_stylebox(&"panel", &"TooltipPanel", box(FIELD_COLOR, Vector2(10, 6), BUTTON_COLOR))
 	theme.set_font_size(&"font_size", &"TooltipLabel", SMALL_FONT_SIZE)
@@ -146,7 +153,7 @@ static func _window_border() -> StyleBoxFlat:
 	style.expand_margin_left = 6
 	style.expand_margin_right = 6
 	style.expand_margin_bottom = 6
-	style.expand_margin_top = 40
+	style.expand_margin_top = UiScale.MIN_TOUCH_TARGET
 	style.shadow_color = Color(0, 0, 0, 0.4)
 	style.shadow_size = 12
 	return style

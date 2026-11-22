@@ -83,9 +83,10 @@ static func os_scale(dpi: int) -> float:
 	return DisplayServer.screen_get_scale()
 
 
-## Whether this device is a phone or a tablet.
+## Whether this device is a phone or a tablet, also for a web build that runs
+## in the browser of a phone or a tablet.
 static func is_mobile() -> bool:
-	return OS.has_feature("mobile")
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 
 
 ## Sets the scale of [param window] for its current size on this device.

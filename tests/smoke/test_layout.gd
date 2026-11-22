@@ -100,6 +100,14 @@ func test_each_dialog_fits_each_device() -> void:
 		await wait_process_frames(2)
 		var export_dialog: ExportCodeDialog = main.find_child("ExportCodeDialog", true, false)
 		_assert_dialog_fits(export_dialog, size, "%s, export" % where)
+		# A code that imports asks the player to confirm.
+		(export_dialog.find_child("ImportCodeText", true, false) as TextEdit).text = \
+			(export_dialog.find_child("ExportCodeText", true, false) as TextEdit).text
+		export_dialog.find_child("ImportCode", true, false).pressed.emit()
+		await wait_process_frames(2)
+		var import_confirm: ConfirmationDialog = export_dialog.find_child("ImportConfirm", true, false)
+		_assert_dialog_fits(import_confirm, size, "%s, import" % where)
+		import_confirm.hide()
 		export_dialog.hide()
 
 		main.find_child("PrestigeButton", true, false).pressed.emit()
@@ -199,6 +207,47 @@ func test_the_mouse_wheel_scrolls_a_section() -> void:
 	_close(main)
 
 
+func test_a_tap_steps_a_sell_threshold() -> void:
+	var main := await _open_main(DeviceProfiles.named("phone").logical_size())
+	main.show_section(&"factories")
+	await wait_process_frames(2)
+	var row: WarehouseRow = main.find_child("Warehouse1", true, false)
+	var stepper: NumberStepper = row.find_child("SellThresholdStepper", true, false)
+	(main.find_child("Scroll", true, false) as ScrollContainer).ensure_control_visible(stepper)
+	await wait_process_frames(2)
+	var before := row.threshold_box().value
+
+	_tap(_center(stepper.down_button()))
+	await wait_process_frames(1)
+
+	assert_eq(row.threshold_box().value, before - 1)
+	_close(main)
+
+
+func test_a_click_opens_the_list_of_a_choice() -> void:
+	var main := await _open_main(DeviceProfiles.named("1080p monitor").logical_size())
+	main.show_section(&"links")
+	await wait_process_frames(2)
+	var choice: OptionButton = main.find_child("NewLinkSource", true, false)
+
+	_click(_center(choice))
+	await wait_process_frames(2)
+
+	assert_true(choice.get_popup().visible, "the list shows")
+	choice.get_popup().hide()
+	_close(main)
+
+
+func test_each_item_of_a_list_is_large_enough_to_touch() -> void:
+	var main := await _open_main(DeviceProfiles.named("small phone").logical_size())
+	var popup := (main.find_child("NewLinkSource", true, false) as OptionButton).get_popup()
+	var font := popup.get_theme_font(&"font")
+	var item_height := font.get_height(popup.get_theme_font_size(&"font_size")) \
+		+ popup.get_theme_constant(&"v_separation")
+	assert_gte(item_height, UiScale.MIN_TOUCH_TARGET)
+	_close(main)
+
+
 func test_symbols_on_buttons_are_vector_art() -> void:
 	var main := await _open_main(Vector2(1280, 720))
 	var color: OptionButton = main.find_child("NewWarehouseColor", true, false)
@@ -253,12 +302,17 @@ func _assert_dialog_fits(dialog: AcceptDialog, size: Vector2, where: String) -> 
 	var rect := Rect2(Vector2(dialog.position) - Vector2(0, title), Vector2(dialog.size) + Vector2(0, title))
 	assert_true(Rect2(Vector2.ZERO, size).encloses(rect), "%s: the dialog %s is inside the screen %s" % [
 		where, rect, size])
+	var close_size := float(dialog.get_theme_constant(&"title_height"))
+	assert_gte(close_size, UiScale.MIN_TOUCH_TARGET - EPSILON, "%s: the title bar with the close button" % where)
 	for control in dialog.find_children("*", "Control", true, false):
 		var item := control as Control
-		if item.is_visible_in_tree() and item is Label and item.get_parent() is not ScrollContainer:
+		if not item.is_visible_in_tree() or item.get_viewport() != dialog:
+			continue
+		if item is Label:
 			_assert_text_shows(item as Label, where)
-	for button: Button in [dialog.get_ok_button()]:
-		assert_gte(button.size.y, UiScale.MIN_TOUCH_TARGET - EPSILON, "%s: the OK button is large enough" % where)
+		if item is BaseButton and (item.size.x < UiScale.MIN_TOUCH_TARGET - EPSILON
+				or item.size.y < UiScale.MIN_TOUCH_TARGET - EPSILON):
+			fail_test("%s: %s is %s, too small to touch" % [where, item.get_path(), item.size])
 
 
 ## The controls of the screen that show now, not those in a dialog.
