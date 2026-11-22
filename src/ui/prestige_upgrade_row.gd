@@ -6,16 +6,16 @@ extends PanelContainer
 
 signal buy_pressed(upgrade_id: StringName)
 
-const MUTED_COLOR := Color(0.7, 0.72, 0.8)
+const MUTED_COLOR := UiTheme.MUTED_COLOR
 const OWNED_COLOR := Color(0.6, 0.85, 0.6)
 
 var upgrade_id: StringName
 
 var _content: Content
-var _name_label := Label.new()
-var _status_label := Label.new()
+var _name_label: Label
+var _status_label: Label
 var _buy_button := Button.new()
-var _effects_label := Label.new()
+var _effects_label: Label
 
 
 func _init(view: PrestigeUpgradeView, content: Content) -> void:
@@ -26,13 +26,12 @@ func _init(view: PrestigeUpgradeView, content: Content) -> void:
 	lines.add_theme_constant_override(&"separation", 4)
 	add_child(lines)
 
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override(&"separation", 16)
+	var top := UiTheme.flow()
 	lines.add_child(top)
+	_name_label = UiTheme.column_label(220)
 	_name_label.text = view.name
-	_name_label.custom_minimum_size.x = 260
 	top.add_child(_name_label)
-	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_status_label = UiTheme.column_label(150)
 	top.add_child(_status_label)
 	_buy_button.name = "Buy"
 	_buy_button.text = "Buy"
@@ -40,9 +39,8 @@ func _init(view: PrestigeUpgradeView, content: Content) -> void:
 	_buy_button.pressed.connect(func() -> void: buy_pressed.emit(upgrade_id))
 	top.add_child(_buy_button)
 
+	_effects_label = UiTheme.wrapping_label(true)
 	_effects_label.text = effects_text(view, content)
-	_effects_label.add_theme_color_override(&"font_color", MUTED_COLOR)
-	_effects_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lines.add_child(_effects_label)
 
 

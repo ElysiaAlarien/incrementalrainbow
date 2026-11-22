@@ -1,13 +1,13 @@
 class_name LinkRow
 extends PanelContainer
 ## One link on the screen. The first line has its source (a factory or a
-## warehouse) and destination (a market, a mixed factory, a warehouse, or a lab),
-## vehicle, shipment cost, transit time, a button to start a shipment, and a
-## button to buy automatic transport. The second line has its transport
-## (manual, or what automatic transport did last), its throughput, and its
-## shipments in transit. A third line shows only when the player's transport
-## tier is above the link's vehicle: what the newer vehicle does, and a button
-## to upgrade to it.
+## warehouse) and destination (a market, a mixed factory, a warehouse, or a
+## lab). The second has its vehicle, shipment cost, transit time, a button to
+## start a shipment, and a button to buy automatic transport. The third has
+## its transport (manual, or what automatic transport did last), its
+## throughput, and its shipments in transit. A last line shows only when the
+## player's transport tier is above the link's vehicle: what the newer vehicle
+## does, and a button to upgrade to it. The lines wrap on a narrow screen.
 
 signal ship_pressed(link_id: int)
 signal automate_pressed(link_id: int)
@@ -24,16 +24,16 @@ var link_id: int
 
 var _symbol := ColorSymbol.new()
 var _ends_label := Label.new()
-var _vehicle_label := Label.new()
-var _cost_label := Label.new()
-var _transit_label := Label.new()
+var _vehicle_label: Label
+var _cost_label: Label
+var _transit_label: Label
 var _ship_button := Button.new()
 var _automate_button := Button.new()
-var _transport_label := Label.new()
-var _throughput_label := Label.new()
-var _in_transit_label := Label.new()
-var _upgrade_line := HBoxContainer.new()
-var _upgrade_label := Label.new()
+var _transport_label: Label
+var _throughput_label: Label
+var _in_transit_label: Label
+var _upgrade_line: HFlowContainer
+var _upgrade_label: Label
 var _upgrade_button := Button.new()
 
 
@@ -41,31 +41,20 @@ func _init(view: LinkView, color: ColorDef, source_name: String, destination_nam
 	link_id = view.id
 	name = "Link%d" % view.id
 	var lines := VBoxContainer.new()
-	lines.add_theme_constant_override(&"separation", 4)
+	lines.add_theme_constant_override(&"separation", 6)
 	add_child(lines)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override(&"separation", 16)
-	lines.add_child(top)
 
 	_symbol.setup(color)
-	_symbol.custom_minimum_size = Vector2(32, 32)
-	top.add_child(_symbol)
-
 	_ends_label.text = "%s to %s" % [source_name, destination_name]
-	_ends_label.tooltip_text = _ends_label.text
-	# A fixed width keeps the columns of all rows in line. Trim a long name.
-	_ends_label.custom_minimum_size.x = 440
-	_ends_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	top.add_child(_ends_label)
+	lines.add_child(UiTheme.title_line(_symbol, _ends_label))
 
-	_vehicle_label.custom_minimum_size.x = 140
+	var top := UiTheme.flow()
+	lines.add_child(top)
+	_vehicle_label = UiTheme.column_label(140)
 	top.add_child(_vehicle_label)
-
-	_cost_label.custom_minimum_size.x = 90
+	_cost_label = UiTheme.column_label(100)
 	top.add_child(_cost_label)
-
-	_transit_label.custom_minimum_size.x = 120
-	_transit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_transit_label = UiTheme.column_label(120)
 	top.add_child(_transit_label)
 
 	_ship_button.name = "Ship"
@@ -79,37 +68,22 @@ func _init(view: LinkView, color: ColorDef, source_name: String, destination_nam
 	_automate_button.pressed.connect(func() -> void: automate_pressed.emit(link_id))
 	top.add_child(_automate_button)
 
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override(&"separation", 16)
+	var bottom := UiTheme.flow()
 	lines.add_child(bottom)
-	# Line up the second line with the text after the symbol.
-	var indent := Control.new()
-	indent.custom_minimum_size.x = 32
-	bottom.add_child(indent)
-
-	_transport_label.custom_minimum_size.x = 520
+	# Room for the longest transport text, so the columns stay in line.
+	_transport_label = UiTheme.column_label(430, true)
 	bottom.add_child(_transport_label)
-
-	_throughput_label.custom_minimum_size.x = 210
-	_throughput_label.add_theme_color_override(&"font_color", MUTED_COLOR)
+	_throughput_label = UiTheme.column_label(170, true)
 	bottom.add_child(_throughput_label)
-
-	_in_transit_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# Trim instead of widening the row past the screen.
-	_in_transit_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_in_transit_label.add_theme_color_override(&"font_color", MUTED_COLOR)
+	_in_transit_label = UiTheme.column_label(0, true)
 	bottom.add_child(_in_transit_label)
 
-	_upgrade_line.add_theme_constant_override(&"separation", 16)
+	_upgrade_line = UiTheme.flow()
 	_upgrade_line.visible = false
 	lines.add_child(_upgrade_line)
-	var upgrade_indent := Control.new()
-	upgrade_indent.custom_minimum_size.x = 32
-	_upgrade_line.add_child(upgrade_indent)
-	_upgrade_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_upgrade_label = UiTheme.column_label(0)
 	_upgrade_label.add_theme_color_override(&"font_color", UPGRADE_COLOR)
 	_upgrade_line.add_child(_upgrade_label)
-	# Under the Automate button, with the same width.
 	_upgrade_button.name = "UpgradeVehicle"
 	_upgrade_button.custom_minimum_size.x = 190
 	_upgrade_button.pressed.connect(func() -> void: upgrade_vehicle_pressed.emit(link_id))
@@ -136,7 +110,6 @@ func show_state(view: LinkView, automatic_cost: BigNumber, vehicle: TransportTie
 	_transport_label.add_theme_color_override(&"font_color", _transport_color(view.automatic))
 	_throughput_label.text = "Throughput: %s/min" % BigNumber.from_int(view.widgets_per_minute).format()
 	_in_transit_label.text = _in_transit_text(view.shipments_in_transit)
-	_in_transit_label.tooltip_text = _in_transit_label.text
 
 
 func ship_button() -> Button:

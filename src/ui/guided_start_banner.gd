@@ -12,11 +12,11 @@ signal skip_pressed
 ## What the player does at each step that the banner shows, in step order.
 const STEP_TEXTS: Dictionary[GuidedStartView.Step, String] = {
 	GuidedStartView.Step.BUILD_FACTORY:
-		"Build a factory: pick a color and press Build. A factory makes widgets of its color.",
+		"Build a factory: in Colors, press Build factory on a color. A factory makes widgets of its color.",
 	GuidedStartView.Step.MAKE_LINK:
-		"Make a link from your factory to a market. A link moves widgets of one color.",
+		"In Links, make a link from your factory to a market. A link moves widgets of one color.",
 	GuidedStartView.Step.START_SHIPMENT:
-		"Start a shipment on your link. A shipment costs money and takes the transit time of the link.",
+		"In Links, press Ship on your link. A shipment costs money and takes the transit time of the link.",
 	GuidedStartView.Step.SELL:
 		"Wait for the shipment to arrive. The market sells the widgets for money.",
 }
@@ -31,7 +31,10 @@ func _init() -> void:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.2, 0.24, 0.36)
 	style.set_corner_radius_all(8)
-	style.set_content_margin_all(12)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
 	add_theme_stylebox_override(&"panel", style)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override(&"separation", 16)
@@ -46,6 +49,7 @@ func _init() -> void:
 	_text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_text_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_text_label.add_theme_font_size_override(&"font_size", UiTheme.SMALL_FONT_SIZE)
 	row.add_child(_text_label)
 
 	_skip_button.name = "SkipGuidedStart"

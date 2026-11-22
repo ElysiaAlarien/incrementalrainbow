@@ -1,9 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/ui/main.gd" id="1_main"]
-
-[sub_resource type="Theme" id="Theme_main"]
-default_font_size = 20
+[ext_resource type="Script" path="res://src/ui/card_grid.gd" id="2_grid"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -12,7 +10,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme = SubResource("Theme_main")
 script = ExtResource("1_main")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -25,29 +22,32 @@ grow_vertical = 2
 color = Color(0.11, 0.12, 0.17, 1)
 
 [node name="Margin" type="MarginContainer" parent="."]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 24
-theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
 
 [node name="Layout" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 8
 
 [node name="Header" type="HBoxContainer" parent="Margin/Layout"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 20
 
 [node name="Title" type="Label" parent="Margin/Layout/Header"]
+unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 32
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 26
 text = "Incremental Rainbow"
 
 [node name="MoneyLabel" type="Label" parent="Margin/Layout/Header"]
@@ -55,7 +55,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_colors/font_color = Color(0.98, 0.85, 0.45, 1)
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 22
 text = "Money: 0"
 
 [node name="PrismLabel" type="Label" parent="Margin/Layout/Header"]
@@ -63,20 +63,12 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_colors/font_color = Color(0.75, 0.6, 1, 1)
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 22
 text = "Prisms: 0"
 
-[node name="BuyPrism" type="Button" parent="Margin/Layout/Header"]
-unique_name_in_owner = true
+[node name="HeaderSpacer" type="Control" parent="Margin/Layout/Header"]
 layout_mode = 2
-size_flags_vertical = 4
-text = "Buy prism"
-
-[node name="PrestigeButton" type="Button" parent="Margin/Layout/Header"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_vertical = 4
-text = "Prestige"
+size_flags_horizontal = 3
 
 [node name="ExportCodeButton" type="Button" parent="Margin/Layout/Header"]
 unique_name_in_owner = true
@@ -91,225 +83,320 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.55, 0.45, 1)
 autowrap_mode = 3
 
-[node name="Scroll" type="ScrollContainer" parent="Margin/Layout"]
+[node name="Body" type="HBoxContainer" parent="Margin/Layout"]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="RailScroll" type="ScrollContainer" parent="Margin/Layout/Body"]
+layout_mode = 2
 horizontal_scroll_mode = 0
 
-[node name="Sections" type="VBoxContainer" parent="Margin/Layout/Scroll"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 16
-
-[node name="ColorsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Colors and recipes"
-
-[node name="ColorCards" type="HFlowContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="Rail" type="VBoxContainer" parent="Margin/Layout/Body/RailScroll"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 12
+theme_override_constants/separation = 4
 
-[node name="FactoriesHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="Scroll" type="ScrollContainer" parent="Margin/Layout/Body"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Factories"
+size_flags_horizontal = 3
+horizontal_scroll_mode = 0
 
-[node name="FactoryList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="Sections" type="MarginContainer" parent="Margin/Layout/Body/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_right = 12
+
+[node name="ColorsSection" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ColorsHint" type="Label" parent="Margin/Layout/Body/Scroll/Sections/ColorsSection"]
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "Build a factory of a color to make its widgets. A mixed color needs widgets of the colors in its recipe."
+autowrap_mode = 3
+
+[node name="ColorCards" type="GridContainer" parent="Margin/Layout/Body/Scroll/Sections/ColorsSection"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+script = ExtResource("2_grid")
+min_column_width = 210.0
+
+[node name="FactoriesSection" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="FactoryList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="EmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/FactoryList"]
+[node name="EmptyLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection/FactoryList"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
-text = "No factories yet. Build one from a color above."
+theme_type_variation = &"MutedLabel"
+text = "No factories yet. Build one in Colors."
+autowrap_mode = 3
 
-[node name="WarehousesHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="WarehousesHeading" type="Label" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeadingLabel"
 text = "Warehouses"
 
-[node name="NewWarehouse" type="HBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="NewWarehouse" type="HFlowContainer" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
 
-[node name="NewWarehouseLabel" type="Label" parent="Margin/Layout/Scroll/Sections/NewWarehouse"]
+[node name="NewWarehouseLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection/NewWarehouse"]
 layout_mode = 2
 text = "New warehouse for"
 
-[node name="NewWarehouseColor" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewWarehouse"]
+[node name="NewWarehouseColor" type="OptionButton" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection/NewWarehouse"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(240, 0)
+custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 
-[node name="BuildWarehouse" type="Button" parent="Margin/Layout/Scroll/Sections/NewWarehouse"]
+[node name="BuildWarehouse" type="Button" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection/NewWarehouse"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Build warehouse"
 
-[node name="WarehouseLockedLabel" type="Label" parent="Margin/Layout/Scroll/Sections/NewWarehouse"]
+[node name="WarehouseLockedLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+theme_type_variation = &"MutedLabel"
+autowrap_mode = 3
 
-[node name="WarehouseList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="WarehouseList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="WarehousesEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/WarehouseList"]
+[node name="WarehousesEmptyLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/FactoriesSection/WarehouseList"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+theme_type_variation = &"MutedLabel"
 text = "No warehouses yet. A warehouse holds widgets of one color between their source and their destination."
+autowrap_mode = 3
 
-[node name="ResearchHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Labs and research"
-
-[node name="Labs" type="HBoxContainer" parent="Margin/Layout/Scroll/Sections"]
-layout_mode = 2
-theme_override_constants/separation = 24
-
-[node name="BuildLab" type="Button" parent="Margin/Layout/Scroll/Sections/Labs"]
+[node name="LinksSection" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections"]
 unique_name_in_owner = true
-layout_mode = 2
-
-[node name="LabsLabel" type="Label" parent="Margin/Layout/Scroll/Sections/Labs"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="LabStockLabel" type="Label" parent="Margin/Layout/Scroll/Sections/Labs"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
-text_overrun_behavior = 3
-
-[node name="ResearchList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="LinksHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Links"
-
-[node name="Transport" type="HBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="TransportLabel" type="Label" parent="Margin/Layout/Scroll/Sections/Transport"]
+[node name="Transport" type="HFlowContainer" parent="Margin/Layout/Body/Scroll/Sections/LinksSection"]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+
+[node name="TransportLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/Transport"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 4
 text = "Transport tier: Cart"
 
-[node name="BuyTransportTier" type="Button" parent="Margin/Layout/Scroll/Sections/Transport"]
+[node name="BuyTransportTier" type="Button" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/Transport"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Buy next tier"
 
-[node name="NewLink" type="HBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="NewLink" type="HFlowContainer" parent="Margin/Layout/Body/Scroll/Sections/LinksSection"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
 
-[node name="NewLinkLabel" type="Label" parent="Margin/Layout/Scroll/Sections/NewLink"]
+[node name="NewLinkLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/NewLink"]
 layout_mode = 2
+size_flags_vertical = 4
 text = "New link from"
 
-[node name="NewLinkSource" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewLink"]
+[node name="NewLinkSource" type="OptionButton" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/NewLink"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(240, 0)
+custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 
-[node name="NewLinkTo" type="Label" parent="Margin/Layout/Scroll/Sections/NewLink"]
+[node name="NewLinkTo" type="Label" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/NewLink"]
 layout_mode = 2
+size_flags_vertical = 4
 text = "to"
 
-[node name="NewLinkDestination" type="OptionButton" parent="Margin/Layout/Scroll/Sections/NewLink"]
+[node name="NewLinkDestination" type="OptionButton" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/NewLink"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(240, 0)
+custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 
-[node name="MakeLink" type="Button" parent="Margin/Layout/Scroll/Sections/NewLink"]
+[node name="MakeLink" type="Button" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/NewLink"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Make link"
 
-[node name="LinkList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="LinkList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/LinksSection"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="LinksEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/LinkList"]
+[node name="LinksEmptyLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/LinkList"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+theme_type_variation = &"MutedLabel"
 text = "No links yet. Link a factory to a market to sell its widgets, to a mixed factory to feed it, to a warehouse to hold its widgets, or to a lab to pay for research."
 autowrap_mode = 3
 
-[node name="DemandEventsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="SplitsHeading" type="Label" parent="Margin/Layout/Body/Scroll/Sections/LinksSection"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeadingLabel"
+text = "Splits"
+
+[node name="SplitList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/LinksSection"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SplitsEmptyLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/LinksSection/SplitList"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "Buy automatic transport for a link, then set the percentage of a factory's widgets that goes to each of its automatic links."
+autowrap_mode = 3
+
+[node name="ResearchSection" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Labs" type="HFlowContainer" parent="Margin/Layout/Body/Scroll/Sections/ResearchSection"]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 8
+
+[node name="BuildLab" type="Button" parent="Margin/Layout/Body/Scroll/Sections/ResearchSection/Labs"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="LabsLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/ResearchSection/Labs"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="LabStockLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/ResearchSection"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="LabStockHint" type="Label" parent="Margin/Layout/Body/Scroll/Sections/ResearchSection"]
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "Lab stock: widgets that arrived at a lab when the selected research did not need them. They pay for the next research that needs them."
+autowrap_mode = 3
+
+[node name="ResearchList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/ResearchSection"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MarketsSection" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="DemandEventsHeading" type="Label" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection"]
+layout_mode = 2
+theme_type_variation = &"HeadingLabel"
 text = "Demand events"
 
-[node name="DemandEventList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="DemandEventList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="DemandEventsEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/DemandEventList"]
+[node name="DemandEventsEmptyLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection/DemandEventList"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+theme_type_variation = &"MutedLabel"
 text = "No demand events now. A demand event raises or lowers the demand for some colors in every market for a short time."
-
-[node name="SplitList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="SplitsEmptyLabel" type="Label" parent="Margin/Layout/Scroll/Sections/SplitList"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
-text = "Splits: buy automatic transport for a link, then set the percentage of a factory's widgets that goes to each of its automatic links."
 autowrap_mode = 3
 
-[node name="MarketsHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="MarketsHeading" type="Label" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_type_variation = &"HeadingLabel"
 text = "Markets"
 
-[node name="ForecastLabel" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="ForecastLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+theme_type_variation = &"MutedLabel"
 autowrap_mode = 3
 
-[node name="MarketList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="MarketPick" type="HFlowContainer" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection"]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+
+[node name="MarketPickLabel" type="Label" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection/MarketPick"]
+layout_mode = 2
+size_flags_vertical = 4
+text = "Market"
+
+[node name="MarketPicker" type="OptionButton" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection/MarketPick"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+
+[node name="MarketList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/MarketsSection"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="PrestigeUpgradesHeading" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="PrestigeSection" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections"]
+unique_name_in_owner = true
+visible = false
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_override_constants/separation = 12
+
+[node name="PrestigeActions" type="HFlowContainer" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection"]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+
+[node name="BuyPrism" type="Button" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection/PrestigeActions"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Buy prism"
+
+[node name="PrestigeButton" type="Button" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection/PrestigeActions"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Prestige"
+
+[node name="PrestigeHint" type="Label" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection"]
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "Buy prisms with money. A prestige ends this run and starts a fresh one. Press Prestige to see what it keeps and clears before it starts."
+autowrap_mode = 3
+
+[node name="PrestigeUpgradesHeading" type="Label" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection"]
+layout_mode = 2
+theme_type_variation = &"HeadingLabel"
 text = "Prestige upgrades"
 
-[node name="PrestigeUpgradesHint" type="Label" parent="Margin/Layout/Scroll/Sections"]
+[node name="PrestigeUpgradesHint" type="Label" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.72, 0.8, 1)
+theme_type_variation = &"MutedLabel"
 text = "Spend prisms on prestige upgrades. You keep them in all later runs."
 autowrap_mode = 3
 
-[node name="PrestigeUpgradeList" type="VBoxContainer" parent="Margin/Layout/Scroll/Sections"]
+[node name="PrestigeUpgradeList" type="VBoxContainer" parent="Margin/Layout/Body/Scroll/Sections/PrestigeSection"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8

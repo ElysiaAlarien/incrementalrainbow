@@ -12,8 +12,9 @@ extends AcceptDialog
 ## [param imported] has the new game and the time of the code.
 signal import_confirmed(imported: LoadResult)
 
-const HINT_COLOR := Color(0.7, 0.72, 0.8)
 const ERROR_COLOR := Color(1, 0.55, 0.45)
+## The size of a code field on a wide screen. On a narrow screen, the field
+## is as wide as the screen allows.
 const CODE_FIELD_SIZE := Vector2(760, 80)
 
 var _content: Content
@@ -24,6 +25,7 @@ var _import_message := Label.new()
 var _confirm := ConfirmationDialog.new()
 ## The load result of the code that waits for the player to confirm the import.
 var _pending: LoadResult
+var _scroll: ScrollContainer
 
 
 func _init(content: Content) -> void:
@@ -34,7 +36,7 @@ func _init(content: Content) -> void:
 
 	var layout := VBoxContainer.new()
 	layout.add_theme_constant_override(&"separation", 10)
-	add_child(layout)
+	_scroll = DialogFit.wrap(self, layout)
 
 	layout.add_child(_heading("Export code"))
 	layout.add_child(_hint("Copy this code, then import it on your other device."))
@@ -68,7 +70,6 @@ func _init(content: Content) -> void:
 	_import_message.name = "ImportMessage"
 	_import_message.add_theme_color_override(&"font_color", ERROR_COLOR)
 	_import_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_import_message.custom_minimum_size.x = CODE_FIELD_SIZE.x
 	_import_message.visible = false
 	layout.add_child(_import_message)
 
@@ -88,7 +89,7 @@ func open(simulation: Simulation, saved_at_unix_ms: int) -> void:
 	_import_text.text = ""
 	_show_import_message("")
 	_pending = null
-	popup_centered()
+	DialogFit.popup(self, _scroll, CODE_FIELD_SIZE.x)
 
 
 func _on_paste_pressed() -> void:
@@ -124,12 +125,12 @@ func _show_import_message(text: String) -> void:
 	# Fit the dialog to its content again, so that it shrinks when the message
 	# goes away.
 	if visible:
-		reset_size()
-		move_to_center()
+		DialogFit.popup(self, _scroll, CODE_FIELD_SIZE.x)
 
 
 func _setup_code_field(field: TextEdit) -> void:
-	field.custom_minimum_size = CODE_FIELD_SIZE
+	field.custom_minimum_size.y = CODE_FIELD_SIZE.y
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	field.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	field.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 	field.add_theme_font_size_override(&"font_size", 14)
@@ -138,16 +139,15 @@ func _setup_code_field(field: TextEdit) -> void:
 static func _heading(text: String) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override(&"font_size", 24)
+	label.theme_type_variation = UiTheme.HEADING_LABEL
 	return label
 
 
 static func _hint(text: String) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_color_override(&"font_color", HINT_COLOR)
+	label.theme_type_variation = UiTheme.MUTED_LABEL
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = CODE_FIELD_SIZE.x
 	return label
 
 

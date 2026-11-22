@@ -1,94 +1,116 @@
 class_name MarketRow
 extends PanelContainer
-## One market on the screen. On the left: its name, its remoteness with the
-## transport tier it needs, and a button for each kind of community
-## investment, with its cost. On the right, the first line has its population,
-## income, the capacity used in this period, and the time until the next
-## period. Below it, the current price, demand, and forecast of each color
-## there. The colors wrap to more lines when they do not fit.
+## One market on the screen. At the top: its name, and its remoteness with the
+## transport tier it needs. Then its population, income, and the time until
+## the next period, the capacity used in this period, and a button for each
+## kind of community investment, with its cost. Then a grid with the current
+## price, demand, and forecast of each color there. The grid has as many
+## columns as fit the screen.
 
 signal invest_pressed(market_id: StringName, goal: MarketView.Investment)
 
-const MUTED_COLOR := Color(0.7, 0.72, 0.8)
 const BLOCKED_COLOR := Color(1.0, 0.55, 0.45)
+## The narrowest that a column of the price grid can be.
+const PRICE_COLUMN_WIDTH := 360.0
 
 var market_id: StringName
 
 var _name_label := Label.new()
-var _population_label := Label.new()
-var _income_label := Label.new()
-var _capacity_label := Label.new()
-var _period_label := Label.new()
+var _population_label: Label
+var _income_label: Label
+var _capacity_label: Label
+var _period_label: Label
 ## Investment goal to its button.
 var _invest_buttons: Dictionary[MarketView.Investment, Button] = {}
-var _reach_label := Label.new()
-## Color id to the label that shows its price, demand, and forecast.
-var _color_labels: Dictionary[StringName, Label] = {}
+var _reach_label: Label
+## Color id to the labels that show its price, its demand, and its forecast.
+var _price_labels: Dictionary[StringName, Label] = {}
+var _demand_labels: Dictionary[StringName, Label] = {}
+var _forecast_labels: Dictionary[StringName, Label] = {}
 
 
 ## [param colors] are the colors to show, in order.
 func _init(view: MarketView, colors: Array[ColorDef]) -> void:
 	market_id = view.id
 	name = "Market_%s" % view.id
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override(&"separation", 16)
-	add_child(row)
+	var lines := VBoxContainer.new()
+	lines.add_theme_constant_override(&"separation", 8)
+	add_child(lines)
 
-	var left := VBoxContainer.new()
-	left.custom_minimum_size.x = 230
-	left.add_theme_constant_override(&"separation", 4)
-	row.add_child(left)
 	_name_label.text = view.name
-	left.add_child(_name_label)
-	_reach_label.add_theme_font_size_override(&"font_size", 16)
-	left.add_child(_reach_label)
+	_name_label.theme_type_variation = UiTheme.HEADING_LABEL
+	lines.add_child(_name_label)
+	_reach_label = UiTheme.wrapping_label(true)
+	lines.add_child(_reach_label)
+
+	var stats := UiTheme.flow(24)
+	lines.add_child(stats)
+	# Fixed widths keep the layout still as values change.
+	_population_label = UiTheme.column_label(170)
+	stats.add_child(_population_label)
+	_income_label = UiTheme.column_label(120)
+	stats.add_child(_income_label)
+	_period_label = UiTheme.column_label(0, true)
+	stats.add_child(_period_label)
+	_capacity_label = UiTheme.wrapping_label()
+	lines.add_child(_capacity_label)
+
+	var invest := UiTheme.flow(12)
+	lines.add_child(invest)
 	for goal: MarketView.Investment in [MarketView.Investment.POPULATION, MarketView.Investment.INCOME]:
 		var button := Button.new()
 		button.name = "InvestPopulation" if goal == MarketView.Investment.POPULATION else "InvestIncome"
-		button.tooltip_text = "A community investment for %s" % (
-			"population, which gives more capacity" if goal == MarketView.Investment.POPULATION
-			else "income, which gives higher prices")
 		button.pressed.connect(func() -> void: invest_pressed.emit(market_id, goal))
-		left.add_child(button)
+		invest.add_child(button)
 		_invest_buttons[goal] = button
+	var invest_hint := UiTheme.wrapping_label(true)
+	invest_hint.text = "A community investment for population gives more capacity. One for income gives higher prices."
+	lines.add_child(invest_hint)
 
-	var right := VBoxContainer.new()
-	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.add_theme_constant_override(&"separation", 8)
-	row.add_child(right)
-
-	var stats := HBoxContainer.new()
-	stats.add_theme_constant_override(&"separation", 24)
-	right.add_child(stats)
-	# Fixed widths keep the layout still as values change.
-	_population_label.custom_minimum_size.x = 170
-	stats.add_child(_population_label)
-	_income_label.custom_minimum_size.x = 120
-	stats.add_child(_income_label)
-	_capacity_label.custom_minimum_size.x = 380
-	stats.add_child(_capacity_label)
-	_period_label.add_theme_color_override(&"font_color", MUTED_COLOR)
-	stats.add_child(_period_label)
-
-	var flow := HFlowContainer.new()
-	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	flow.add_theme_constant_override(&"h_separation", 24)
-	flow.add_theme_constant_override(&"v_separation", 8)
-	right.add_child(flow)
+	var legend := UiTheme.wrapping_label(true)
+	legend.text = "Each color: its price, then its demand now and its demand forecast."
+	lines.add_child(legend)
+	var grid := CardGrid.new()
+	grid.name = "Prices"
+	grid.min_column_width = PRICE_COLUMN_WIDTH
+	grid.add_theme_constant_override(&"h_separation", 24)
+	grid.add_theme_constant_override(&"v_separation", 6)
+	lines.add_child(grid)
 	for color in colors:
-		var item := HBoxContainer.new()
-		item.name = "Color_%s" % color.id
-		item.add_theme_constant_override(&"separation", 8)
-		var symbol := ColorSymbol.new().setup(color)
-		symbol.custom_minimum_size = Vector2(32, 32)
-		item.add_child(symbol)
-		var label := Label.new()
-		# Room for "Price 31.47, demand 112%, forecast 110%", so the layout
-		# does not jump as values change.
-		label.custom_minimum_size.x = 410
-		item.add_child(label)
-		flow.add_child(item)
-		_color_labels[color.id] = label
+		grid.add_child(_price_cell(color))
+
+
+## One color in the price grid: its symbol and name, its price, its demand,
+## and its forecast.
+func _price_cell(color: ColorDef) -> HBoxContainer:
+	var item := HBoxContainer.new()
+	item.name = "Color_%s" % color.id
+	item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item.add_theme_constant_override(&"separation", 8)
+	var symbol := ColorSymbol.new().setup(color)
+	symbol.custom_minimum_size = Vector2(24, 24)
+	symbol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	item.add_child(symbol)
+	var color_name := UiTheme.column_label(0, true)
+	color_name.text = color.name
+	color_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item.add_child(color_name)
+	var price := UiTheme.column_label(72)
+	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	item.add_child(price)
+	var demand := UiTheme.column_label(56)
+	demand.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	item.add_child(demand)
+	var arrow := UiTheme.column_label(0, true)
+	arrow.text = "→"
+	item.add_child(arrow)
+	var forecast := UiTheme.column_label(56, true)
+	forecast.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	item.add_child(forecast)
+	_price_labels[color.id] = price
+	_demand_labels[color.id] = demand
+	_forecast_labels[color.id] = forecast
+	return item
 
 
 ## Shows [param view] and the demand in [param forecast]. [param needed_tier_plural]
@@ -96,7 +118,10 @@ func _init(view: MarketView, colors: Array[ColorDef]) -> void:
 ## "Trucks", or "" when no tier reaches it.
 func show_state(view: MarketView, needed_tier_plural: String, forecast: ForecastView) -> void:
 	_reach_label.text = reach_text(view, needed_tier_plural)
-	_reach_label.add_theme_color_override(&"font_color", MUTED_COLOR if view.is_open else BLOCKED_COLOR)
+	if view.is_open:
+		_reach_label.remove_theme_color_override(&"font_color")
+	else:
+		_reach_label.add_theme_color_override(&"font_color", BLOCKED_COLOR)
 	_population_label.text = "Population: %s" % BigNumber.from_int(view.population).format()
 	_income_label.text = "Income: %s" % BigNumber.from_int(view.income).format()
 	_capacity_label.text = capacity_text(view)
@@ -109,10 +134,10 @@ func show_state(view: MarketView, needed_tier_plural: String, forecast: Forecast
 		_invest_buttons[goal].text = "%s (%s)" % [
 			"Grow population" if goal == MarketView.Investment.POPULATION else "Grow income",
 			view.investment_cost(goal).format()]
-	for color_id in _color_labels:
-		var label := _color_labels[color_id]
-		label.text = "Price %s, demand %s, forecast %s" % [view.price(color_id).format(),
-			format_demand(view.demand(color_id)), format_demand(forecast.demand(market_id, color_id))]
+	for color_id in _price_labels:
+		_price_labels[color_id].text = view.price(color_id).format()
+		_demand_labels[color_id].text = format_demand(view.demand(color_id))
+		_forecast_labels[color_id].text = format_demand(forecast.demand(market_id, color_id))
 
 
 ## Such as "Remoteness 2, open to trucks" or "Remoteness 4, needs trains".
@@ -128,9 +153,11 @@ func reach_label_text() -> String:
 	return _reach_label.text
 
 
-## The text that shows the price, demand, and forecast of [param color_id].
+## The price, demand, and forecast of [param color_id], such as "Price
+## 31.47, demand 112%, forecast 110%".
 func color_text(color_id: StringName) -> String:
-	return _color_labels[color_id].text
+	return "Price %s, demand %s, forecast %s" % [_price_labels[color_id].text,
+		_demand_labels[color_id].text, _forecast_labels[color_id].text]
 
 
 ## The text that shows the population, income, capacity, and period.

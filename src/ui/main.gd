@@ -11,6 +11,11 @@ extends Control
 ## investment, and the price and demand of each color, and the prestige
 ## upgrades with their prices and which the player owns.
 ##
+## The screen fits landscape screens from small phones to large monitors (see
+## [UiScale]). A rail at the left opens one section at a time: colors,
+## factories and warehouses, links and splits, research, markets and demand
+## events, and prestige. Money and prisms stay at the top.
+##
 ## The UI holds no game rules. It sends commands to the Simulation, ticks it
 ## each frame, and shows what the queries return. It loads the save on start,
 ## and saves at intervals and when the game exits or goes to the background.
@@ -39,6 +44,19 @@ const SUMMARY_MIN_AWAY_MS := 60_000
 ## The game time between two shows of the market section in the frames. A
 ## command shows it at once.
 const MARKETS_REFRESH_MS := 250
+## The width of the text of the prestige dialog on a wide screen.
+const PRESTIGE_TEXT_WIDTH := 560.0
+## The margin around the screen, in logical pixels, inside the safe area.
+const SCREEN_MARGIN := 12.0
+## The sections of the screen, in rail order, with the name on the rail.
+const SECTIONS: Dictionary[StringName, String] = {
+	&"colors": "Colors",
+	&"factories": "Factories",
+	&"links": "Links",
+	&"research": "Research",
+	&"markets": "Markets",
+	&"prestige": "Prestige",
+}
 
 ## Where the game keeps its save. Set it before the screen enters the tree.
 var save_path := SaveFile.DEFAULT_PATH
@@ -46,7 +64,7 @@ var save_path := SaveFile.DEFAULT_PATH
 ## enters the tree.
 var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0)
 
-@onready var _color_cards: HFlowContainer = %ColorCards
+@onready var _color_cards: CardGrid = %ColorCards
 @onready var _factory_list: VBoxContainer = %FactoryList
 @onready var _empty_label: Label = %EmptyLabel
 @onready var _new_warehouse_color: OptionButton = %NewWarehouseColor
@@ -78,6 +96,20 @@ var clock := func() -> int: return int(Time.get_unix_time_from_system() * 1000.0
 @onready var _message_label: Label = %MessageLabel
 @onready var _export_code_button: Button = %ExportCodeButton
 @onready var _prestige_button: Button = %PrestigeButton
+@onready var _margin: MarginContainer = %Margin
+@onready var _header: HBoxContainer = %Header
+@onready var _title: Label = %Title
+@onready var _rail: VBoxContainer = %Rail
+@onready var _scroll: ScrollContainer = %Scroll
+@onready var _market_picker: OptionButton = %MarketPicker
+@onready var _section_nodes: Dictionary[StringName, Control] = {
+	&"colors": %ColorsSection,
+	&"factories": %FactoriesSection,
+	&"links": %LinksSection,
+	&"research": %ResearchSection,
+	&"markets": %MarketsSection,
+	&"prestige": %PrestigeSection,
+}
 
 var _sim: Simulation
 var _save_file: SaveFile
@@ -100,6 +132,9 @@ var _prestige_upgrade_rows: Dictionary[StringName, PrestigeUpgradeRow] = {}
 var _demand_event_rows: Dictionary[String, DemandEventRow] = {}
 var _export_code_dialog: ExportCodeDialog
 var _prestige_confirm := ConfirmationDialog.new()
+## What a prestige keeps and clears, in [member _prestige_confirm].
+var _prestige_text := Label.new()
+var _prestige_scroll: ScrollContainer
 var _cards: Array[ColorCard] = []
 ## The metadata of each item in [member _new_link_source], in order, as from
 ## [method _link_source_keys].
@@ -129,9 +164,24 @@ var _drop_next_frame := false
 var _catch_up_screen: CatchUpScreen
 var _summary_dialog: OfflineSummaryDialog
 var _guided_start_banner: GuidedStartBanner
+## The section that is open.
+var _section: StringName = &"colors"
+var _rail_buttons: Dictionary[StringName, Button] = {}
+## The market whose row shows, from [member _market_picker].
+var _shown_market: StringName = &""
+
+
+func _init() -> void:
+	theme = UiTheme.make()
 
 
 func _ready() -> void:
+	_make_rail()
+	resized.connect(_fit_header)
+	if get_tree().current_scene == self:
+		# Tests put the screen in a viewport of their own and set its size.
+		get_window().size_changed.connect(_fit_to_window)
+		_fit_to_window()
 	_content = Content.load_dir(Content.DEFAULT_DIR)
 	if not _content.errors.is_empty():
 		_show_message("The game data has errors:\n" + "\n".join(_content.errors))
@@ -156,9 +206,11 @@ func _ready() -> void:
 	for color in _content.colors():
 		_add_color_card(color)
 	for color in _content.colors():
-		_new_warehouse_color.add_icon_item(_symbol_icon(color), color.name)
+		_new_warehouse_color.add_icon_item(symbol_icon(color), color.name)
 		_new_warehouse_color.set_item_metadata(_new_warehouse_color.item_count - 1, color.id)
 	_build_warehouse_button.pressed.connect(_on_build_warehouse_pressed)
+	_market_picker.item_selected.connect(func(index: int) -> void:
+		_show_market(_market_picker.get_item_metadata(index)))
 	_make_link_button.pressed.connect(_on_make_link_pressed)
 	_export_code_dialog = ExportCodeDialog.new(_content)
 	_export_code_dialog.import_confirmed.connect(_replace_game)
@@ -170,6 +222,8 @@ func _ready() -> void:
 	_prestige_confirm.title = "Prestige?"
 	_prestige_confirm.ok_button_text = "Prestige"
 	_prestige_confirm.confirmed.connect(_on_prestige_confirmed)
+	_prestige_text.name = "PrestigeText"
+	_prestige_scroll = DialogFit.wrap(_prestige_confirm, _prestige_text)
 	add_child(_prestige_confirm)
 	_prestige_button.pressed.connect(_on_prestige_pressed)
 	_buy_transport_tier_button.pressed.connect(func() -> void: _show_result(_sim.buy_transport_tier()))
@@ -185,6 +239,7 @@ func _ready() -> void:
 		_prestige_upgrade_rows[view.id] = row
 		_prestige_upgrade_list.add_child(row)
 	_refresh()
+	show_section(_section)
 
 
 func _process(delta: float) -> void:
@@ -308,6 +363,68 @@ func simulation() -> Simulation:
 	return _sim
 
 
+## Opens the section [param id], one of [constant SECTIONS], and shows it at
+## once.
+func show_section(id: StringName) -> void:
+	assert(SECTIONS.has(id), "Unknown section %s" % id)
+	_section = id
+	for key in _section_nodes:
+		_section_nodes[key].visible = key == id
+	for key in _rail_buttons:
+		_rail_buttons[key].set_pressed_no_signal(key == id)
+	_scroll.scroll_vertical = 0
+	if _sim != null:
+		_refresh_section(id, true)
+
+
+## The section that is open.
+func current_section() -> StringName:
+	return _section
+
+
+func _make_rail() -> void:
+	var group := ButtonGroup.new()
+	for id in SECTIONS:
+		var button := Button.new()
+		button.name = "Rail_%s" % id
+		button.text = SECTIONS[id]
+		button.toggle_mode = true
+		button.button_group = group
+		button.theme_type_variation = UiTheme.RAIL_BUTTON
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.pressed.connect(show_section.bind(id))
+		_rail.add_child(button)
+		_rail_buttons[id] = button
+
+
+## Sets the scale of the window for this device, and keeps the layout inside
+## the safe area of the screen.
+func _fit_to_window() -> void:
+	var window := get_window()
+	var scale := UiScale.apply(window)
+	var margins := UiScale.safe_margins(Rect2(window.position, window.size),
+		Rect2(DisplayServer.get_display_safe_area()), scale, SCREEN_MARGIN)
+	_margin.add_theme_constant_override(&"margin_left", int(margins.x))
+	_margin.add_theme_constant_override(&"margin_top", int(margins.y))
+	_margin.add_theme_constant_override(&"margin_right", int(margins.z))
+	_margin.add_theme_constant_override(&"margin_bottom", int(margins.w))
+
+
+## Shows the title only when the header has room for it, so that money and
+## prisms always fit.
+func _fit_header() -> void:
+	if not is_node_ready():
+		return
+	var gap := float(_header.get_theme_constant(&"separation"))
+	var without_title := 0.0
+	for child: Control in _header.get_children():
+		if child != _title and child.visible:
+			without_title += child.get_combined_minimum_size().x + gap
+	var needed := without_title + _title.get_minimum_size().x
+	var room := size.x - float(_margin.get_theme_constant(&"margin_left") + _margin.get_theme_constant(&"margin_right"))
+	_title.visible = needed <= room
+
+
 ## Loads the save, or starts a new game when there is no save. A save that
 ## cannot load is kept in a separate file, so that the next save does not
 ## destroy it.
@@ -349,6 +466,8 @@ func _show_replaced_run() -> void:
 		row.get_parent().remove_child(row)
 		row.queue_free()
 	_market_rows.clear()
+	_market_picker.clear()
+	_shown_market = &""
 	_rows.clear()
 	_link_rows.clear()
 	_warehouse_rows.clear()
@@ -418,9 +537,9 @@ func _on_prestige_pressed() -> void:
 	if not preview.allowed:
 		_show_message(preview.message)
 		return
-	_prestige_confirm.dialog_text = "A prestige ends this run and starts a fresh one.\n\nKeeps:\n%s\n\nClears:\n%s" % [
+	_prestige_text.text = "A prestige ends this run and starts a fresh one.\n\nKeeps:\n%s\n\nClears:\n%s" % [
 		_bullets(preview.keeps), _bullets(preview.clears)]
-	_prestige_confirm.popup_centered()
+	DialogFit.popup(_prestige_confirm, _prestige_scroll, PRESTIGE_TEXT_WIDTH)
 
 
 func _on_prestige_confirmed() -> void:
@@ -475,16 +594,50 @@ func _on_add_line_requested(factory_id: int) -> void:
 	_show_result(_sim.add_production_line(factory_id))
 
 
-## Shows the game. When [param markets_now] is false, as in each frame, the
-## market section shows only each [constant MARKETS_REFRESH_MS] of game time,
-## or at once when the game has a new market. Its
-## many prices are slow to show, and they change slowly.
-func _refresh(markets_now: bool = true) -> void:
+## Shows the game. When [param all] is false, as in each frame, it shows the
+## top of the screen and the open section only, and the market section only
+## each [constant MARKETS_REFRESH_MS] of game time, or at once when the game
+## has a new market. Its many prices are slow to show, and they change slowly.
+## A command shows all sections, so that each section shows its result.
+func _refresh(all: bool = true) -> void:
 	_guided_start_banner.show_state(_sim.guided_start())
 	_money_label.text = "Money: %s" % _sim.money().format()
-	var prisms := _sim.prisms()
-	_prism_label.text = "Prisms: %s" % BigNumber.from_int(prisms.owned).format()
-	_buy_prism_button.text = "Buy prism (%s)" % prisms.next_price.format()
+	_prism_label.text = "Prisms: %s" % BigNumber.from_int(_sim.prisms().owned).format()
+	for id in SECTIONS:
+		if all or id == _section:
+			_refresh_section(id, all)
+	# Money and prisms can grow wider.
+	_fit_header()
+
+
+## Shows the section [param id]. When [param now] is false, the market section
+## shows only as [method _refresh] says.
+func _refresh_section(id: StringName, now: bool) -> void:
+	match id:
+		&"colors":
+			_refresh_colors()
+		&"factories":
+			_refresh_factories()
+			_refresh_warehouses()
+		&"links":
+			_refresh_transport()
+			_refresh_new_link_choices()
+			_refresh_links()
+		&"research":
+			_refresh_research()
+		&"markets":
+			_refresh_demand_events()
+			var since_ms := _sim.time_ms() - _markets_shown_at_ms
+			var new_market := _sim.market_count() != _market_rows.size()
+			if now or new_market or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS:
+				_refresh_markets(now or new_market)
+		&"prestige":
+			_buy_prism_button.text = "Buy prism (%s)" % _sim.prisms().next_price.format()
+			for view in _sim.prestige_upgrades():
+				_prestige_upgrade_rows[view.id].show_state(view)
+
+
+func _refresh_colors() -> void:
 	var cost := _sim.factory_build_cost()
 	for card in _cards:
 		var locked_inputs := PackedStringArray()
@@ -493,16 +646,17 @@ func _refresh(markets_now: bool = true) -> void:
 				locked_inputs.append(_content.color(input).name)
 		card.show_state(_sim.is_color_unlocked(card.color_id), cost, locked_inputs)
 
+
+func _refresh_factories() -> void:
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)
 		if row == null:
 			row = _add_factory_row(view)
 		row.show_state(view)
 	_empty_label.visible = _rows.is_empty()
-	_refresh_warehouses()
-	_refresh_transport()
-	_refresh_new_link_choices()
 
+
+func _refresh_links() -> void:
 	var automatic_cost := _sim.automatic_transport_cost()
 	var tier := _sim.transport_tier()
 	var links := _sim.links()
@@ -513,32 +667,48 @@ func _refresh(markets_now: bool = true) -> void:
 		link_row.show_state(view, automatic_cost, _content.transport_tier(view.vehicle), tier)
 	_links_empty_label.visible = _link_rows.is_empty()
 	_refresh_splits(links)
-	_refresh_research()
-
-	_refresh_demand_events()
-	var since_ms := _sim.time_ms() - _markets_shown_at_ms
-	if markets_now or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS \
-			or _sim.market_count() != _market_rows.size():
-		_refresh_markets()
-
-	for view in _sim.prestige_upgrades():
-		_prestige_upgrade_rows[view.id].show_state(view)
 
 
-## The market section: the forecast, and the price, demand, and forecast of
-## each color in each market.
-func _refresh_markets() -> void:
+## The market section: the forecast, and the stats, prices, demand, and
+## forecast of the market that the picker shows. When [param all_rows] is
+## true, it shows the rows of all markets, and adds a row and a picker item
+## for each new market.
+func _refresh_markets(all_rows: bool) -> void:
 	_markets_shown_at_ms = _sim.time_ms()
 	var forecast := _sim.forecast(_sim.forecast_horizon_ms())
 	_forecast_label.text = MarketRow.forecast_text(forecast)
-	for view in _sim.markets():
-		var market_row: MarketRow = _market_rows.get(view.id)
-		if market_row == null:
-			market_row = MarketRow.new(view, _content.colors())
-			market_row.invest_pressed.connect(_on_invest_pressed)
-			_market_rows[view.id] = market_row
-			_market_list.add_child(market_row)
-		market_row.show_state(view, _needed_tier_plural(view), forecast)
+	if all_rows or not _market_rows.has(_shown_market):
+		for view in _sim.markets():
+			_show_market_row(view, forecast)
+	else:
+		_show_market_row(_sim.market(_shown_market), forecast)
+	if not _market_rows.has(_shown_market) and not _market_rows.is_empty():
+		_show_market(_market_rows.keys()[0])
+
+
+func _show_market_row(view: MarketView, forecast: ForecastView) -> void:
+	var market_row: MarketRow = _market_rows.get(view.id)
+	if market_row == null:
+		market_row = MarketRow.new(view, _content.colors())
+		market_row.invest_pressed.connect(_on_invest_pressed)
+		market_row.visible = view.id == _shown_market
+		_market_rows[view.id] = market_row
+		_market_list.add_child(market_row)
+		_market_picker.add_item(view.name)
+		_market_picker.set_item_metadata(_market_picker.item_count - 1, view.id)
+	market_row.show_state(view, _needed_tier_plural(view), forecast)
+
+
+## Shows the row of the market [param id] and hides the others.
+func _show_market(id: StringName) -> void:
+	_shown_market = id
+	for key in _market_rows:
+		_market_rows[key].visible = key == id
+	for i in _market_picker.item_count:
+		if _market_picker.get_item_metadata(i) == id:
+			_market_picker.select(i)
+	var view := _sim.market(id)
+	_market_rows[id].show_state(view, _needed_tier_plural(view), _sim.forecast(_sim.forecast_horizon_ms()))
 
 
 ## The plural name of the transport tier that [param view] needs, such as
@@ -557,7 +727,6 @@ func _refresh_research() -> void:
 	for color in stock:
 		parts.append("%s %s" % [_content.color(color).name, BigNumber.from_int(stock[color]).format()])
 	_lab_stock_label.text = "Lab stock: %s" % ("empty" if parts.is_empty() else ", ".join(parts))
-	_lab_stock_label.tooltip_text = "Widgets that arrived at a lab when the selected research did not need them. They pay for the next research that needs them."
 	for view in _sim.research():
 		_research_rows[view.id].show_state(view)
 
@@ -661,10 +830,10 @@ func _refresh_choice(choice: OptionButton, old_keys: Array, keys: Array) -> Arra
 		match key[0]:
 			&"factory":
 				var view := _sim.factory(key[1])
-				choice.add_icon_item(_symbol_icon(_content.color(view.color)), _factory_name(view))
+				choice.add_icon_item(symbol_icon(_content.color(view.color)), _factory_name(view))
 			&"warehouse":
 				var view := _sim.warehouse(key[1])
-				choice.add_icon_item(_symbol_icon(_content.color(view.color)), _warehouse_name(view))
+				choice.add_icon_item(symbol_icon(_content.color(view.color)), _warehouse_name(view))
 			&"lab":
 				choice.add_item(_lab_name(key[1]))
 			_:
@@ -790,16 +959,21 @@ func _show_message(text: String) -> void:
 	_message_label.visible = not text.is_empty()
 
 
-## Renders a color's symbol into a small, smooth texture for a button icon.
-func _symbol_icon(color: ColorDef) -> Texture2D:
+## A color's symbol as a vector texture for a button icon, 24 logical pixels
+## wide. Godot draws a [DPITexture] again at the scale of the screen, so it
+## stays sharp. Null for an unknown symbol.
+static func symbol_icon(color: ColorDef) -> Texture2D:
 	const SIZE := 24.0
-	var points := ColorSymbol.shape_points(color.symbol, Rect2(1.5, 1.5, SIZE - 3.0, SIZE - 3.0))
+	var box := Rect2(1.5, 1.5, SIZE - 3.0, SIZE - 3.0)
+	var points := ColorSymbol.shape_points(color.symbol, box)
+	if points.is_empty():
+		return null
 	var path := PackedStringArray()
 	for point in points:
 		path.append("%.2f,%.2f" % [point.x, point.y])
 	var mark := ""
 	if color.symbol_mark != ColorDef.SymbolMark.NONE:
-		var dot := ColorSymbol.mark_dot(color.symbol_mark, Rect2(1.5, 1.5, SIZE - 3.0, SIZE - 3.0))
+		var dot := ColorSymbol.mark_dot(color.symbol_mark, box)
 		var dot_fill := ColorSymbol.mark_fill(color.symbol_mark)
 		mark = "<circle cx='%.2f' cy='%.2f' r='%.2f' fill='#%s' stroke='#%s' stroke-width='%.1f'/>" % [
 			dot.get_center().x, dot.get_center().y, dot.size.x / 2.0, dot_fill.to_html(false),
@@ -807,7 +981,4 @@ func _symbol_icon(color: ColorDef) -> Texture2D:
 	var svg := "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'><path d='M%sZ' fill='#%s' stroke='#%s' stroke-width='%.1f' stroke-linejoin='round'/>%s</svg>" % [
 		SIZE, SIZE, " L".join(path), color.display_color.to_html(false),
 		ColorSymbol.outline_color(color.display_color).to_html(false), ColorSymbol.OUTLINE_WIDTH, mark]
-	var image := Image.new()
-	if points.is_empty() or image.load_svg_from_string(svg) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
+	return DPITexture.create_from_string(svg)

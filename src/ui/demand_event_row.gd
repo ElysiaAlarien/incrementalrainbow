@@ -1,7 +1,8 @@
 class_name DemandEventRow
 extends PanelContainer
-## One active demand event on the screen: its name, the symbol and name of
-## each of its colors, how much it changes their demand, and the time left.
+## One active demand event on the screen: its name, how much it changes the
+## demand of its colors, and the time left. Under them, the symbol and name of
+## each of its colors, which wrap on a narrow screen.
 
 const SPIKE_COLOR := Color(0.45, 0.85, 0.5)
 const CRASH_COLOR := Color(0.95, 0.45, 0.4)
@@ -10,50 +11,50 @@ const CRASH_COLOR := Color(0.95, 0.45, 0.4)
 ## "harvest_festival@90000".
 var key: String
 
-var _name_label := Label.new()
-var _change_label := Label.new()
-var _time_label := Label.new()
+var _name_label: Label
+var _change_label: Label
+var _time_label: Label
 var _color_names: PackedStringArray = []
 
 
 func _init(view: DemandEventView, content: Content) -> void:
 	key = key_of(view)
 	name = "DemandEvent_%s_%d" % [view.id, view.started_at_ms]
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override(&"separation", 16)
-	add_child(row)
+	var lines := VBoxContainer.new()
+	lines.add_theme_constant_override(&"separation", 6)
+	add_child(lines)
+	var row := UiTheme.flow()
+	lines.add_child(row)
 
+	_name_label = UiTheme.column_label(200)
 	_name_label.text = view.name
-	_name_label.custom_minimum_size.x = 200
 	row.add_child(_name_label)
 
+	_change_label = UiTheme.column_label(160)
 	_change_label.text = change_text(view)
 	_change_label.add_theme_color_override(&"font_color",
 		SPIKE_COLOR if view.is_spike() else CRASH_COLOR)
-	_change_label.custom_minimum_size.x = 160
 	row.add_child(_change_label)
 
-	var flow := HFlowContainer.new()
-	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	flow.add_theme_constant_override(&"h_separation", 16)
-	row.add_child(flow)
+	# Room for "Ends in 120s", so the layout does not jump as the time changes.
+	_time_label = UiTheme.column_label(140, true)
+	row.add_child(_time_label)
+
+	var flow := UiTheme.flow()
+	lines.add_child(flow)
 	for color_id in view.colors:
 		var color := content.color(color_id)
 		var item := HBoxContainer.new()
 		item.name = "Color_%s" % color_id
 		item.add_theme_constant_override(&"separation", 8)
 		var symbol := ColorSymbol.new().setup(color)
+		symbol.custom_minimum_size = Vector2(24, 24)
 		item.add_child(symbol)
 		var label := Label.new()
 		label.text = color.name
 		item.add_child(label)
 		flow.add_child(item)
 		_color_names.append(color.name)
-
-	# Room for "Ends in 120s", so the layout does not jump as the time changes.
-	_time_label.custom_minimum_size.x = 140
-	_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(_time_label)
 	show_state(view)
 
 

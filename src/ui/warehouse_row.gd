@@ -1,15 +1,15 @@
 class_name WarehouseRow
 extends PanelContainer
-## One warehouse on the screen. The first line has its color and name, the
-## widgets it holds and those on their way to it, and its throughput in and
-## out. The second line has a box for the sell threshold, buttons to set and to
-## clear it, and the current threshold with the markets that the warehouse
-## holds its color from now.
+## One warehouse on the screen. The first line has its color and name. The
+## second has the widgets it holds and those on their way to it, and its
+## throughput in and out. The third has a box for the sell threshold, and
+## buttons to set and to clear it. The last has the current threshold with the
+## markets that the warehouse holds its color from now. The lines wrap on a
+## narrow screen.
 
 signal set_threshold_pressed(warehouse_id: int, percent: int)
 signal clear_threshold_pressed(warehouse_id: int)
 
-const MUTED_COLOR := Color(0.7, 0.72, 0.8)
 const SENDS_COLOR := Color(0.6, 0.85, 0.6)
 ## The value in the box before the player sets a threshold: normal demand.
 const DEFAULT_THRESHOLD := 100
@@ -20,13 +20,14 @@ var warehouse_id: int
 
 var _symbol := ColorSymbol.new()
 var _name_label := Label.new()
-var _count_label := Label.new()
-var _inflow_label := Label.new()
-var _outflow_label := Label.new()
-var _threshold_box := SpinBox.new()
+var _count_label: Label
+var _inflow_label: Label
+var _outflow_label: Label
+var _threshold_stepper: NumberStepper
+var _threshold_box: SpinBox
 var _set_button := Button.new()
 var _clear_button := Button.new()
-var _threshold_label := Label.new()
+var _threshold_label: Label
 ## The threshold that the box last took from the simulation, so that the box
 ## keeps what the player typed until the threshold changes.
 var _shown_threshold: int = WarehouseView.NO_SELL_THRESHOLD
@@ -36,67 +37,51 @@ func _init(id: int, color: ColorDef) -> void:
 	warehouse_id = id
 	name = "Warehouse%d" % id
 	var lines := VBoxContainer.new()
-	lines.add_theme_constant_override(&"separation", 4)
+	lines.add_theme_constant_override(&"separation", 6)
 	add_child(lines)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override(&"separation", 16)
-	lines.add_child(row)
 
 	_symbol.setup(color)
-	_symbol.custom_minimum_size = Vector2(32, 32)
-	row.add_child(_symbol)
-
 	_name_label.text = "%s warehouse #%d" % [color.name, id]
-	_name_label.custom_minimum_size.x = 260
-	row.add_child(_name_label)
+	lines.add_child(UiTheme.title_line(_symbol, _name_label))
 
+	var row := UiTheme.flow()
+	lines.add_child(row)
 	# Room for "Widgets: 12.3K / 12.3K, 12.3K on the way", so the columns stay
 	# in line as values change.
-	_count_label.custom_minimum_size.x = 400
+	_count_label = UiTheme.column_label(370)
 	row.add_child(_count_label)
-
-	_inflow_label.custom_minimum_size.x = 160
-	_inflow_label.add_theme_color_override(&"font_color", MUTED_COLOR)
+	_inflow_label = UiTheme.column_label(140, true)
 	row.add_child(_inflow_label)
-
-	_outflow_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_outflow_label.add_theme_color_override(&"font_color", MUTED_COLOR)
+	_outflow_label = UiTheme.column_label(140, true)
 	row.add_child(_outflow_label)
 
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override(&"separation", 16)
-	lines.add_child(bottom)
-	# Line up the second line with the text after the symbol.
-	var indent := Control.new()
-	indent.custom_minimum_size.x = 32
-	bottom.add_child(indent)
-
+	var threshold := UiTheme.flow(12)
+	lines.add_child(threshold)
 	var label := Label.new()
 	label.text = "Sell threshold"
-	bottom.add_child(label)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	threshold.add_child(label)
 
+	_threshold_stepper = NumberStepper.new(1, MAX_THRESHOLD, "%")
+	_threshold_stepper.name = "SellThresholdStepper"
+	_threshold_box = _threshold_stepper.spin_box
 	_threshold_box.name = "SellThreshold"
-	_threshold_box.min_value = 1
-	_threshold_box.max_value = MAX_THRESHOLD
-	_threshold_box.step = 1
-	_threshold_box.suffix = "%"
 	_threshold_box.value = DEFAULT_THRESHOLD
-	bottom.add_child(_threshold_box)
+	threshold.add_child(_threshold_stepper)
 
 	_set_button.name = "SetSellThreshold"
 	_set_button.text = "Set"
 	_set_button.pressed.connect(func() -> void:
 		set_threshold_pressed.emit(warehouse_id, int(_threshold_box.value)))
-	bottom.add_child(_set_button)
+	threshold.add_child(_set_button)
 
 	_clear_button.name = "ClearSellThreshold"
 	_clear_button.text = "Clear"
 	_clear_button.pressed.connect(func() -> void: clear_threshold_pressed.emit(warehouse_id))
-	bottom.add_child(_clear_button)
+	threshold.add_child(_clear_button)
 
-	_threshold_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_threshold_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bottom.add_child(_threshold_label)
+	_threshold_label = UiTheme.wrapping_label()
+	lines.add_child(_threshold_label)
 
 
 ## Shows [param view]. [param held_market_names] has the name of each market in
@@ -115,7 +100,7 @@ func show_state(view: WarehouseView, held_market_names: PackedStringArray) -> vo
 	_clear_button.disabled = view.sell_threshold == WarehouseView.NO_SELL_THRESHOLD
 	if view.sell_threshold == WarehouseView.NO_SELL_THRESHOLD:
 		_threshold_label.text = "None: sends at any demand"
-		_threshold_label.add_theme_color_override(&"font_color", MUTED_COLOR)
+		_threshold_label.add_theme_color_override(&"font_color", UiTheme.MUTED_COLOR)
 	elif view.holds():
 		_threshold_label.text = "%d%%: holds from %s, where demand is below it" % [
 			view.sell_threshold, ", ".join(held_market_names)]

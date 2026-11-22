@@ -9,8 +9,12 @@ extends AcceptDialog
 ## phone game goes to the background again, the dialog adds it to the summary
 ## that it shows.
 
+## The width of the text on a wide screen.
+const TEXT_WIDTH := 460.0
+
 var _summary: OfflineSummary
 var _text := Label.new()
+var _scroll: ScrollContainer
 
 
 func _init() -> void:
@@ -19,11 +23,8 @@ func _init() -> void:
 	ok_button_text = "Continue"
 	_text.name = "OfflineSummaryText"
 	_text.add_theme_constant_override(&"line_spacing", 6)
-	var margin := MarginContainer.new()
-	for side: StringName in [&"margin_left", &"margin_right", &"margin_top", &"margin_bottom"]:
-		margin.add_theme_constant_override(side, 12)
-	margin.add_child(_text)
-	add_child(margin)
+	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_scroll = DialogFit.wrap(self, _text)
 	visibility_changed.connect(func() -> void:
 		if not visible:
 			_summary = null)
@@ -37,11 +38,7 @@ func show_summary(summary: OfflineSummary, max_offline_ms: int) -> void:
 		_summary = OfflineSummary.new()
 	_summary.add(summary)
 	_text.text = summary_text(_summary, max_offline_ms)
-	if visible:
-		reset_size()
-		move_to_center()
-	else:
-		popup_centered()
+	DialogFit.popup(self, _scroll, TEXT_WIDTH)
 
 
 ## The text of the dialog, which the smoke tests read.

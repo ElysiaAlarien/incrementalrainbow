@@ -5,7 +5,10 @@ extends Control
 ## caught up. It holds no rules.
 
 const BACKGROUND_COLOR := Color(0.07, 0.08, 0.11, 0.92)
-const BAR_SIZE := Vector2(480, 28)
+## The width of the text and the bar. It fits the smallest screen
+## ([constant UiScale.MIN_LOGICAL_SIZE]).
+const WIDTH := 400.0
+const BAR_HEIGHT := 28.0
 const BAR_BACKGROUND_COLOR := Color(0.2, 0.22, 0.3)
 const BAR_FILL_COLOR := Color(0.98, 0.85, 0.45)
 
@@ -30,15 +33,17 @@ func _init() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
 	var layout := VBoxContainer.new()
+	layout.custom_minimum_size.x = WIDTH
 	layout.add_theme_constant_override(&"separation", 16)
 	center.add_child(layout)
 	var title := Label.new()
 	title.text = "Catching up on the time you were away"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override(&"font_size", 28)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.theme_type_variation = UiTheme.HEADING_LABEL
 	layout.add_child(title)
 	_bar.name = "CatchUpProgress"
-	_bar.custom_minimum_size = BAR_SIZE
+	_bar.custom_minimum_size.y = BAR_HEIGHT
 	_bar.max_value = 1.0
 	_bar.step = 0.0
 	_bar.show_percentage = false
