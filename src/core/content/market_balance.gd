@@ -44,9 +44,9 @@ var _investment_cost: BigNumber
 var _investment_cost_growth: float
 var _population_step: int
 var _income_step: int
-## Investments made to the cost of the next one, so that a query of all
-## markets does not compute them again. Not state: the costs follow from the
-## values above.
+## The number of investments made, to the cost of the next one, so that a
+## query of all markets does not compute them again. Not state: the costs
+## follow from the values above.
 var _investment_costs: Dictionary[int, BigNumber] = {}
 
 

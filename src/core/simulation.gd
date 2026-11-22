@@ -1842,7 +1842,7 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 ## the base price times demand, times the factor from the market's income.
 func _price(def: MarketDef, color: StringName, demand: float) -> BigNumber:
 	var factor := _content.market_balance.income_factor(_markets[def.id].income)
-	return def.price(color).mul(BigNumber.from_float(demand * factor))
+	return def.price(color).times_float(demand * factor)
 
 
 func _investment_cost(state: MarketState, goal: MarketView.Investment) -> BigNumber:

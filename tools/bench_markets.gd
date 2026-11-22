@@ -3,21 +3,25 @@ extends SceneTree
 ## [method Simulation.forecast] at the forecast horizon, as the main screen
 ## asks for them.
 ##
-## Usage: godot --headless -s res://tools/bench_markets.gd [-- --generated=100 --runs=200]
+## Usage: godot --headless -s res://tools/bench_markets.gd [-- --generated=100 --runs=600]
 ##
 ## It uses the game's own content (39 colors). It times a new game, which has
 ## the 12 hand-made markets and 3 generated markets (15 in all), and with
 ## [code]--generated[/code] generated markets. Each game has links that sold
 ## widgets, so that saturation is in the demand, and the time of at least one
 ## demand event start. Each run asks for the forecast and then the markets, as
-## the main screen does, and then ticks one frame of game time. It prints the
-## median and the 95th percentile of each query. The editor binary runs
-## GDScript with debug checks, so an exported game is faster.
+## the main screen does, and then ticks 250 ms, as often as the main screen
+## shows the market section. 600 runs cross drift knots, where a query needs
+## new knot values. For each query, it prints the time of the first run, which
+## fills the caches, and the median, the 95th percentile, and the slowest of
+## the other runs. The editor binary runs GDScript with debug checks, so an
+## exported game is faster.
 
 const DEFAULT_GENERATED := 100
-const DEFAULT_RUNS := 200
-## One frame at 60 frames each second.
-const FRAME_MS := 16
+const DEFAULT_RUNS := 600
+## The game time between runs: the time between two refreshes of the market
+## section on the main screen.
+const STEP_MS := 250
 
 
 func _init() -> void:
@@ -49,20 +53,26 @@ func _measure(sim: Simulation, runs: int) -> void:
 		sim.markets()
 		markets_us.append(Time.get_ticks_usec() - middle_us)
 		forecast_us.append(middle_us - begin_us)
-		sim.tick(FRAME_MS)
+		sim.tick(STEP_MS)
 	print("Markets: %d. Colors in each: %d. Runs: %d." % [sim.market_count(), colors, runs])
+	# The first queries after a load fill the caches, so they are apart.
+	print("  first run: forecast() %.3f ms, markets() %.3f ms" % [forecast_us[0] / 1000.0, markets_us[0] / 1000.0])
+	forecast_us.remove_at(0)
+	markets_us.remove_at(0)
 	print("  forecast(): %s" % _times_text(forecast_us))
 	print("  markets(): %s" % _times_text(markets_us))
 
 
-## The median and the 95th percentile of [param times_us], in ms. The median
-## is the usual cost. Other programs on the computer can make some runs slow.
+## The median, the 95th percentile, and the most of [param times_us], in ms.
+## The median is the usual cost. Other programs on the computer can make some
+## runs slow.
 static func _times_text(times_us: PackedInt64Array) -> String:
 	var sorted := times_us.duplicate()
 	sorted.sort()
 	@warning_ignore("integer_division")
-	return "median %.3f ms, 95th percentile %.3f ms" % [
-		sorted[sorted.size() / 2] / 1000.0, sorted[mini(sorted.size() - 1, sorted.size() * 95 / 100)] / 1000.0]
+	return "median %.3f ms, 95th percentile %.3f ms, most %.3f ms" % [
+		sorted[sorted.size() / 2] / 1000.0, sorted[mini(sorted.size() - 1, sorted.size() * 95 / 100)] / 1000.0,
+		sorted[sorted.size() - 1] / 1000.0]
 
 
 ## A game with links to each open market that sold widgets, widgets on their way,

@@ -174,7 +174,6 @@ func times_float(value: float) -> BigNumber:
 	return BigNumber.new(_mantissa * m, _exponent + e)
 
 
-
 ## Returns -1 if this number is less than [param other], 0 if equal, and 1 if greater.
 func compare(other: BigNumber) -> int:
 	var sign_a := signi(int(signf(_mantissa)))

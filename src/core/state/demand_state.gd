@@ -48,18 +48,26 @@ var next_event_ms: int = UNSCHEDULED
 ## in start order.
 var _events: Array[DemandEventState] = []
 ## The most knot values that [member _knot_values] holds. When a tick finds
-## more, it forgets them all. The markets and the forecast of a game with 100
-## markets and 39 colors use about 25 000.
+## more, they become [member _old_knot_values], so the cache forgets the values
+## that no query used since then. The markets and the forecast of a game with
+## 100 markets and 39 colors use about 25 000.
 const _MAX_CACHED_KNOTS := 200_000
 ## The most knots of one market that [member _rows] holds. When a query needs
 ## one more, it forgets the others. The screen asks for two: now and the
 ## forecast horizon.
 const _MAX_ROWS_PER_MARKET := 4
+## How many colors of a market a query computes in advance for the knot after
+## the next one (see [method _compute_ahead]). With 39 colors, 20 queries
+## compute them all.
+const _COLORS_AHEAD_PER_QUERY := 2
 
 ## Knot values that a query or a sale used, so that the next one does not
 ## compute them again. The seed of a knot (see [method _knot_seed]) to its
 ## value. It is not state: a new DemandState computes the same values.
 var _knot_values: Dictionary[int, float] = {}
+## The knot values from before the last time that [member _knot_values] was
+## full. A value that a query reads here moves back to [member _knot_values].
+var _old_knot_values: Dictionary[int, float] = {}
 ## The pair hashes of each market and color, so that a query does not compute
 ## them again. Market id to color id to
 ## [code]PackedInt64Array([pair hash, forecast pair hash])[/code]. Not state.
@@ -103,6 +111,9 @@ class _KnotRow:
 	var real_b := PackedFloat64Array()
 	var noise_a := PackedFloat64Array()
 	var noise_b := PackedFloat64Array()
+	## The colors whose values of the knot after the next one are in the
+	## cache, from the first color.
+	var computed_ahead := 0
 
 
 func _init(p_drift_key: int) -> void:
@@ -203,6 +214,7 @@ func _row(market_id: StringName, colors: Array[StringName], knot: int) -> _KnotR
 	var rows: Dictionary = _rows.get(market_id, {})
 	var row: _KnotRow = rows.get(knot)
 	if row != null and row.colors == colors:
+		_compute_ahead(market_id, row, knot + 2)
 		return row
 	if rows.size() >= _MAX_ROWS_PER_MARKET:
 		rows.clear()
@@ -217,6 +229,20 @@ func _row(market_id: StringName, colors: Array[StringName], knot: int) -> _KnotR
 	rows[knot] = row
 	_rows[market_id] = rows
 	return row
+
+
+## Computes the values of [param knot] for the next
+## [constant _COLORS_AHEAD_PER_QUERY] colors of [param row] that do not have
+## them yet. When the time reaches the next knot, the row of that knot needs
+## [param knot], and without this each market computes all of them in one
+## query: a spike of time on the screen once each drift period.
+func _compute_ahead(market_id: StringName, row: _KnotRow, knot: int) -> void:
+	var end := mini(row.colors.size(), row.computed_ahead + _COLORS_AHEAD_PER_QUERY)
+	for i in range(row.computed_ahead, end):
+		var pair := _pairs_for(market_id, row.colors[i])
+		_knot_value(pair[0], knot)
+		_knot_value(pair[1], knot)
+	row.computed_ahead = end
 
 
 ## The demand of [param color] in [param market_id] at [param at_ms].
@@ -365,7 +391,8 @@ func prune(now_ms: int) -> void:
 		if colors.is_empty():
 			_saturated_until_ms.erase(market_id)
 	if _knot_values.size() > _MAX_CACHED_KNOTS:
-		_knot_values.clear()
+		_old_knot_values = _knot_values
+		_knot_values = {}
 
 
 ## The state as plain data for [method Simulation.snapshot]: the keys
@@ -488,7 +515,9 @@ func _knot_value(pair: int, knot: int) -> float:
 	var knot_seed := _knot_seed(pair, knot)
 	var value: float = _knot_values.get(knot_seed, -1.0)
 	if value < 0.0:
-		value = _new_knot_value(knot_seed)
+		value = _old_knot_values.get(knot_seed, -1.0)
+		if value < 0.0:
+			value = _new_knot_value(knot_seed)
 		_knot_values[knot_seed] = value
 	return value
 
