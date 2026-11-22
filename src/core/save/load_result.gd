@@ -32,6 +32,9 @@ var ok: bool
 var reason: Reason
 ## Text for the player or a log. Do not branch on it; use [member reason].
 var message: String
+## True when the load ran at least one migration. A failed load that migrated
+## can mean that the migrations cannot read an old save.
+var migrated: bool
 ## The loaded simulation, or null when the load failed.
 var simulation: Simulation
 ## The device clock time that the saved state is for, in Unix milliseconds, or

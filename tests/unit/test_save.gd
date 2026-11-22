@@ -1,5 +1,6 @@
 extends GutTest
-## The save: a versioned, serialized form of the core state (see ADR-0009).
+## The save: a versioned, serialized form of the core state (see ADR-0009 and
+## ADR-0014).
 
 ## The save time of the saves that the tests write: a time in November 2026.
 const SAVED_AT_UNIX_MS := 1_795_000_000_000
@@ -150,9 +151,9 @@ func _flat_content() -> Content:
 	return ContentFixture.make_mixed(700, 6)
 
 
-func _load(text: String, steps: Array[Callable] = SaveCodec.migrations(),
+func _load(text: String, migrations: SaveMigrations = SaveMigrations.found(),
 		content: Content = _content()) -> LoadResult:
-	return SaveCodec.decode(content, text, steps)
+	return SaveCodec.decode(content, text, migrations)
 
 
 func test_the_rich_game_has_every_kind_of_state() -> void:
@@ -317,12 +318,15 @@ func test_save_then_load_after_a_prestige_gives_the_same_state() -> void:
 	assert_eq(loaded.snapshot(), sim.snapshot(), "the loaded game plays on and prestiges the same")
 
 
-func test_the_save_has_a_version_number() -> void:
+func test_the_save_has_a_version_and_lists_each_migration() -> void:
 	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
 
 	assert_eq(data.format, SaveCodec.FORMAT)
-	assert_eq(int(data.version), SaveCodec.current_version())
-	assert_eq(SaveCodec.current_version(), SaveCodec.migrations().size() + 1)
+	assert_eq(int(data.version), SaveCodec.VERSION)
+	var names: Array[String] = []
+	for migration_name in SaveMigrations.found().names():
+		names.append(String(migration_name))
+	assert_eq(data.applied, names)
 
 
 # --- Damaged saves -------------------------------------------------------------
@@ -371,10 +375,43 @@ func test_a_save_with_no_valid_version_fails() -> void:
 	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.BAD_VERSION, "must be a whole number")
 
 
-func test_a_save_from_a_newer_game_fails() -> void:
+func test_a_save_of_a_newer_format_fails() -> void:
 	var data := _save_data()
-	data.version = SaveCodec.current_version() + 1
-	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.NEWER_VERSION, "newer version")
+	data.version = SaveCodec.VERSION + 1
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.NEWER_VERSION,
+		"A newer version of the game made this save (save version %d)" % (SaveCodec.VERSION + 1))
+
+
+func test_a_save_with_a_migration_that_the_game_does_not_know_fails() -> void:
+	var data := _save_data()
+	data.applied.append("add_rainbows")
+	data.applied.push_front("add_clouds")
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.NEWER_VERSION,
+		"A newer version of the game made this save. It has changes that this version does not know: add_clouds, add_rainbows.")
+
+
+func test_a_save_with_no_valid_list_of_migrations_fails() -> void:
+	var data := _save_data()
+	data.erase("applied")
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.BAD_VERSION, "save.applied: is missing")
+	data.applied = "add_links"
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.BAD_VERSION, "save.applied: must be a list")
+	data.applied = _save_data().applied
+	data.applied.append(7)
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.BAD_VERSION, "must be a text id, but it is 7")
+
+
+func test_a_save_that_lists_a_migration_twice_fails() -> void:
+	var data := _save_data()
+	data.applied.append("add_links")
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.BAD_VERSION, "save.applied: lists add_links twice")
+
+
+func test_a_save_that_lists_a_migration_but_not_one_it_needs_fails() -> void:
+	var data := _save_data()
+	data.applied.erase("add_links")
+	_assert_load_fails(JSON.stringify(data), LoadResult.Reason.BAD_VERSION,
+		"save.applied: add_automatic_transport needs add_links, which the list does not have")
 
 
 func test_a_save_with_no_state_fails() -> void:
@@ -1012,66 +1049,104 @@ func test_the_value_paths_cover_the_whole_state() -> void:
 
 # --- Old versions ---------------------------------------------------------------
 
-## A test migration: in its version 1, the state named time "clock_ms".
+## A test migration: before it, the state named time "clock_ms".
 static func _rename_clock(state: Dictionary) -> Dictionary:
 	state.time_ms = state.get("clock_ms")
 	state.erase("clock_ms")
 	return state
 
 
-## A second test migration: version 2 had a "comment" that version 3 dropped.
+## A second test migration: it drops a "comment" that the state had before.
 static func _drop_comment(state: Dictionary) -> Dictionary:
 	state.erase("comment")
 	return state
 
 
-func _old_save(version: int, state: Dictionary) -> String:
-	return JSON.stringify({"format": SaveCodec.FORMAT, "version": version, "state": state})
+## The real migrations and the two test migrations, which run last.
+func _with_test_migrations() -> SaveMigrations:
+	return MigrationFixture.after_the_game([MigrationFixture.new(&"rename_clock", _rename_clock),
+		MigrationFixture.new(&"drop_comment", _drop_comment)])
 
 
-func test_a_save_of_an_older_version_migrates_to_the_current_version() -> void:
+func _save_with(applied: Array[StringName], state: Dictionary) -> String:
+	return JSON.stringify({"format": SaveCodec.FORMAT, "version": SaveCodec.VERSION, "applied": applied,
+		"saved_at_unix_ms": SAVED_AT_UNIX_MS, "state": state})
+
+
+func test_a_save_runs_each_migration_that_it_does_not_list() -> void:
 	var state: Dictionary = _save_data().state
 	state.clock_ms = state.time_ms
 	state.erase("time_ms")
-	var steps: Array[Callable] = [_rename_clock, _drop_comment]
-	state.comment = "made by version 2"
+	state.comment = "made before drop_comment"
 
-	var result := _load(_old_save(1, state), steps)
+	var result := _load(_save_with(SaveMigrations.found().names(), state), _with_test_migrations())
 
 	assert_true(result.ok, result.message)
+	assert_true(result.migrated)
 	assert_eq(result.simulation.time_ms(), _rich_game().time_ms())
 	assert_eq(result.simulation.snapshot(), _rich_game().snapshot())
 
 
-func test_a_migration_starts_at_the_version_of_the_save() -> void:
+func test_a_save_does_not_run_a_migration_that_it_lists() -> void:
 	var state: Dictionary = _save_data().state
-	state.comment = "made by version 2"
-	var steps: Array[Callable] = [_rename_clock, _drop_comment]
+	state.comment = "made before drop_comment"
+	var applied := SaveMigrations.found().names()
+	applied.append(&"rename_clock")
 
-	var result := _load(_old_save(2, state), steps)
+	var result := _load(_save_with(applied, state), _with_test_migrations())
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.snapshot(), _rich_game().snapshot())
 
 
+func test_a_save_that_lists_each_migration_does_not_migrate() -> void:
+	var result := _load(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS))
+
+	assert_true(result.ok, result.message)
+	assert_false(result.migrated)
+
+
+func test_the_save_lists_the_migrations_that_the_game_has() -> void:
+	var migrations := _with_test_migrations()
+	var data: Dictionary = JSON.parse_string(SaveCodec.encode(_rich_game(), SAVED_AT_UNIX_MS, migrations))
+
+	assert_true(data.applied.has("rename_clock"))
+	assert_true(data.applied.has("drop_comment"))
+	assert_true(_load(JSON.stringify(data), migrations).ok, "it loads with no migration to run")
+
+
 func test_a_migration_that_gives_damaged_state_fails() -> void:
 	var state: Dictionary = _save_data().state
-	var steps: Array[Callable] = [_rename_clock]
+	var migrations := MigrationFixture.after_the_game([MigrationFixture.new(&"rename_clock", _rename_clock)])
 
-	var result := _load(_old_save(1, state), steps)
+	var result := _load(_save_with(SaveMigrations.found().names(), state), migrations)
 
 	assert_false(result.ok)
+	assert_true(result.migrated)
 	assert_eq(result.reason, LoadResult.Reason.DAMAGED_STATE)
 	assert_string_contains(result.message, "state.time_ms: must be a whole number, but it is null")
 
 
+## Each save in tests/fixtures/saves/ loads. A test of its own checks the
+## values of each one.
+func test_each_saved_fixture_loads() -> void:
+	var dir := "res://tests/fixtures/saves/"
+	var files := DirAccess.get_files_at(dir)
+	assert_gt(files.size(), 0)
+	for file in files:
+		var result := _load(FileAccess.get_file_as_string(dir + file), SaveMigrations.found(),
+			ContentFixture.make_for_saves())
+		assert_true(result.ok, "%s: %s" % [file, result.message])
+
+
 ## A save of version 1, as the game wrote it. It must load in every later
-## version of the game. When a change to the state adds a migration, add a save
-## of the new version here too.
+## version of the game. A save of each numbered version follows. A new
+## migration adds a save and a test file of its own (see
+## docs/agents/save-migrations.md).
 func test_a_version_1_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v1.json")
 
-	var result := _load(text, SaveCodec.migrations(), _flat_content())
+	var result := _load(text, SaveMigrations.found(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1092,7 +1167,7 @@ func test_a_version_1_save_still_loads() -> void:
 func test_a_version_2_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v2.json")
 
-	var result := _load(text, SaveCodec.migrations(), _flat_content())
+	var result := _load(text, SaveMigrations.found(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1125,7 +1200,7 @@ func test_a_version_2_save_has_manual_links_after_migration() -> void:
 func test_a_version_3_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v3.json")
 
-	var result := _load(text, SaveCodec.migrations(), _flat_content())
+	var result := _load(text, SaveMigrations.found(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1197,7 +1272,7 @@ func test_a_version_5_save_still_loads() -> void:
 func test_a_version_9_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v9.json")
 
-	var result := _load(text, SaveCodec.migrations(), _flat_content())
+	var result := _load(text, SaveMigrations.found(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1213,7 +1288,7 @@ func test_a_version_9_save_still_loads() -> void:
 
 func test_a_version_8_save_has_no_warehouses_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v8.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1228,7 +1303,7 @@ func test_a_version_8_save_has_no_warehouses_after_migration() -> void:
 func test_a_version_6_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v6.json")
 
-	var result := _load(text, SaveCodec.migrations(), _flat_content())
+	var result := _load(text, SaveMigrations.found(), _flat_content())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1252,7 +1327,7 @@ func test_a_version_6_save_still_loads() -> void:
 func test_a_version_8_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v8.json")
 
-	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1271,7 +1346,7 @@ func test_a_version_8_save_still_loads() -> void:
 
 func test_a_version_7_save_has_markets_as_at_the_start_of_a_run_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v7.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var millbrook := result.simulation.market(&"millbrook")
@@ -1285,7 +1360,7 @@ func test_a_version_7_save_has_markets_as_at_the_start_of_a_run_after_migration(
 func test_a_version_12_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v12.json")
 
-	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1304,7 +1379,7 @@ func test_a_version_12_save_still_loads() -> void:
 
 func test_a_version_11_save_has_no_splits_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v11.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.simulation.splits().size(), 0)
@@ -1326,7 +1401,7 @@ func test_a_version_4_save_has_no_prisms_after_migration() -> void:
 func test_a_version_7_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v7.json")
 
-	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1345,7 +1420,7 @@ func test_a_version_7_save_still_loads() -> void:
 
 func test_a_version_6_save_has_no_demand_events_after_migration_and_schedules_one() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v6.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1357,7 +1432,7 @@ func test_a_version_6_save_has_no_demand_events_after_migration_and_schedules_on
 
 func test_a_version_9_save_has_carts_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v9.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1373,7 +1448,7 @@ func test_a_version_9_save_has_carts_after_migration() -> void:
 func test_a_version_10_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v10.json")
 
-	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1393,7 +1468,7 @@ func test_a_version_10_save_still_loads() -> void:
 func test_a_version_11_save_still_loads() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v11.json")
 
-	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1411,7 +1486,7 @@ func test_a_version_11_save_still_loads() -> void:
 
 func test_a_version_10_save_has_no_labs_or_research_after_migration() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v10.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	var sim := result.simulation
@@ -1429,13 +1504,27 @@ func test_a_version_10_save_has_no_labs_or_research_after_migration() -> void:
 func test_a_version_13_save_still_loads_with_its_save_time() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v13.json")
 
-	var result := _load(text, SaveCodec.migrations(), ContentFixture.make_for_saves())
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.saved_at_unix_ms, SAVED_AT_UNIX_MS)
 	var v12 := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v12.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 	assert_eq(result.simulation.snapshot(), v12.simulation.snapshot())
+
+
+## A save of version 14 (ADR-0014: the list of migrations), as the game wrote it.
+## It is the version 13 fixture, loaded and saved again.
+func test_a_version_14_save_still_loads_with_its_save_time() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/saves/v14.json")
+
+	var result := _load(text, SaveMigrations.found(), ContentFixture.make_for_saves())
+
+	assert_true(result.ok, result.message)
+	assert_eq(result.saved_at_unix_ms, SAVED_AT_UNIX_MS)
+	var v13 := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v13.json"),
+		SaveMigrations.found(), ContentFixture.make_for_saves())
+	assert_eq(result.simulation.snapshot(), v13.simulation.snapshot())
 
 
 # --- Save time and time away ----------------------------------------------------
@@ -1463,7 +1552,7 @@ func test_a_clock_that_went_backward_gives_no_time_away() -> void:
 
 func test_a_save_from_before_the_save_time_gives_no_time_away() -> void:
 	var result := _load(FileAccess.get_file_as_string("res://tests/fixtures/saves/v12.json"),
-		SaveCodec.migrations(), ContentFixture.make_for_saves())
+		SaveMigrations.found(), ContentFixture.make_for_saves())
 
 	assert_true(result.ok, result.message)
 	assert_eq(result.saved_at_unix_ms, LoadResult.NO_SAVE_TIME)

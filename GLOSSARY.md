@@ -217,9 +217,9 @@ The versioned, serialized form of the core state that the game keeps on the devi
 _Avoid_: Save file, save game, profile
 
 **Export code**:
-The save as text that the player copies to another device and imports there, with the save version and a checksum. See ADR-0010.
+The save as text that the player copies to another device and imports there, with the save format version and a checksum. See ADR-0010.
 _Avoid_: Save string, save key, backup code
 
 **Migration**:
-One step that turns a save of one version into a save of the next version, so that old saves still load.
+One named change to the shape of the saved state, in a file of its own, so that old saves still load. A save lists the migrations that its state has, and a load runs the others. See ADR-0014.
 _Avoid_: Upgrade, conversion
