@@ -160,6 +160,13 @@ func _read_prestige_upgrades(reader: SnapshotReader) -> void:
 		elif owned.has(id):
 			reader.fail("prestige_upgrades", "%s is in the list more than once" % id)
 		owned[id] = true
+	_set_prestige_upgrades(owned)
+
+
+## Sets the owned prestige upgrades to the ids in [param owned], in content
+## order. Ids that are not in the content are not kept.
+func _set_prestige_upgrades(owned: Dictionary) -> void:
+	_prestige_upgrades.clear()
 	for def in _content.prestige_upgrades():
 		if owned.has(def.id):
 			_prestige_upgrades.append(def.id)
@@ -360,7 +367,7 @@ func build_factory(color: StringName) -> CommandResult:
 		return CommandResult.failure(CommandResult.Reason.COLOR_LOCKED,
 			"%s needs %s first: %s." % [color_def.name,
 				"a prestige upgrade" if color_def.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE else "research",
-				_unlock_names(color_def)])
+				" or ".join(_content.unlocker_names(color_def))])
 	var cost := factory_build_cost()
 	if _money.is_less_than(cost):
 		return _not_enough_money("A factory", cost)
@@ -895,10 +902,7 @@ func buy_prestige_upgrade(upgrade_id: StringName) -> CommandResult:
 	for id in _prestige_upgrades:
 		owned[id] = true
 	owned[upgrade_id] = true
-	_prestige_upgrades.clear()
-	for each in _content.prestige_upgrades():
-		if owned.has(each.id):
-			_prestige_upgrades.append(each.id)
+	_set_prestige_upgrades(owned)
 	_money = _money.add(def.starting_money)
 	return CommandResult.success(_prisms)
 
@@ -1690,19 +1694,6 @@ func _factory_view(state: FactoryState) -> FactoryView:
 	for bay in view.input_bays:
 		bay.in_transit = _widgets_in_transit_to(state.id, bay.color)
 	return view
-
-
-## The names of the research or the prestige upgrades that unlock
-## [param color], as its unlock says, such as "Warm tertiaries".
-func _unlock_names(color: ColorDef) -> String:
-	var names := PackedStringArray()
-	if color.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE:
-		for def in _content.prestige_upgrades_unlocking(color.id):
-			names.append(def.name)
-	else:
-		for def in _content.research_unlocking(color.id):
-			names.append(def.name)
-	return " or ".join(names)
 
 
 func _prestige_upgrade_view(def: PrestigeUpgradeDef) -> PrestigeUpgradeView:

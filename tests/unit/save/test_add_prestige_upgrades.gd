@@ -1,5 +1,5 @@
 extends GutTest
-## The save step add_prestige_upgrades (#20): the save lists the prestige
+## The migration add_prestige_upgrades (#20): the save lists the prestige
 ## upgrades that the player owns.
 
 const FIXTURE := "res://tests/fixtures/saves/add_prestige_upgrades.json"

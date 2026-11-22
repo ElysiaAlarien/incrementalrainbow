@@ -220,6 +220,21 @@ func prestige_upgrades_unlocking(color: StringName) -> Array[PrestigeUpgradeDef]
 	return defs
 
 
+## The names of what can unlock [param color], as its unlock says: the
+## research or the prestige upgrades that unlock it, in data order. Empty for
+## a color that is available from the start.
+func unlocker_names(color: ColorDef) -> PackedStringArray:
+	var names := PackedStringArray()
+	match color.unlock:
+		ColorDef.Unlock.RESEARCH:
+			for def in research_unlocking(color.id):
+				names.append(def.name)
+		ColorDef.Unlock.PRESTIGE_UPGRADE:
+			for def in prestige_upgrades_unlocking(color.id):
+				names.append(def.name)
+	return names
+
+
 func _parse_colors(data: Dictionary) -> void:
 	var entries: Variant = data.get("colors")
 	if not entries is Array:
