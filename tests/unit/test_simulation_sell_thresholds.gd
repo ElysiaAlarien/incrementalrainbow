@@ -86,8 +86,17 @@ func test_the_player_sets_and_clears_a_sell_threshold() -> void:
 	_ok(sim.set_sell_threshold(1, 250), "a threshold can be above 100%, as demand can")
 	assert_eq(sim.warehouse(1).sell_threshold, 250)
 
-	_ok(sim.set_sell_threshold(1, WarehouseView.NO_SELL_THRESHOLD), "clear")
+	_ok(sim.clear_sell_threshold(1), "clear")
 	assert_eq(sim.warehouse(1).sell_threshold, WarehouseView.NO_SELL_THRESHOLD)
+
+
+func test_clearing_no_sell_threshold_fails() -> void:
+	var sim := _sim()
+	_ok(sim.build_warehouse(&"red"), "warehouse")
+	_assert_fails(sim, sim.clear_sell_threshold(1), CommandResult.Reason.NO_SELL_THRESHOLD,
+		"Red warehouse #1 has no sell threshold")
+	_assert_fails(sim, sim.clear_sell_threshold(2), CommandResult.Reason.UNKNOWN_WAREHOUSE,
+		"There is no warehouse #2")
 
 
 func test_a_sell_threshold_on_an_unknown_warehouse_fails() -> void:
@@ -99,7 +108,7 @@ func test_a_sell_threshold_on_an_unknown_warehouse_fails() -> void:
 func test_a_sell_threshold_below_1_percent_fails() -> void:
 	var sim := _sim()
 	_ok(sim.build_warehouse(&"red"), "warehouse")
-	for percent in [0, -2]:
+	for percent in [0, -1, -2]:
 		_assert_fails(sim, sim.set_sell_threshold(1, percent), CommandResult.Reason.BAD_SELL_THRESHOLD,
 			"A sell threshold must be a whole percentage of at least 1%%, but it is %d%%" % percent)
 
@@ -118,7 +127,6 @@ func test_a_warehouse_holds_while_demand_is_below_the_threshold_and_sends_when_i
 	assert_eq(sim.link(2).automatic, LinkView.Automatic.HELD)
 	assert_eq(sim.link(2).shipments_in_transit.size(), 0, "the warehouse sends nothing")
 	assert_eq(sim.warehouse(1).count, 10, "the warehouse keeps its widgets")
-	assert_true(sim.link(2).held)
 	assert_true(sim.warehouse(1).holds())
 	assert_eq(sim.warehouse(1).held_market_ids, [MARKET] as Array[StringName])
 
@@ -128,21 +136,30 @@ func test_a_warehouse_holds_while_demand_is_below_the_threshold_and_sends_when_i
 	assert_eq(sim.link(2).automatic, LinkView.Automatic.SHIPPED)
 	assert_eq(sim.link(2).shipments_in_transit[0].count, 10, "the warehouse sends again")
 	assert_eq(sim.warehouse(1).count, 0)
-	assert_false(sim.link(2).held)
 	assert_false(sim.warehouse(1).holds())
 
 
 func test_the_hold_shows_now_before_the_next_automatic_start() -> void:
 	var sim := _saturated_game()
+	_ok(sim.buy_automatic_transport(2), "automatic out")
 	assert_false(sim.warehouse(1).holds(), "no threshold, no hold")
 
 	_ok(sim.set_sell_threshold(1, 80), "threshold")
 
+	assert_eq(sim.link(2).automatic, LinkView.Automatic.READY, "no automatic start yet")
 	assert_true(sim.warehouse(1).holds(), "the query reads the demand now")
-	assert_true(sim.link(2).held, "a manual link shows the hold too")
 	sim.tick(8000)
 	assert_eq(_demand_percent(sim), 83)
 	assert_false(sim.warehouse(1).holds())
+
+
+func test_a_manual_link_never_holds() -> void:
+	var sim := _saturated_game()
+
+	_ok(sim.set_sell_threshold(1, 80), "threshold")
+
+	assert_eq(_demand_percent(sim), 50)
+	assert_false(sim.warehouse(1).holds(), "only automatic starts hold")
 
 
 func test_demand_equal_to_the_threshold_does_not_hold() -> void:
@@ -164,6 +181,7 @@ func test_the_hold_compares_the_demand_that_the_screen_shows() -> void:
 	sim.tick(7499)
 	assert_eq(_demand_percent(sim), 80)
 	assert_lt(sim.market(MARKET).demand(&"red"), 0.8)
+	_ok(sim.buy_automatic_transport(2), "automatic out")
 
 	_ok(sim.set_sell_threshold(1, 80), "threshold")
 
@@ -172,9 +190,11 @@ func test_the_hold_compares_the_demand_that_the_screen_shows() -> void:
 
 func test_a_shipment_by_hand_is_outside_the_hold() -> void:
 	var sim := _saturated_game()
+	_ok(sim.buy_automatic_transport(2), "automatic out")
 	_ok(sim.set_sell_threshold(1, 80), "threshold")
 	sim.tick(TRANSIT_MS)
 	assert_true(sim.warehouse(1).holds())
+	assert_eq(sim.link(2).automatic, LinkView.Automatic.HELD)
 
 	assert_eq(_ok(sim.start_shipment(2), "ship by hand"), 10, "the player ships on purpose")
 
@@ -183,13 +203,10 @@ func test_a_threshold_holds_only_from_markets_with_low_demand() -> void:
 	var sim := _saturated_game()
 	var to_other: int = _ok(sim.link_warehouse_to_market(1, OTHER_MARKET), "link to ashford")
 	_ok(sim.set_sell_threshold(1, 80), "threshold")
-	sim.tick(1)
-
-	assert_eq(sim.warehouse(1).held_market_ids, [MARKET] as Array[StringName])
-	assert_true(sim.link(2).held)
-	assert_false(sim.link(to_other).held, "ashford has its full demand")
 	_ok(sim.buy_automatic_transport(to_other), "automatic to ashford")
 	_ok(sim.buy_automatic_transport(2), "automatic to millbrook")
+
+	assert_eq(sim.warehouse(1).held_market_ids, [MARKET] as Array[StringName], "ashford has its full demand")
 	# The widgets arrive in the warehouse at 25 s, before those starts.
 	sim.tick(TRANSIT_MS + 1)
 	assert_eq(sim.link(to_other).automatic, LinkView.Automatic.SHIPPED)
@@ -202,9 +219,9 @@ func test_a_threshold_does_not_hold_links_to_factories() -> void:
 	var to_factory: int = _ok(sim.link_warehouse_to_factory(1, 2), "link to the purple factory")
 	_ok(sim.set_sell_threshold(1, 1000), "a threshold that always holds from markets")
 	_ok(sim.buy_automatic_transport(to_factory), "automatic to the factory")
+	_ok(sim.buy_automatic_transport(2), "automatic to millbrook")
 	sim.tick(TRANSIT_MS + 1)
 
-	assert_false(sim.link(to_factory).held)
 	assert_eq(sim.link(to_factory).automatic, LinkView.Automatic.SHIPPED)
 	assert_eq(sim.warehouse(1).held_market_ids, [MARKET] as Array[StringName])
 
@@ -213,9 +230,11 @@ func test_a_threshold_on_one_warehouse_does_not_hold_another() -> void:
 	var sim := _saturated_game()
 	_ok(sim.build_warehouse(&"red"), "second warehouse")
 	var out: int = _ok(sim.link_warehouse_to_market(2, MARKET), "link out of the second")
+	_ok(sim.buy_automatic_transport(out), "automatic out of the second")
+	_ok(sim.buy_automatic_transport(2), "automatic out of the first")
 	_ok(sim.set_sell_threshold(1, 80), "threshold on the first")
 
-	assert_false(sim.link(out).held)
+	assert_true(sim.warehouse(1).holds())
 	assert_false(sim.warehouse(2).holds())
 
 
@@ -280,9 +299,13 @@ func test_offline_progress_holds_as_ticks_do() -> void:
 	_play(ticked, [])
 
 	offline.progress_offline(600_000)
+	var held_once := false
 	for i in 600:
 		ticked.tick(1000)
+		for link in ticked.links():
+			held_once = held_once or link.automatic == LinkView.Automatic.HELD
 
+	assert_true(held_once, "the game holds at some time")
 	assert_eq(offline.snapshot(), ticked.snapshot())
 
 

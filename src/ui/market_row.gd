@@ -153,4 +153,4 @@ static func capacity_text(view: MarketView) -> String:
 
 ## Demand as a whole percent of normal demand: "100%", "87%".
 static func format_demand(demand: float) -> String:
-	return "%d%%" % roundi(demand * 100.0)
+	return "%d%%" % MarketView.demand_percent(demand)

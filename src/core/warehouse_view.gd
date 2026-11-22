@@ -27,8 +27,8 @@ var outflow_per_minute: int
 ## [method Simulation.set_sell_threshold].
 var sell_threshold: int = NO_SELL_THRESHOLD
 ## The markets that the warehouse holds its color from now: the markets at the
-## end of its links whose demand for its color is below [member sell_threshold],
-## in link order.
+## end of its automatic links whose demand for its color is below
+## [member sell_threshold], in link order. A manual link never holds.
 var held_market_ids: Array[StringName] = []
 
 

@@ -2,7 +2,7 @@
 
 A warehouse can have a sell threshold: a whole percent of normal demand, as the screen shows demand. The rule is in `Simulation._is_held`.
 
-**The rule.** When an automatic start on a link from a warehouse to a market is due, the core reads the demand for the link's color in that market at that time. It rounds the demand to a whole percent, as the screen does. If that percent is below the threshold, the start sends nothing, and the link's status is "held". The next automatic start, one transit time later, reads demand again. Equal demand does not hold. Thus the player sees the hold start and end at the number that they set.
+**The rule.** When an automatic start on a link from a warehouse to a market is due, the core reads the demand for the link's color in that market at that time. It rounds the demand to a whole percent, as the screen does (`MarketView.demand_percent`). If that percent is below the threshold, the start sends nothing, and the link's status is "held". The next automatic start, one transit time later, reads demand again. Equal demand does not hold. Thus the player sees the hold start and end at the number that they set.
 
 **Each market is separate.** One warehouse can hold its color from one market and send it to another market that has higher demand. Links to mixed factories and labs never hold, because the threshold is about the price that a market pays.
 
@@ -12,9 +12,9 @@ A warehouse can have a sell threshold: a whole percent of normal demand, as the 
 
 **A held link of a split keeps its share** (ADR-0013). A held start ships nothing, so the link's share waits in the warehouse, and the other links do not get it. When demand goes back up, the link catches up to its share. If the hold lasts, the warehouse fills, and the links into it stop. This is what the player asked for: hold that share for that market.
 
-**A shipment by hand is outside the hold**, as it is outside the split (ADR-0013). The player starts it on purpose, so a threshold must not block it. The issue (#15) says that a held warehouse sends no widgets to that market; we read this as "sends none by itself".
+**A shipment by hand is outside the hold**, as it is outside the split (ADR-0013). The player starts it on purpose, so a threshold must not stop it. The issue (#15) says that a held warehouse sends no widgets to that market; we read this as "sends none by itself".
 
-**"Holds now" is read from demand now.** `WarehouseView.held_market_ids` and `LinkView.held` give the markets that demand now holds, also for manual links. The status of the last automatic start can be one transit time old, so the screen uses the query for the warehouse, and the status for the link.
+**"Holds now" is read from demand now.** `WarehouseView.held_market_ids` gives the markets that the warehouse holds its color from now: those at the end of its automatic links whose demand is below the threshold. A manual link never holds. The status of the last automatic start can be one transit time old, so the warehouse row uses the query, and the link row shows the status of the last start.
 
 We rejected two other rules:
 

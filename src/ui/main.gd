@@ -1,8 +1,8 @@
 extends Control
 ## The first screen: money, prisms, each color with its recipe and a button to
 ## build it, factories with their production lines, output bays, and input
-## bays, warehouses with their widgets, throughput, and sell thresholds, the transport tier with
-## a button to buy the next one, links from factories and warehouses to
+## bays, warehouses with their widgets, throughput, and sell thresholds, the
+## transport tier with a button to buy the next one, links from factories and warehouses to
 ## markets, mixed factories, warehouses, and labs, with their vehicles, manual
 ## shipments, automatic transport, and throughput, labs and research with its
 ## progress and unlocks, the split of each source with automatic links, the
@@ -434,7 +434,7 @@ func _on_set_sell_threshold_pressed(warehouse_id: int, percent: int) -> void:
 
 
 func _on_clear_sell_threshold_pressed(warehouse_id: int) -> void:
-	_show_result(_sim.set_sell_threshold(warehouse_id, WarehouseView.NO_SELL_THRESHOLD))
+	_show_result(_sim.clear_sell_threshold(warehouse_id))
 
 
 func _show_result(result: CommandResult) -> void:

@@ -10,7 +10,6 @@ signal set_threshold_pressed(warehouse_id: int, percent: int)
 signal clear_threshold_pressed(warehouse_id: int)
 
 const MUTED_COLOR := Color(0.7, 0.72, 0.8)
-const HELD_COLOR := Color(0.98, 0.85, 0.45)
 const SENDS_COLOR := Color(0.6, 0.85, 0.6)
 ## The value in the box before the player sets a threshold: normal demand.
 const DEFAULT_THRESHOLD := 100
@@ -120,7 +119,7 @@ func show_state(view: WarehouseView, held_market_names: PackedStringArray) -> vo
 	elif view.holds():
 		_threshold_label.text = "%d%%: holds from %s, where demand is below it" % [
 			view.sell_threshold, ", ".join(held_market_names)]
-		_threshold_label.add_theme_color_override(&"font_color", HELD_COLOR)
+		_threshold_label.add_theme_color_override(&"font_color", LinkRow.HELD_COLOR)
 	else:
 		_threshold_label.text = "%d%%: sends, demand is at or above it" % view.sell_threshold
 		_threshold_label.add_theme_color_override(&"font_color", SENDS_COLOR)

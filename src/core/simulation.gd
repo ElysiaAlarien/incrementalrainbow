@@ -733,9 +733,8 @@ func clear_split(link_id: int) -> CommandResult:
 
 
 ## Sets the sell threshold of the warehouse [param warehouse_id] to
-## [param percent], a whole percent of normal demand (100 is normal demand, as
-## [member MarketView.demands] shows it), or removes it with
-## [constant WarehouseView.NO_SELL_THRESHOLD]. From now on, while the demand
+## [param percent], a whole percent of normal demand of at least 1 (100 is
+## normal demand; see [method MarketView.demand_percent]). From now on, while the demand
 ## for the warehouse's color in a market is below the threshold, the automatic
 ## starts of the links from the warehouse to that market send nothing. When
 ## demand goes up to the threshold or above, the next automatic start sends
@@ -745,11 +744,25 @@ func set_sell_threshold(warehouse_id: int, percent: int) -> CommandResult:
 	var state := _warehouse_state(warehouse_id)
 	if state == null:
 		return _unknown_warehouse(warehouse_id)
-	if percent < 1 and percent != WarehouseView.NO_SELL_THRESHOLD:
+	if percent < 1:
 		return CommandResult.failure(CommandResult.Reason.BAD_SELL_THRESHOLD,
 			"A sell threshold must be a whole percentage of at least 1%%, but it is %d%%." % percent)
 
 	state.sell_threshold = percent
+	return CommandResult.success()
+
+
+## Removes the sell threshold of the warehouse [param warehouse_id]. Then its
+## links send at any demand.
+func clear_sell_threshold(warehouse_id: int) -> CommandResult:
+	var state := _warehouse_state(warehouse_id)
+	if state == null:
+		return _unknown_warehouse(warehouse_id)
+	if state.sell_threshold == WarehouseView.NO_SELL_THRESHOLD:
+		return CommandResult.failure(CommandResult.Reason.NO_SELL_THRESHOLD,
+			"%s has no sell threshold." % _warehouse_name(state))
+
+	state.sell_threshold = WarehouseView.NO_SELL_THRESHOLD
 	return CommandResult.success()
 
 
@@ -1410,19 +1423,20 @@ func _widgets_in_transit_to_labs(color: StringName) -> int:
 	return count
 
 
-## The sell threshold rule, in one place: true when [param state] goes from a
-## warehouse with a sell threshold to a market, and the demand for its color
-## there now, as a whole percent, is below the threshold. The percent is
-## rounded as the screen shows it, so the player sees the hold start and end
-## at the number they set.
+## The sell threshold rule, in one place: true when [param state] is an
+## automatic link from a warehouse with a sell threshold to a market, and the
+## demand for its color there now, as a whole percent, is below the threshold.
+## The percent is rounded as the screen shows it, so the player sees the hold
+## start and end at the number they set. A manual link never holds.
 func _is_held(state: LinkState) -> bool:
-	if state.source_kind != LinkView.Source.WAREHOUSE or state.destination_kind != LinkView.Destination.MARKET:
+	if state.source_kind != LinkView.Source.WAREHOUSE or state.destination_kind != LinkView.Destination.MARKET \
+			or not state.is_automatic():
 		return false
 	var threshold := _warehouse_state(state.source_warehouse_id).sell_threshold
 	if threshold == WarehouseView.NO_SELL_THRESHOLD:
 		return false
 	var demand := _demand.demand(state.destination_market_id, state.color, _time_ms, _content.demand_balance)
-	return roundi(demand * 100.0) < threshold
+	return MarketView.demand_percent(demand) < threshold
 
 
 ## Widgets that the source of [param state] has to ship now.
@@ -1593,9 +1607,7 @@ func _warehouse_view(state: WarehouseState) -> WarehouseView:
 
 
 func _link_view(state: LinkState) -> LinkView:
-	var view := state.to_view(_content.transport_tier(state.vehicle), _time_ms)
-	view.held = _is_held(state)
-	return view
+	return state.to_view(_content.transport_tier(state.vehicle), _time_ms)
 
 
 func _market_view(def: MarketDef) -> MarketView:
