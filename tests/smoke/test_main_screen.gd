@@ -975,6 +975,19 @@ func test_the_screen_shows_generated_markets_that_no_tier_reaches() -> void:
 	assert_true(destinations.is_item_disabled(item[0]))
 
 
+	# A prestige starts a run at carts, which has no generated markets yet.
+	assert_true(sim.buy_prism().ok)
+	main.find_child("PrestigeButton", true, false).pressed.emit()
+	await wait_process_frames(1)
+	(main.find_child("PrestigeConfirm", true, false) as ConfirmationDialog).confirmed.emit()
+	await wait_process_frames(1)
+	sim = main.simulation()
+	assert_eq(sim.transport_tier().id, &"cart", "the new run started")
+	for view: MarketView in generated:
+		assert_null(main.find_child("Market_%s" % view.id, true, false), "no row for %s" % view.id)
+	assert_eq(main.find_children("Market_*", "MarketRow", true, false).size(), sim.markets().size())
+
+
 func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
 	var main := await _main_with_money(10_000)
 	var sim: Simulation = main.simulation()

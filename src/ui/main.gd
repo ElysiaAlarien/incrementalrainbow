@@ -330,12 +330,14 @@ func _replace_game(imported: LoadResult) -> void:
 
 
 ## Shows the run of the game after an import or a prestige replaced the last
-## run. It removes the rows of the last run, and saves the game at once.
+## run. It removes the rows of the last run, and saves the game at once. The
+## market rows go too, because each run has its own generated markets.
 func _show_replaced_run() -> void:
 	for row: Node in _rows.values() + _link_rows.values() + _warehouse_rows.values() \
-			+ _split_rows.values():
+			+ _split_rows.values() + _market_rows.values():
 		row.get_parent().remove_child(row)
 		row.queue_free()
+	_market_rows.clear()
 	_rows.clear()
 	_link_rows.clear()
 	_warehouse_rows.clear()
