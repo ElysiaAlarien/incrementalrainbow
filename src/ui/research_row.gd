@@ -7,19 +7,19 @@ extends PanelContainer
 
 signal select_pressed(research_id: StringName)
 
-const MUTED_COLOR := Color(0.7, 0.72, 0.8)
+const MUTED_COLOR := UiTheme.MUTED_COLOR
 const SELECTED_COLOR := Color(0.6, 0.85, 0.6)
 const LOCKED_COLOR := Color(1.0, 0.55, 0.45)
 
 var research_id: StringName
 
 var _content: Content
-var _name_label := Label.new()
-var _status_label := Label.new()
+var _name_label: Label
+var _status_label: Label
 var _select_button := Button.new()
 ## Color id to the label that shows the paid widgets of that color.
 var _cost_labels: Dictionary[StringName, Label] = {}
-var _unlocks_label := Label.new()
+var _unlocks_label: Label
 
 
 func _init(view: ResearchView, content: Content) -> void:
@@ -30,13 +30,13 @@ func _init(view: ResearchView, content: Content) -> void:
 	lines.add_theme_constant_override(&"separation", 4)
 	add_child(lines)
 
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override(&"separation", 16)
+	var top := UiTheme.flow()
 	lines.add_child(top)
+	_name_label = UiTheme.column_label(220)
 	_name_label.text = view.name
-	_name_label.custom_minimum_size.x = 260
 	top.add_child(_name_label)
-	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Room for "Selected: labs pay for it", so the buttons stay in line.
+	_status_label = UiTheme.column_label(230)
 	top.add_child(_status_label)
 	_select_button.name = "Select"
 	_select_button.text = "Select"
@@ -44,8 +44,7 @@ func _init(view: ResearchView, content: Content) -> void:
 	_select_button.pressed.connect(func() -> void: select_pressed.emit(research_id))
 	top.add_child(_select_button)
 
-	var cost_line := HFlowContainer.new()
-	cost_line.add_theme_constant_override(&"h_separation", 24)
+	var cost_line := UiTheme.flow(24)
 	lines.add_child(cost_line)
 	for color_id in view.cost:
 		var item := HBoxContainer.new()
@@ -59,8 +58,7 @@ func _init(view: ResearchView, content: Content) -> void:
 		cost_line.add_child(item)
 		_cost_labels[color_id] = label
 
-	_unlocks_label.add_theme_color_override(&"font_color", MUTED_COLOR)
-	_unlocks_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_unlocks_label = UiTheme.wrapping_label(true)
 	lines.add_child(_unlocks_label)
 
 

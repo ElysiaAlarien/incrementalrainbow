@@ -3,7 +3,7 @@ extends PanelContainer
 ## One factory on the screen: its color and symbol, its size, its output bay
 ## count, and whether it has stopped or waits. A mixed factory also shows each
 ## input bay, and which inputs are short. It has a button to add a production
-## line.
+## line. The parts wrap to more lines on a narrow screen.
 
 ## Emits when the player asks to add a production line to this factory.
 signal add_line_requested(factory_id: int)
@@ -16,19 +16,17 @@ const STATUS_TEXT: Dictionary[FactoryView.Status, String] = {
 	FactoryView.Status.OUTPUT_BAY_FULL: "Stopped: output bay full",
 	FactoryView.Status.WAITING_FOR_INPUT: "Waiting for input",
 }
-const MUTED_COLOR := Color(0.7, 0.72, 0.8)
-const INPUT_FONT_SIZE := 16
 const BAR_BACKGROUND := Color(0.2, 0.22, 0.29)
 
 var factory_id: int
 
 var _symbol := ColorSymbol.new()
 var _name_label := Label.new()
-var _size_label := Label.new()
+var _size_label: Label
 var _add_line_button := Button.new()
-var _bay_label := Label.new()
+var _bay_label: Label
 var _bay_bar := ProgressBar.new()
-var _status_label := Label.new()
+var _status_label: Label
 ## One label for each input bay, in recipe order.
 var _input_labels: Array[Label] = []
 ## The name of each input color, in recipe order.
@@ -40,39 +38,34 @@ func _init(id: int, color: ColorDef, content: Content) -> void:
 	factory_id = id
 	name = "Factory%d" % id
 	var lines := VBoxContainer.new()
-	lines.add_theme_constant_override(&"separation", 4)
+	lines.add_theme_constant_override(&"separation", 6)
 	add_child(lines)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override(&"separation", 16)
-	lines.add_child(row)
 
 	_symbol.setup(color)
-	_symbol.custom_minimum_size = Vector2(32, 32)
-	row.add_child(_symbol)
-
 	_name_label.text = "%s factory #%d" % [color.name, id]
-	_name_label.custom_minimum_size.x = 200
-	row.add_child(_name_label)
+	lines.add_child(UiTheme.title_line(_symbol, _name_label))
 
-	_size_label.custom_minimum_size.x = 100
+	var row := UiTheme.flow()
+	lines.add_child(row)
+	_size_label = UiTheme.column_label(80)
 	row.add_child(_size_label)
-
-	_bay_label.custom_minimum_size.x = 200
+	_bay_label = UiTheme.column_label(190)
 	row.add_child(_bay_label)
 
-	_bay_bar.custom_minimum_size = Vector2(160, 14)
+	_bay_bar.custom_minimum_size = Vector2(140, 14)
 	_bay_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_bay_bar.show_percentage = false
 	_bay_bar.add_theme_stylebox_override(&"background", _bar_style(BAR_BACKGROUND))
 	_bay_bar.add_theme_stylebox_override(&"fill", _bar_style(color.display_color))
 	row.add_child(_bay_bar)
 
-	_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Room for "Stopped: output bay full", so the button stays in line.
+	_status_label = UiTheme.column_label(220)
 	row.add_child(_status_label)
 
 	_add_line_button.name = "AddLine"
 	# Wide enough for most costs, so the columns of each row stay aligned.
-	_add_line_button.custom_minimum_size.x = 180
+	_add_line_button.custom_minimum_size.x = 170
 	_add_line_button.pressed.connect(func() -> void: add_line_requested.emit(factory_id))
 	row.add_child(_add_line_button)
 
@@ -80,35 +73,31 @@ func _init(id: int, color: ColorDef, content: Content) -> void:
 		lines.add_child(_input_line(color, content))
 
 
-## A line under the main row with one entry for each input bay.
-func _input_line(color: ColorDef, content: Content) -> HBoxContainer:
-	var line := HBoxContainer.new()
+## A line under the main row with one entry for each input bay. The entries
+## wrap to more lines when they do not fit.
+func _input_line(color: ColorDef, content: Content) -> HFlowContainer:
+	var line := UiTheme.flow(18)
 	line.name = "InputBays"
-	line.add_theme_constant_override(&"separation", 6)
 	var title := Label.new()
 	title.text = "Input bays:"
-	# Starts under the factory name.
-	title.custom_minimum_size.x = 32 + 16 + 100
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	title.add_theme_font_size_override(&"font_size", INPUT_FONT_SIZE)
-	title.add_theme_color_override(&"font_color", MUTED_COLOR)
+	title.theme_type_variation = UiTheme.MUTED_LABEL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(title)
 	for input in color.recipe:
 		var input_def := content.color(input)
 		_input_names.append(input_def.name)
-		if not _input_labels.is_empty():
-			var gap := Control.new()
-			gap.custom_minimum_size.x = 18
-			line.add_child(gap)
+		var item := HBoxContainer.new()
+		item.add_theme_constant_override(&"separation", 6)
 		var symbol := ColorSymbol.new().setup(input_def)
 		symbol.custom_minimum_size = Vector2(18, 18)
 		symbol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		line.add_child(symbol)
+		item.add_child(symbol)
 		var label := Label.new()
 		# Short counts keep a steady width, so the next bay does not move.
 		label.custom_minimum_size.x = 120
-		label.add_theme_font_size_override(&"font_size", INPUT_FONT_SIZE)
-		line.add_child(label)
+		label.theme_type_variation = UiTheme.MUTED_LABEL
+		item.add_child(label)
+		line.add_child(item)
 		_input_labels.append(label)
 	return line
 
@@ -139,7 +128,10 @@ func _show_input_bay(label: Label, input_name: String, bay: InputBayView) -> voi
 	if bay.is_short():
 		text += " (short)"
 	label.text = text
-	label.add_theme_color_override(&"font_color", STOPPED_COLOR if bay.is_short() else MUTED_COLOR)
+	if bay.is_short():
+		label.add_theme_color_override(&"font_color", STOPPED_COLOR)
+	else:
+		label.remove_theme_color_override(&"font_color")
 
 
 static func _bar_style(color: Color) -> StyleBoxFlat:

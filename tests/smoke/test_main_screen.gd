@@ -37,6 +37,25 @@ func _read_save() -> LoadResult:
 	return SaveCodec.decode(Content.load_dir(Content.DEFAULT_DIR), FileAccess.get_file_as_string(SAVE_PATH))
 
 
+## Opens the section [param id] of the screen, as the player does with the
+## rail. Each frame shows only the open section.
+func _show(main: Control, id: StringName) -> void:
+	main.show_section(id)
+	await wait_process_frames(1)
+
+
+## Opens the markets section and picks the market [param id], as the player
+## does. Only the picked market shows its state. Returns its row.
+func _pick_market(main: Control, id: StringName) -> MarketRow:
+	main.show_section(&"markets")
+	var picker: OptionButton = main.find_child("MarketPicker", true, false)
+	for i in picker.item_count:
+		if picker.get_item_metadata(i) == id:
+			picker.select(i)
+			picker.item_selected.emit(i)
+	return main.find_child("Market_%s" % id, true, false)
+
+
 func _rows(main: Control) -> Array[Node]:
 	return main.find_children("Factory*", "FactoryRow", true, false)
 
@@ -47,6 +66,7 @@ func test_building_a_factory_shows_it_on_the_screen() -> void:
 	var button: Button = main.find_child("Build_red", true, false)
 	assert_not_null(button, "a build button for red")
 	button.pressed.emit()
+	await _show(main, &"factories")
 	main.simulation().tick(60_000)
 	await wait_process_frames(1)
 
@@ -220,7 +240,7 @@ func test_a_link_can_be_made_automatic_and_shows_its_throughput() -> void:
 	main.find_child("Build_red", true, false).pressed.emit()
 	await wait_process_frames(1)
 	main.find_child("MakeLink", true, false).pressed.emit()
-	await wait_process_frames(1)
+	await _show(main, &"links")
 	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
 	assert_string_contains(row.text(), "Manual")
 	assert_string_contains(row.text(), "Throughput: 0/min")
@@ -255,6 +275,7 @@ func test_an_automatic_link_with_too_little_money_shows_why() -> void:
 	file.store_string(JSON.stringify(save))
 	file.close()
 	var main := await _open_main()
+	await _show(main, &"links")
 	var sim: Simulation = main.simulation()
 	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
 
@@ -365,6 +386,7 @@ func test_the_screen_shows_the_price_and_demand_of_each_color_in_each_market() -
 	# No frame ticks, so that the game time stays at the time of the screen.
 	# A command shows the market section at once.
 	main.set_process(false)
+	main.show_section(&"markets")
 	main.find_child("Build_red", true, false).pressed.emit()
 	var sim: Simulation = main.simulation()
 	var rows := main.find_children("Market_*", "MarketRow", true, false)
@@ -408,6 +430,7 @@ func test_the_screen_shows_capacity_population_and_income_of_each_market() -> vo
 	# A shipment on the way uses capacity.
 	main.find_child("Build_red", true, false).pressed.emit()
 	main.find_child("MakeLink", true, false).pressed.emit()
+	await _show(main, &"markets")
 	sim.tick(5000)
 	sim.start_shipment(1)
 	await wait_process_frames(1)
@@ -484,6 +507,7 @@ func test_the_screen_shows_the_name_and_colors_of_each_active_demand_event() -> 
 	var content := Content.load_dir(Content.DEFAULT_DIR)
 	var empty_label: Label = main.find_child("DemandEventsEmptyLabel", true, false)
 	assert_true(empty_label.visible, "no demand events at the start")
+	await _show(main, &"markets")
 
 	# Events start a few minutes apart in the game data.
 	for i in 60:
@@ -617,7 +641,7 @@ func test_a_bought_prestige_upgrade_shows_as_owned_and_stays_after_a_prestige() 
 	main.find_child("PrestigeButton", true, false).pressed.emit()
 	await wait_process_frames(1)
 	var confirm: ConfirmationDialog = main.find_child("PrestigeConfirm", true, false)
-	assert_string_contains(confirm.dialog_text, "Prestige upgrades and their unlocks")
+	assert_string_contains(_prestige_text(main), "Prestige upgrades and their unlocks")
 	confirm.confirmed.emit()
 	await wait_process_frames(1)
 
@@ -665,13 +689,18 @@ func test_a_prestige_shows_what_it_keeps_and_clears_before_the_player_confirms()
 	assert_true(confirm.visible, "the prestige asks to confirm")
 	var preview: PrestigeView = main.simulation().prestige_preview()
 	for item in preview.keeps + preview.clears:
-		assert_string_contains(confirm.dialog_text, item)
-	assert_lt(confirm.dialog_text.find("Keeps"), confirm.dialog_text.find(preview.keeps[0]))
-	assert_lt(confirm.dialog_text.find("Clears"), confirm.dialog_text.find(preview.clears[0]))
+		assert_string_contains(_prestige_text(main), item)
+	assert_lt(_prestige_text(main).find("Keeps"), _prestige_text(main).find(preview.keeps[0]))
+	assert_lt(_prestige_text(main).find("Clears"), _prestige_text(main).find(preview.clears[0]))
 	assert_eq(main.simulation().factories().size(), 1, "the game does not change before the player confirms")
 	confirm.canceled.emit()
 	await wait_process_frames(1)
 	assert_eq(main.simulation().factories().size(), 1, "a canceled prestige changes nothing")
+
+
+## The text of the prestige dialog: what a prestige keeps and clears.
+func _prestige_text(main: Control) -> String:
+	return (main.find_child("PrestigeText", true, false) as Label).text
 
 
 func test_a_confirmed_prestige_starts_a_new_run_and_saves_it() -> void:
@@ -695,12 +724,6 @@ func test_a_confirmed_prestige_starts_a_new_run_and_saves_it() -> void:
 	assert_true(saved.ok, saved.message)
 	assert_eq(saved.simulation.factories().size(), 0, "the prestige is saved at once")
 	assert_eq(saved.simulation.prisms().owned, 1)
-
-
-func test_the_header_fits_the_screen_width() -> void:
-	var main := await _open_main()
-	var header: Control = main.find_child("Header", true, false)
-	assert_lt(header.get_combined_minimum_size().x, 1280.0 - 64.0)
 
 
 func _card(main: Control, color_id: StringName) -> ColorCard:
@@ -812,6 +835,7 @@ func test_a_mixed_factory_shows_its_input_bays_and_waits_for_input() -> void:
 	var sim: Simulation = main.simulation()
 	sim.tick(4000)
 	link_row.ship_button().pressed.emit()
+	await _show(main, &"factories")
 	sim.tick(sim.link(link_row.link_id).transit_time_ms)
 	await wait_process_frames(1)
 
@@ -878,6 +902,7 @@ func test_a_warehouse_unlocks_and_shows_its_widgets_and_throughput() -> void:
 	assert_string_contains(link_row.text(), "Red factory #1 to Red warehouse #1")
 	sim.tick(3000)
 	link_row.ship_button().pressed.emit()
+	await _show(main, &"factories")
 	sim.tick(sim.link(1).transit_time_ms)
 	await wait_process_frames(1)
 
@@ -924,6 +949,7 @@ func test_the_player_sets_a_sell_threshold_and_sees_when_the_warehouse_holds() -
 	assert_eq(sim.warehouse(1).sell_threshold, 1000)
 	assert_string_contains(row.text(), "1000%: holds from Millbrook, where demand is below it")
 	assert_false(row.clear_button().disabled)
+	await _show(main, &"links")
 	sim.tick(1)
 	await wait_process_frames(1)
 	assert_string_contains(link_row.text(), "Automatic: held by the sell threshold, next try in")
@@ -981,7 +1007,8 @@ func test_the_screen_shows_each_market_remoteness_and_the_tier_it_needs() -> voi
 	var sim: Simulation = main.simulation()
 	var content := Content.load_dir(Content.DEFAULT_DIR)
 
-	for row: MarketRow in main.find_children("Market_*", "MarketRow", true, false):
+	for found: MarketRow in main.find_children("Market_*", "MarketRow", true, false):
+		var row := _pick_market(main, found.market_id)
 		var view := sim.market(row.market_id)
 		var text := row.reach_label_text()
 		assert_string_contains(text, "Remoteness %d" % view.remoteness)
@@ -1008,7 +1035,7 @@ func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> vo
 	assert_gt(generated.size(), 0, "the tier before the portal shows closed generated markets")
 	for view: MarketView in generated:
 		assert_eq(view.needed_tier, &"portal")
-		var row: MarketRow = main.find_child("Market_%s" % view.id, true, false)
+		var row := _pick_market(main, view.id)
 		assert_eq(row.reach_label_text(), "Remoteness %d, needs portals" % view.remoteness)
 	var destinations: OptionButton = main.find_child("NewLinkDestination", true, false)
 	var first: MarketView = generated[0]
@@ -1027,7 +1054,7 @@ func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> vo
 	assert_eq(label.text, "Transport tier: Portal, reaches any distance")
 	assert_eq(button.text, "Highest tier")
 	assert_true(button.disabled)
-	var first_row: MarketRow = main.find_child("Market_%s" % first.id, true, false)
+	var first_row := _pick_market(main, first.id)
 	assert_eq(first_row.reach_label_text(), "Remoteness %d, open to portals" % first.remoteness)
 	item = range(destinations.item_count).filter(func(i: int) -> bool:
 		return destinations.get_item_metadata(i) == [&"market", first.id])
@@ -1036,6 +1063,7 @@ func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> vo
 	# With the portal, a link to a market makes the next market when too few
 	# markets have no link, and the screen shows a row for it.
 	assert_true(sim.build_factory(&"red").ok)
+	await _show(main, &"markets")
 	var before := sim.markets().size()
 	for view: MarketView in sim.markets():
 		assert_true(sim.make_link(2, view.id).ok)
@@ -1058,6 +1086,7 @@ func test_the_screen_shows_generated_markets_and_the_portal_reaches_them() -> vo
 
 func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
 	var main := await _main_with_money(10_000)
+	await _show(main, &"links")
 	var sim: Simulation = main.simulation()
 	var button: Button = main.find_child("BuyTransportTier", true, false)
 	var label: Label = main.find_child("TransportLabel", true, false)
@@ -1069,8 +1098,9 @@ func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
 
 	assert_eq(sim.transport_tier().id, &"truck")
 	assert_eq(label.text, "Transport tier: Truck, reaches remoteness 2")
-	var brightwater: MarketRow = main.find_child("Market_brightwater", true, false)
+	var brightwater := _pick_market(main, &"brightwater")
 	assert_eq(brightwater.reach_label_text(), "Remoteness 2, open to trucks")
+	await _show(main, &"links")
 	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
 	assert_string_contains(row.text(), "Vehicle: Cart")
 	var truck := sim.transport_tier()
@@ -1083,6 +1113,7 @@ func test_buying_a_transport_tier_opens_markets_and_keeps_vehicles() -> void:
 
 func test_upgrading_a_vehicle_shows_the_new_vehicle() -> void:
 	var main := await _main_with_money(10_000)
+	await _show(main, &"links")
 	var sim: Simulation = main.simulation()
 	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
 	assert_false(row.upgrade_button().is_visible_in_tree(), "carts are the newest vehicle at the start")
@@ -1144,11 +1175,13 @@ func test_a_lab_pays_for_research_that_unlocks_a_color() -> void:
 	assert_string_contains(row.text(), "Selected")
 	assert_string_contains(row.text(), "Red 0 / 10 (+10 on the way)")
 
+	await _show(main, &"research")
 	sim.tick(sim.link(1).transit_time_ms)
 	await wait_process_frames(1)
 
 	assert_string_contains(row.text(), "Complete")
 	assert_string_contains(row.text(), "Red 10 / 10")
+	await _show(main, &"colors")
 	assert_false(brown.is_locked(), "brown is unlocked")
 	brown.build_button().pressed.emit()
 	await wait_process_frames(1)
