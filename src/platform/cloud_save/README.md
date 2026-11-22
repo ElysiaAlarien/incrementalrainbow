@@ -2,15 +2,17 @@
 
 ADR-0018 has the design. `CloudSave` is the one interface, and `CloudSaveSession` and `CloudSync` hold the rule. `CloudSaves.for_device()` picks the adapter.
 
-| Adapter | Status |
-| --- | --- |
-| `CloudSave` (no cloud) | Done. |
-| `TestCloudSave` | Done, with tests. |
-| `SteamCloudSave` | Skeleton. Not tested on Steam. |
-| `ICloudSave` | Skeleton. Not tested on a device. |
-| `GooglePlayCloudSave` | Skeleton. Not tested on a device. |
+| Adapter | Plugin | Status |
+| --- | --- | --- |
+| `CloudSave` (no cloud) | none | Done. |
+| `TestCloudSave` | none | Done, with tests. |
+| `SteamCloudSave` | GodotSteam v4.24 | Done, with tests against a fake. Not tested on Steam. |
+| `ICloudSave` | GodotApplePlugins, commit `a66f619` | Done, with tests against a fake. Not tested on a device. One open risk (below). |
+| `GooglePlayCloudSave` | godot-play-game-services v3.4.0 | Done, with tests against a fake. Not tested on a device. |
 
-Each skeleton loads and runs with no SDK or plugin, and CI tests this (`tests/unit/cloud_save/test_cloud_save_adapters.gd`). The SDK method names come from the plugin sources in November 2026 (links below). Check them against the plugin version that you install.
+Each adapter takes its SDK object in `_init`. The game gives none, so the adapter finds the singleton or class itself. The tests give a fake with the method and signal names of the plugin version above (`tests/unit/cloud_save/test_*_cloud_save.gd`, `test_icloud_save.gd`). The names come from the plugin sources in November 2026. If you install a different version, check the names again.
+
+With no SDK or plugin in the build, each adapter loads and is not available, so the game saves only on the device. CI tests this (`tests/unit/cloud_save/test_cloud_save_adapters.gd`).
 
 When you add a plugin, also add each of its files, permissions, and capabilities to the allowlists of the build checks (#28, `tests/helpers/store_policy.gd`), in the same change.
 
@@ -32,26 +34,45 @@ Play on A and quit. Start B: it loads the game of A. Play on both, then quit A, 
 
 1. Get a Steamworks partner account and an app ID.
 2. On the Steamworks partner site, open Steam Cloud for the app, and set a byte quota (1 MB is enough) and a file count of at least 1. Do NOT set Auto-Cloud paths for the save, or Steam syncs the save file a second time with its own rule. (ADR-0018 lists API or Auto-Cloud as a decision for the user.)
-3. Add GodotSteam as a GDExtension (https://codeberg.org/godotsteam/godotsteam, v4.24 or later). Do not commit the Steam SDK binaries if the license does not allow it; see #28 for the build.
-4. Initialize Steam once when the game starts (`Steam.steamInitEx()`), and run its callbacks each frame or turn on embedded callbacks. #25 (achievements) needs the same. Put it in one place and do not initialize twice.
-5. Check `SteamCloudSave` against the installed version: `isCloudEnabledForAccount`, `isCloudEnabledForApp`, `fileExists`, `getFileSize`, `fileRead` (a Dictionary with `ret` and `buf`), and `fileWrite`.
-6. Smoke test on two computers with one Steam account: save, sync, load, and a conflict. Also with Steam Cloud off in the Steam client.
+3. Add GodotSteam v4.24 as a GDExtension (https://codeberg.org/godotsteam/godotsteam). Do not commit the Steam SDK binaries if the license does not allow it; see #28 for the build.
+4. Start Steam once. `SteamCloudSave` never starts Steam: it uses Steam only when `get_steam_init_result()` has the status 0. The simplest start is in the project settings of GodotSteam: turn on `steam/initialization/processes/initialize_on_startup` and `steam/initialization/processes/embed_callbacks`, and set the app ID. Then GodotSteam starts Steam itself and runs its callbacks each frame. Do not start Steam with `steamInit`, because it does not set the result that the adapter checks. The achievements of #25 call `steamInitEx` today. A second start logs "Steam is already initialized.", so keep only one.
+5. Smoke test on two computers with one Steam account: save, sync, load, and a conflict. Also with Steam Cloud off in the Steam client, and with the Steam client closed.
+
+Note: `fileWrite` writes the copy of Steam on the computer. The Steam client uploads it later, also after the game quits.
 
 ## iCloud: what a person must do
 
 1. Get an Apple Developer account, and turn on iCloud with the key-value store for the app ID.
-2. Add the entitlement `com.apple.developer.ubiquity-kvstore-identifier` to the iOS export (#28 owns the export presets).
-3. Add GodotApplePlugins (https://github.com/migueldeicaza/GodotApplePlugins, Asset Library 4552). `ICloudSave` uses its class `NSUbiquitousKeyValueStore`: `default_store()`, `synchronize()`, `string_for_key(key)`, and `set_string(value, key)`.
-4. Optional: connect the signal `did_change_externally` to a sync, so that a change from another device comes while the game runs. Today the game syncs at start, on return from the background, and every 5 minutes.
-5. Note: the key-value store works with no iCloud account, but then it does not sync. The game cannot tell this case from a sync with no change.
-6. Smoke test on two devices with one Apple ID: save, sync, load, and a conflict. Also with iCloud off for the app.
+2. Add the entitlement `com.apple.developer.ubiquity-kvstore-identifier` to the iOS export (#28 owns the export presets). Without it, `synchronize()` is false, and each sync fails with a message.
+3. Add GodotApplePlugins (https://github.com/migueldeicaza/GodotApplePlugins, Asset Library 4552, commit `a66f619` or later). `ICloudSave` uses its class `NSUbiquitousKeyValueStore`: `default_store()`, `synchronize()`, `string_for_key(key)`, and `set_string(value, key)`. It keeps one wrapper, because `default_store()` makes a new one at each call.
+4. Smoke test on two devices with one Apple ID: save, sync, load, and a conflict. Also with iCloud off for the app, and with no Apple account on the device. No test runs the lookup of the store (`ClassDB.class_call_static(&"NSUbiquitousKeyValueStore", &"default_store")`), so check first that the game finds iCloud.
+5. Smoke test the open risk: sign in to an Apple account on a device that has never had the game, install the game, and start it at once. Check that it loads the cloud game, and does not upload a new game over it.
+
+Notes:
+
+- The key-value store works with no Apple account, but then it keeps the save only on the device. The game cannot tell this case from a sync with no change.
+- **Open risk: the first download.** Apple says that the system downloads the store from iCloud when a person signs in to an Apple account on the device (the documentation of `NSUbiquitousKeyValueStoreInitialSyncChange`). Until that download ends, the store can be empty, and Apple says to wait before a write. In that time, a new install reads no cloud save, and uploads its new game. Apple does not say what happens to that write. If iCloud keeps it, the new game replaces the cloud game in iCloud. The cloud game is then only on the other devices, and their next sync finds a conflict. Step 5 checks this. A fix is to wait before the first upload for the plugin signal `did_change_externally` with the reason `INITIAL_SYNC_CHANGE` (1). But only a device can show when that signal comes.
+- Optional: connect `did_change_externally` to a sync, so that a change from another device comes while the game runs. Today the game syncs at start, on return from the background, and every 5 minutes.
 
 ## Google Play: what a person must do
 
 1. Get a Google Play Console account, make the game in Play Games Services, and turn on Saved Games.
-2. Add the godot-play-game-services plugin (https://github.com/godot-sdk-integrations/godot-play-game-services, v3.4.0 or later), with its game ID in the Android export (#28).
-3. `GooglePlayCloudSave` calls the Android singleton `GodotPlayGameServices` directly, not the GDScript nodes of the addon: `initialize()`, `isAuthenticated()` with the signal `userAuthenticated(bool)`, `loadGame(name, create_if_not_found)` with `gameLoaded(json)`, `saveGame(name, description, bytes, played_time, progress)` with `gameSaved(bool, name, description)`, and `conflictEmitted(json)`.
-4. NOT VERIFIED: how the plugin puts the snapshot bytes in the JSON of `gameLoaded` (`_bytes()` accepts an array of numbers or base64), and whether the plugin resolves a conflict itself. Check both on a device.
-5. #25 (achievements) also uses this plugin. Call `initialize()` once only.
-6. The player must sign in to Play Games. Until then, the adapter is not available, and a sync does nothing. A sign-in after the start syncs at the next sync (in 5 minutes or on return from the background).
-7. Smoke test on two devices with one Google account: save, sync, load, and a conflict. Also when the player is not signed in.
+2. Add the godot-play-game-services plugin v3.4.0 (https://github.com/godot-sdk-integrations/godot-play-game-services), with its game ID in the Android export (#28).
+3. `GooglePlayCloudSave` calls the Android singleton `GodotPlayGameServices` directly, not the GDScript nodes of the addon: `initialize()`, `isAuthenticated()` with the signal `userAuthenticated(bool)`, `loadGame(name, false)` with `gameLoaded(json)`, `saveGame(name, description, bytes, 0, 0)` with `gameSaved(bool, name, description)`, and `conflictEmitted(json)`.
+4. The adapter calls `initialize()` when the game starts. The achievements of #25 and the addon autoload can call it too. Check on a device that a second call does no harm, or give it one owner.
+5. Smoke test on two devices with one Google account: save, sync, load, and a conflict. Also when the player is not signed in, with no network, and with the network off during a save.
+6. Smoke test the upload when the game goes to the background: play, press Home, stop the app at once, and start the game on the other device. The upload needs two answers of the plugin while the app is in the background.
+7. Smoke test a sign-in after the start: start the game signed out, sign in to Play Games, return to the game, and check that it syncs.
+
+How the adapter uses the plugin, from its source:
+
+- The sign-in answer comes later by signal. A read or a write before it waits for it, so the sync at the start works. When the player is not signed in, the adapter is not available, and a sync does nothing. The plugin sends the sign-in answer only after `isAuthenticated()` or `signIn()`, so each read or write while the player is signed out asks again. Thus a sign-in after the start syncs at the next sync (in 5 minutes or on return from the background).
+- `gameLoaded` has the snapshot as JSON. Gson writes its content as an array of numbers from -128 to 127. "null" means that there is no snapshot.
+- The plugin sends no signal for most errors of a read or a write. Then the operation fails at the timeout (20 seconds), and the next sync tries again.
+- Each write has its own description ("Incremental Rainbow, saved <date and time>"), and `gameSaved` sends it back. So a late answer to an earlier write does not finish the next write.
+- A read has no such mark. A late `gameLoaded` of a read that timed out can finish the next read. Both read the same snapshot, so the risk is a cloud save that is at most one timeout older.
+
+Limits of the plugin (ADR-0018 has them too):
+
+- The plugin opens each snapshot with a resolution policy of Google: "highest progress" for a write and "most recently modified" for a read. So Google resolves a conflict between two devices itself, before the game sees it, and the cloud does not keep the version that loses. The device that wrote it still has its game. At its next sync, the cloud is different from its sync base. Then the rule of ADR-0018 picks one game, keeps the other in the kept save, and tells the player.
+- `gameSaved(true)` comes before the write is committed, and the plugin does not report a commit that fails. Then the game records a sync that did not happen. At the next sync, the cloud is different from the sync base. If the device did not change, the older cloud game loads, the game on the device goes to the kept save, and the player is told.
