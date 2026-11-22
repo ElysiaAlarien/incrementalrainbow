@@ -2,7 +2,7 @@ extends GutTest
 ## The portal: the last transport tier, which reaches a market at any
 ## remoteness. The fixture markets are millbrook (remoteness 0), farpoint (2),
 ## and lastport (4), then generated markets from remoteness 5. Carts reach 0,
-## trucks 2, trains 4, and then the portal reaches any distance. The game
+## trucks 2, trains 4, and then the portal reaches any remoteness. The game
 ## shows 2 markets still to reach.
 
 const SEED := 21
@@ -60,8 +60,8 @@ func test_buying_the_portal_opens_every_market() -> void:
 
 func test_before_the_portal_a_generated_market_shows_that_it_needs_the_portal() -> void:
 	var sim := Simulation.new(_content(), SEED)
-	sim.buy_transport_tier()
-	sim.buy_transport_tier()
+	assert_true(sim.buy_transport_tier().ok)
+	assert_true(sim.buy_transport_tier().ok)
 	assert_true(sim.build_factory(&"red").ok)
 
 	var view := sim.market(&"generated_1")
@@ -118,8 +118,8 @@ func test_a_link_to_a_factory_makes_no_market() -> void:
 
 func test_without_a_portal_a_link_makes_no_market() -> void:
 	var sim := Simulation.new(_content(false), SEED)
-	sim.buy_transport_tier()
-	sim.buy_transport_tier()
+	assert_true(sim.buy_transport_tier().ok)
+	assert_true(sim.buy_transport_tier().ok)
 	assert_true(sim.build_factory(&"red").ok)
 	var before := _ids(sim)
 

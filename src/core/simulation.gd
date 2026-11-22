@@ -688,7 +688,7 @@ func _add_link(state: LinkState) -> CommandResult:
 	_links.append(state)
 	if state.destination_kind == LinkView.Destination.MARKET:
 		_reach_guided_start(GuidedStartView.Step.START_SHIPMENT)
-		# With a tier that reaches any distance, a link uses up a market to reach.
+		# With a portal, a market with a link no longer counts as a market to reach.
 		_add_generated_markets()
 	return CommandResult.success(state.id)
 
@@ -1576,12 +1576,12 @@ func _add_generated_markets() -> void:
 
 
 ## True if [param def] is a market for the generator rule to count: a market
-## that is closed to the transport tier. A tier that reaches any distance
+## that is closed to the transport tier. A tier that reaches any remoteness
 ## closes no market, so with it a market counts while no link goes to it.
 func _is_still_to_reach(def: MarketDef) -> bool:
 	if not _transport_tier.reaches(def.remoteness):
 		return true
-	if not _transport_tier.reaches_any_distance:
+	if not _transport_tier.reaches_any_remoteness:
 		return false
 	for link in _links:
 		if link.goes_to_market(def.id):

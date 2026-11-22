@@ -229,7 +229,7 @@ static func transport_data(transit_time_ms: int = TRANSIT_TIME_MS,
 	]}
 
 
-## [method transport_data], then a portal that reaches any distance, with the
+## [method transport_data], then a portal that reaches any remoteness, with the
 ## PORTAL_ constants.
 static func portal_transport_data() -> Dictionary:
 	var data := transport_data()
