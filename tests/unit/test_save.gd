@@ -145,9 +145,18 @@ func _content() -> Content:
 		"cost": {"red": 2, "yellow": 1}, "unlocks": {"colors": ["brown"]}})
 	return ContentFixture.from_data(ContentFixture.data(colors,
 		ContentFixture.balance_data(700, 6, ContentFixture.demand_overrides().merged({"starting_money": 1000})),
-		ContentFixture.markets_data(ContentFixture.PRICE, colors, ["millbrook", "farpoint"],
-			ContentFixture.POPULATION, ContentFixture.INCOME, [0, 2]),
-		ContentFixture.transport_data(), ContentFixture.demand_events_data(), research))
+		_markets_data(colors), ContentFixture.transport_data(), ContentFixture.demand_events_data(),
+		research))
+
+
+## Millbrook (remoteness 0), farpoint (2), and the market generator of
+## [method ContentFixture.generator_data], which shows 1 closed market. So
+## trucks bring the first generated market (remoteness 3).
+func _markets_data(colors: Dictionary) -> Dictionary:
+	var markets := ContentFixture.markets_data(ContentFixture.PRICE, colors, ["millbrook", "farpoint"],
+		ContentFixture.POPULATION, ContentFixture.INCOME, [0, 2])
+	markets.generator = ContentFixture.generator_data(1)
+	return markets
 
 
 ## Content with demand that stays at 1, for the saves of old versions, whose
@@ -187,6 +196,7 @@ func test_the_rich_game_has_every_kind_of_state() -> void:
 	assert_eq([sim.link(1).vehicle, sim.link(2).vehicle, sim.link(5).vehicle, sim.link(7).vehicle],
 		[&"truck", &"cart", &"truck", &"truck"])
 	assert_eq(sim.link(7).destination_market_id, &"farpoint")
+	assert_eq(sim.snapshot().generated_markets, 1, "a generated market")
 	assert_eq(sim.labs(), [1] as Array[int])
 	assert_true(sim.prestige_upgrade(&"quick_lines").owned, "a prestige upgrade")
 	assert_eq([sim.link(11).destination_kind, sim.link(11).vehicle], [LinkView.Destination.LAB, &"truck"])
@@ -680,7 +690,7 @@ func test_an_unknown_market_fails() -> void:
 
 func test_a_market_twice_fails() -> void:
 	_assert_market_change_fails(func(markets: Array) -> void: markets.append(markets[0].duplicate()),
-		"state.markets[2].id: market millbrook is in the save more than once")
+		"state.markets[3].id: market millbrook is in the save more than once")
 
 
 func test_capacity_used_over_the_capacity_fails() -> void:

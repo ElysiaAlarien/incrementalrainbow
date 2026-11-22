@@ -93,7 +93,7 @@ func _init(view: MarketView, colors: Array[ColorDef]) -> void:
 
 ## Shows [param view] and the demand in [param forecast]. [param needed_tier_plural]
 ## is the plural name of the transport tier that the market needs, such as
-## "Trucks".
+## "Trucks", or "" when no tier reaches it.
 func show_state(view: MarketView, needed_tier_plural: String, forecast: ForecastView) -> void:
 	_reach_label.text = reach_text(view, needed_tier_plural)
 	_reach_label.add_theme_color_override(&"font_color", MUTED_COLOR if view.is_open else BLOCKED_COLOR)
@@ -117,6 +117,8 @@ func show_state(view: MarketView, needed_tier_plural: String, forecast: Forecast
 
 ## Such as "Remoteness 2, open to trucks" or "Remoteness 4, needs trains".
 static func reach_text(view: MarketView, needed_tier_plural: String) -> String:
+	if needed_tier_plural.is_empty():
+		return "Remoteness %d, no transport tier reaches it yet" % view.remoteness
 	return "Remoteness %d, %s %s" % [view.remoteness, "open to" if view.is_open else "needs",
 		needed_tier_plural.to_lower()]
 

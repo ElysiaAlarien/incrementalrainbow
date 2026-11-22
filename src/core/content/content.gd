@@ -65,6 +65,12 @@ var warehouse_balance: WarehouseBalance:
 var lab_build_cost: BigNumber:
 	get:
 		return _lab_build_cost
+## The rules that make markets after the hand-made ones, from the "generator"
+## object of markets.json. Null when the data has none: then there are only the
+## hand-made markets.
+var market_generator: MarketGenerator:
+	get:
+		return _market_generator
 
 var _errors: PackedStringArray = []
 var _factory_balance := FactoryBalance.new(0, 0, BigNumber.ZERO, 1.0, BigNumber.ZERO, 0)
@@ -85,6 +91,7 @@ var _tiers_by_id: Dictionary[StringName, TransportTier] = {}
 var _demand_events: Array[DemandEventDef] = []
 var _demand_events_by_id: Dictionary[StringName, DemandEventDef] = {}
 var _lab_build_cost := BigNumber.ZERO
+var _market_generator: MarketGenerator = null
 var _research: Array[ResearchDef] = []
 var _research_by_id: Dictionary[StringName, ResearchDef] = {}
 var _prestige_upgrades: Array[PrestigeUpgradeDef] = []
@@ -110,6 +117,7 @@ static func from_data(data: Dictionary) -> Content:
 	content._parse_balance(data.get("balance", {}))
 	# Markets name colors, so parse them after the colors.
 	content._parse_markets(data.get("markets", {}))
+	content._parse_market_generator(data.get("markets", {}))
 	content._parse_transport(data.get("transport", {}))
 	# Demand events name colors, so parse them after the colors.
 	content._parse_demand_events(data.get("demand_events", {}))
@@ -131,13 +139,14 @@ func color(id: StringName) -> ColorDef:
 	return _colors_by_id.get(id)
 
 
-## All markets, in data order. A run starts with the markets that the first
-## transport tier reaches open.
+## All hand-made markets, in data order. A run starts with the markets that
+## the first transport tier reaches open. The simulation adds generated markets
+## after them (see [member market_generator]).
 func markets() -> Array[MarketDef]:
 	return _markets.duplicate()
 
 
-## The market with [param id], or null.
+## The hand-made market with [param id], or null.
 func market(id: StringName) -> MarketDef:
 	return _markets_by_id.get(id)
 
@@ -438,8 +447,74 @@ func _parse_markets(data: Dictionary) -> void:
 		if population > 0 and _market_balance.capacity(population) < 1:
 			_errors.append("%s: a population of %d gives a capacity of 0 (market.capacity_per_population)" % [
 				id, population])
+		if String(id).begins_with(MarketGenerator.ID_PREFIX):
+			_errors.append("%s: a hand-made market id cannot start with %s, which generated markets use" % [
+				id, MarketGenerator.ID_PREFIX])
 		_markets.append(def)
 		_markets_by_id[id] = def
+
+
+## The optional "generator" object of markets.json. Needs the hand-made
+## markets, the colors, and the market balance.
+func _parse_market_generator(data: Dictionary) -> void:
+	if not data.has("generator"):
+		return
+	var section: Variant = data.generator
+	if not section is Dictionary:
+		_errors.append("markets.json: \"generator\" must be an object")
+		return
+	var section_name := "generator"
+	var rules := {
+		"closed_markets_shown": _read_positive_int(section, "closed_markets_shown", section_name),
+		"remoteness_step": _read_positive_int(section, "remoteness_step", section_name),
+		"population_base": _read_whole_number(section, "population_base", section_name),
+		"population_per_remoteness": _read_whole_number(section, "population_per_remoteness", section_name),
+		"income_base": _read_whole_number(section, "income_base", section_name),
+		"income_per_remoteness": _read_whole_number(section, "income_per_remoteness", section_name),
+		"spread": _read_number(section, "spread", section_name, 0.0),
+		"favored_colors": _read_whole_number(section, "favored_colors", section_name),
+		"favored_price_factor": _read_number(section, "favored_price_factor", section_name, 0.0),
+		"name_starts": _read_name_parts(section, "name_starts"),
+		"name_ends": _read_name_parts(section, "name_ends"),
+	}
+	if rules.spread >= 1.0:
+		_errors.append("generator.spread must be less than 1, so that population and income stay above 0")
+	if rules.favored_price_factor <= 0.0:
+		_errors.append("generator.favored_price_factor must be more than 0")
+	if rules.favored_colors > _colors.size():
+		_errors.append("generator.favored_colors (%d) cannot be more than the colors (%d)" % [
+			rules.favored_colors, _colors.size()])
+	var generator := MarketGenerator.new(rules, _markets, _colors)
+	if _market_balance.capacity(generator.smallest_population()) < 1:
+		_errors.append("generator: a generated market can have a population of %d, which gives a capacity of 0 (market.capacity_per_population)" % generator.smallest_population())
+	if generator.income_base + generator.income_per_remoteness * generator.remoteness(1) <= 0:
+		_errors.append("generator: income_base or income_per_remoteness must be more than 0")
+	var hand_made_names := {}
+	for def in _markets:
+		hand_made_names[def.name.to_lower()] = true
+	for start in rules.name_starts:
+		for end in rules.name_ends:
+			if hand_made_names.has((start + end).to_lower()):
+				_errors.append("generator: %s%s is the name of a hand-made market" % [start, end])
+	_market_generator = generator
+
+
+## A list of at least one unique, non-empty text, such as the name starts of
+## the market generator.
+func _read_name_parts(section: Dictionary, key: String) -> PackedStringArray:
+	var parts := PackedStringArray()
+	var list: Variant = section.get(key)
+	if not list is Array or list.is_empty():
+		_errors.append("generator.%s must be a list of at least one text" % key)
+		return parts
+	for item: Variant in list:
+		if not item is String or item.is_empty():
+			_errors.append("generator.%s: each item must be a text that is not empty" % key)
+		elif parts.has(item):
+			_errors.append("generator.%s has %s more than once" % [key, item])
+		else:
+			parts.append(item)
+	return parts
 
 
 func _parse_prices(market_id: StringName, data: Variant) -> Dictionary[StringName, BigNumber]:

@@ -1,6 +1,19 @@
 {
-	"_about": "Hand-made markets. remoteness: how hard the market is to reach; a market is open only when the player's transport tier reaches it (max_remoteness in transport.json). A run starts with the markets that the first tier reaches. population and income: the population and income of the market at the start of a run (see market in balance.json). More remote markets have more income, so they pay more. prices: color id to the base price, the money one widget of that color sells for at demand 1 and at the reference income. Demand (see balance.json) changes the price. Each market has a higher base price for some colors. PLACEHOLDER remoteness values, populations, incomes, and prices until playtests set them.",
+	"_about": "Hand-made markets. remoteness: how hard the market is to reach; a market is open only when the player's transport tier reaches it (max_remoteness in transport.json). A run starts with the markets that the first tier reaches. population and income: the population and income of the market at the start of a run (see market in balance.json). More remote markets have more income, so they pay more. prices: color id to the base price, the money one widget of that color sells for at demand 1 and at the reference income. Demand (see balance.json) changes the price. Each market has a higher base price for some colors. generator: the rules that make markets after the hand-made ones, so that the game has no end (see MarketGenerator). The game makes generated markets until at least closed_markets_shown markets are closed to the player's transport tier. Generated market n has the remoteness of the most remote hand-made market plus remoteness_step times n. Its population is population_base plus population_per_remoteness times its remoteness, and its income is income_base plus income_per_remoteness times its remoteness, each times a random factor from 1 - spread to 1 + spread. Its base price of each color is the lowest base price of that color in the hand-made markets, and favored_colors random colors have favored_price_factor times that price. Its name is one of name_starts and one of name_ends. The run's seed sets the random values. PLACEHOLDER remoteness values, populations, incomes, prices, and generator rules until playtests set them.",
 	"placeholder": true,
+	"generator": {
+		"closed_markets_shown": 3,
+		"remoteness_step": 1,
+		"population_base": 1000,
+		"population_per_remoteness": 300,
+		"income_base": 100,
+		"income_per_remoteness": 15,
+		"spread": 0.2,
+		"favored_colors": 2,
+		"favored_price_factor": 1.4,
+		"name_starts": ["Amber", "Birch", "Cedar", "Copper", "Crow", "Deep", "Ever", "Fern", "Frost", "Gold", "Green", "Hollow", "Maple", "North", "Oak", "Raven", "Red", "Rose", "Salt", "Silver", "Stone", "Sun", "Thorn", "West", "Willow", "Wolf"],
+		"name_ends": ["bay", "bourne", "brook", "burgh", "combe", "dale", "field", "ford", "gate", "grove", "haven", "hold", "hurst", "mere", "moor", "mouth", "port", "ridge", "stead", "ton", "vale", "wick", "wood"]
+	},
 	"markets": [
 		{"id": "millbrook", "name": "Millbrook", "remoteness": 0, "population": 1000, "income": 100, "prices": {"red": 5, "yellow": 5, "blue": 5, "green": 14, "orange": 14, "purple": 14, "red_orange": 28, "yellow_orange": 28, "yellow_green": 28, "blue_green": 28, "blue_purple": 28, "red_purple": 28, "brown": 22}},
 		{"id": "ashford", "name": "Ashford", "remoteness": 1, "population": 800, "income": 115, "prices": {"red": 5, "yellow": 7, "blue": 5, "green": 14, "orange": 19.5, "purple": 14, "red_orange": 28, "yellow_orange": 28, "yellow_green": 28, "blue_green": 28, "blue_purple": 28, "red_purple": 28, "brown": 22}},

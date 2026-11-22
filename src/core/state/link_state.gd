@@ -251,8 +251,8 @@ func widgets_in_transit() -> int:
 
 
 ## The inverse of [method to_dict]. Records problems in [param reader]. Checks
-## the ids that the content must know; the simulation checks the factories and
-## warehouses at each end and the link id. [param now_ms], [param next_shipment_id], and
+## the ids that the content must know; the simulation checks the factories,
+## warehouses, labs, and markets at each end and the link id. [param now_ms], [param next_shipment_id], and
 ## [param shipment_ids] are for [method ShipmentState.from_snapshot].
 static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 		next_shipment_id: int, shipment_ids: Dictionary) -> LinkState:
@@ -280,8 +280,6 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
 		state.destination_lab_id = reader.integer("destination_lab_id", 1)
 	elif kind_name == &"market":
 		state.destination_market_id = reader.text_id("destination_market_id")
-		if state.destination_market_id != &"" and content.market(state.destination_market_id) == null:
-			reader.fail("destination_market_id", "there is no market \"%s\"" % state.destination_market_id)
 	if state.color != &"" and content.color(state.color) == null:
 		reader.fail("color", "there is no color \"%s\"" % state.color)
 	if state.vehicle != &"" and content.transport_tier(state.vehicle) == null:

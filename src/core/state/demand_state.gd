@@ -242,7 +242,10 @@ func _saturation_to_list() -> Array[Dictionary]:
 ## Records problems in it. Each saturation entry must
 ## name a known market and color, once, and must not have recovered by
 ## [param now_ms], because a tick forgets saturation that has recovered.
-static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int) -> DemandState:
+## [param is_market] tells if a market id is known: a hand-made market or a
+## generated one.
+static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int,
+		is_market: Callable) -> DemandState:
 	var state := DemandState.new(reader.integer("drift_key", 0, _MASK32))
 	for entry in reader.objects("saturation"):
 		var market_id := entry.text_id("market_id")
@@ -250,7 +253,7 @@ static func from_snapshot(reader: SnapshotReader, content: Content, now_ms: int)
 		var until_ms := entry.integer("saturated_until_ms")
 		if until_ms <= now_ms:
 			entry.fail("saturated_until_ms", "must be after time_ms (%d)" % now_ms)
-		if market_id != &"" and content.market(market_id) == null:
+		if market_id != &"" and not is_market.call(market_id):
 			entry.fail("market_id", "there is no market \"%s\"" % market_id)
 			continue
 		if color != &"" and content.color(color) == null:
