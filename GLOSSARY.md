@@ -205,7 +205,7 @@ A permanent bonus or unlock bought with prisms. It lasts across all later runs.
 _Avoid_: Perk, talent, meta upgrade
 
 **Guided start**:
-The steps that teach a new game to build a factory, make a link to a market, start a shipment, and sell at a market. Each step moves on when the player does its action. The player can skip it at any step. It shows only in a new game with no earlier play, and it does not show again after it is done or skipped, also after a prestige. See ADR-0015.
+The steps that teach a new player to build a factory, make a link to a market, start a shipment, and sell at a market. Each step moves on when the player does its action. The player can skip it at any step. It shows only in a new game with no earlier play, and it does not show again after it is done or skipped, also after a prestige. See ADR-0015.
 _Avoid_: Tutorial, onboarding, walkthrough
 
 **Offline progress**:

@@ -4,7 +4,7 @@ extends RefCounted
 ## [method Simulation.guided_start]. Changing it does not change the
 ## simulation.
 ##
-## The guided start teaches a new game to build a factory, make a link to a
+## The guided start teaches a new player to build a factory, make a link to a
 ## market, start a shipment on it, and sell at the market. Each step moves on
 ## when the core sees its action, not when the player presses a button, so it
 ## does not depend on the layout of the screen.

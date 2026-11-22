@@ -9,13 +9,17 @@ extends PanelContainer
 
 signal skip_pressed
 
-## The steps that the banner shows, in order.
-const STEPS: Array[GuidedStartView.Step] = [
-	GuidedStartView.Step.BUILD_FACTORY,
-	GuidedStartView.Step.MAKE_LINK,
-	GuidedStartView.Step.START_SHIPMENT,
-	GuidedStartView.Step.SELL,
-]
+## What the player does at each step that the banner shows, in step order.
+const STEP_TEXTS: Dictionary[GuidedStartView.Step, String] = {
+	GuidedStartView.Step.BUILD_FACTORY:
+		"Build a factory: pick a color and press Build. A factory makes widgets of its color.",
+	GuidedStartView.Step.MAKE_LINK:
+		"Make a link from your factory to a market. A link moves widgets of one color.",
+	GuidedStartView.Step.START_SHIPMENT:
+		"Start a shipment on your link. A shipment costs money and takes the transit time of the link.",
+	GuidedStartView.Step.SELL:
+		"Wait for the shipment to arrive. The market sells the widgets for money.",
+}
 
 var _step_label := Label.new()
 var _text_label := Label.new()
@@ -55,8 +59,8 @@ func show_state(view: GuidedStartView) -> void:
 	visible = view.is_active()
 	if not visible:
 		return
-	_step_label.text = "Guide %d / %d" % [STEPS.find(view.step) + 1, STEPS.size()]
-	_text_label.text = step_text(view.step)
+	_step_label.text = "Guide %d / %d" % [STEP_TEXTS.keys().find(view.step) + 1, STEP_TEXTS.size()]
+	_text_label.text = STEP_TEXTS[view.step]
 
 
 ## The text of the banner, for tests: such as
@@ -64,16 +68,3 @@ func show_state(view: GuidedStartView) -> void:
 func text() -> String:
 	return "%s: %s" % [_step_label.text, _text_label.text]
 
-
-## What the player does at [param step].
-static func step_text(step: GuidedStartView.Step) -> String:
-	match step:
-		GuidedStartView.Step.BUILD_FACTORY:
-			return "Build a factory: pick a color and press Build. A factory makes widgets of its color."
-		GuidedStartView.Step.MAKE_LINK:
-			return "Make a link from your factory to a market. A link moves widgets of one color."
-		GuidedStartView.Step.START_SHIPMENT:
-			return "Start a shipment on your link. A shipment costs money and takes the transit time of the link."
-		GuidedStartView.Step.SELL:
-			return "Wait for the shipment to arrive. The market sells the widgets for money."
-	return ""

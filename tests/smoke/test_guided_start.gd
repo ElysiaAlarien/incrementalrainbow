@@ -47,7 +47,7 @@ func test_a_new_game_shows_the_first_step() -> void:
 
 	var banner := _banner(main)
 	assert_true(banner.visible)
-	assert_eq(banner.text(), "Guide 1 / 4: %s" % GuidedStartBanner.step_text(GuidedStartView.Step.BUILD_FACTORY))
+	assert_eq(banner.text(), "Guide 1 / 4: %s" % GuidedStartBanner.STEP_TEXTS[GuidedStartView.Step.BUILD_FACTORY])
 
 
 func test_each_action_moves_the_guide_on_until_it_hides() -> void:
@@ -62,7 +62,7 @@ func test_each_action_moves_the_guide_on_until_it_hides() -> void:
 	var row: LinkRow = main.find_children("Link*", "LinkRow", true, false)[0]
 	row.ship_button().pressed.emit()
 	await wait_process_frames(1)
-	assert_eq(banner.text(), "Guide 4 / 4: %s" % GuidedStartBanner.step_text(GuidedStartView.Step.SELL))
+	assert_eq(banner.text(), "Guide 4 / 4: %s" % GuidedStartBanner.STEP_TEXTS[GuidedStartView.Step.SELL])
 	main.simulation().tick(main.simulation().link(row.link_id).transit_time_ms)
 	await wait_process_frames(1)
 
