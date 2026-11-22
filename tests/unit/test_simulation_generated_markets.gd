@@ -52,6 +52,7 @@ func test_after_the_last_hand_made_market_the_next_market_comes_from_the_generat
 		"with trains, all hand-made markets are open")
 	var closed := sim.markets().filter(func(v: MarketView) -> bool: return not v.is_open)
 	assert_eq(closed.size(), 2)
+	assert_eq(sim.market_count(), 5, "the count has the generated markets")
 
 
 func test_with_a_fixed_seed_the_generator_gives_the_same_markets_each_time() -> void:

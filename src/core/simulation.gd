@@ -1462,6 +1462,12 @@ func forecast_horizon_ms() -> int:
 	return _content.forecast_balance.horizon_ms
 
 
+## The count of markets, hand-made and generated, open or not. It is the size
+## of [method markets], with no views to make.
+func market_count() -> int:
+	return _content.markets().size() + _generated.size()
+
+
 ## The market with [param id], or null.
 func market(id: StringName) -> MarketView:
 	var def := _market_def(id)

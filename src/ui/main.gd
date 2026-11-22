@@ -476,7 +476,8 @@ func _on_add_line_requested(factory_id: int) -> void:
 
 
 ## Shows the game. When [param markets_now] is false, as in each frame, the
-## market section shows only each [constant MARKETS_REFRESH_MS] of game time. Its
+## market section shows only each [constant MARKETS_REFRESH_MS] of game time,
+## or at once when the game has a new market. Its
 ## many prices are slow to show, and they change slowly.
 func _refresh(markets_now: bool = true) -> void:
 	_guided_start_banner.show_state(_sim.guided_start())
@@ -516,7 +517,8 @@ func _refresh(markets_now: bool = true) -> void:
 
 	_refresh_demand_events()
 	var since_ms := _sim.time_ms() - _markets_shown_at_ms
-	if markets_now or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS:
+	if markets_now or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS \
+			or _sim.market_count() != _market_rows.size():
 		_refresh_markets()
 
 	for view in _sim.prestige_upgrades():
