@@ -419,11 +419,15 @@ func build_factory(color: StringName) -> CommandResult:
 	if color_def == null:
 		return CommandResult.failure(CommandResult.Reason.UNKNOWN_COLOR,
 			"There is no color \"%s\"." % color)
-	if not is_color_unlocked(color):
+	if not has_color_unlock(color):
 		return CommandResult.failure(CommandResult.Reason.COLOR_LOCKED,
 			"%s needs %s first: %s." % [color_def.name,
 				"a prestige upgrade" if color_def.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE else "research",
 				" or ".join(_content.unlocker_names(color_def))])
+	var locked := locked_inputs(color)
+	if not locked.is_empty():
+		return CommandResult.failure(CommandResult.Reason.COLOR_LOCKED,
+			"%s needs %s unlocked first." % [color_def.name, _color_names(locked)])
 	var cost := factory_build_cost()
 	if _money.is_less_than(cost):
 		return _not_enough_money("A factory", cost)
@@ -436,6 +440,14 @@ func build_factory(color: StringName) -> CommandResult:
 	_factories_by_id[state.id] = state
 	_reach_guided_start(GuidedStartView.Step.MAKE_LINK)
 	return CommandResult.success(state.id)
+
+
+## The names of [param colors], such as "Red-orange" or "Red and Blue".
+func _color_names(colors: Array[StringName]) -> String:
+	var names := PackedStringArray()
+	for color in colors:
+		names.append(_content.color(color).name)
+	return " and ".join(names)
 
 
 ## Adds one production line to the factory with [param factory_id], for money.
@@ -1318,10 +1330,31 @@ func buildable_factory_colors() -> Array[StringName]:
 	return ids
 
 
-## True if the player can build factories of [param color] now: it is
-## available from the start (see [enum ColorDef.Unlock]), or complete research
-## or an owned prestige upgrade unlocks it, as its unlock says.
+## True if the player can build factories of [param color] now: its own
+## unlock is met (see [method has_color_unlock]), and each input of its recipe
+## is unlocked. Thus a tint or a shade stays locked until its hue is unlocked.
 func is_color_unlocked(color: StringName) -> bool:
+	return has_color_unlock(color) and locked_inputs(color).is_empty()
+
+
+## The inputs of the recipe of [param color] that are not unlocked now, in
+## recipe order.
+func locked_inputs(color: StringName) -> Array[StringName]:
+	var locked: Array[StringName] = []
+	var def := _content.color(color)
+	if def == null:
+		return locked
+	for input in def.recipe:
+		if not is_color_unlocked(input):
+			locked.append(input)
+	return locked
+
+
+## True if the own unlock of [param color] is met, with no check of its
+## recipe inputs: it is available from the start (see
+## [enum ColorDef.Unlock]), or complete research or an owned prestige upgrade
+## unlocks it, as its unlock says.
+func has_color_unlock(color: StringName) -> bool:
 	var def := _content.color(color)
 	if def == null:
 		return false
@@ -1427,6 +1460,12 @@ func forecast_accuracy() -> float:
 ## The time ahead that the screen shows the forecast for.
 func forecast_horizon_ms() -> int:
 	return _content.forecast_balance.horizon_ms
+
+
+## The count of markets, hand-made and generated, open or not. It is the size
+## of [method markets], with no views to make.
+func market_count() -> int:
+	return _content.markets().size() + _generated.size()
 
 
 ## The market with [param id], or null.

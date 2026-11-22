@@ -36,6 +36,9 @@ const FIRST_CATCH_UP_PART_MS := 1000
 ## The summary shows only for at least this much time away, so that a quick
 ## restart or a short switch to another app does not show it.
 const SUMMARY_MIN_AWAY_MS := 60_000
+## The game time between two shows of the market section in the frames. A
+## command shows it at once.
+const MARKETS_REFRESH_MS := 250
 
 ## Where the game keeps its save. Set it before the screen enters the tree.
 var save_path := SaveFile.DEFAULT_PATH
@@ -109,6 +112,9 @@ var _destination_keys: Array = []
 var _destination_keys_tier: StringName = &""
 ## Frame time that is not yet a whole millisecond.
 var _carry_ms: float = 0.0
+## The game time when the market section was last shown, or -1. See
+## [constant MARKETS_REFRESH_MS].
+var _markets_shown_at_ms: int = -1
 ## Offline progress that is not applied yet. While it is more than 0, the game
 ## catches up and the player cannot act, so frame time adds to it.
 var _offline_pending_ms: int = 0
@@ -199,7 +205,12 @@ func _process(delta: float) -> void:
 		_sim.tick(whole_ms)
 	if _offline_pending_ms > 0:
 		_catch_up()
-	_refresh()
+		if _offline_pending_ms > 0:
+			# The catch-up screen covers the main screen, so it shows the
+			# main screen only when it is done. A refresh in each frame would
+			# make each frame longer, and the frame time adds to the catch-up.
+			return
+	_refresh(false)
 
 
 func _exit_tree() -> void:
@@ -464,7 +475,11 @@ func _on_add_line_requested(factory_id: int) -> void:
 	_show_result(_sim.add_production_line(factory_id))
 
 
-func _refresh() -> void:
+## Shows the game. When [param markets_now] is false, as in each frame, the
+## market section shows only each [constant MARKETS_REFRESH_MS] of game time,
+## or at once when the game has a new market. Its
+## many prices are slow to show, and they change slowly.
+func _refresh(markets_now: bool = true) -> void:
 	_guided_start_banner.show_state(_sim.guided_start())
 	_money_label.text = "Money: %s" % _sim.money().format()
 	var prisms := _sim.prisms()
@@ -472,7 +487,11 @@ func _refresh() -> void:
 	_buy_prism_button.text = "Buy prism (%s)" % prisms.next_price.format()
 	var cost := _sim.factory_build_cost()
 	for card in _cards:
-		card.show_state(_sim.is_color_unlocked(card.color_id), cost)
+		var locked_inputs := PackedStringArray()
+		if _sim.has_color_unlock(card.color_id):
+			for input in _sim.locked_inputs(card.color_id):
+				locked_inputs.append(_content.color(input).name)
+		card.show_state(_sim.is_color_unlocked(card.color_id), cost, locked_inputs)
 
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)
@@ -497,7 +516,19 @@ func _refresh() -> void:
 	_refresh_research()
 
 	_refresh_demand_events()
+	var since_ms := _sim.time_ms() - _markets_shown_at_ms
+	if markets_now or _markets_shown_at_ms < 0 or since_ms < 0 or since_ms >= MARKETS_REFRESH_MS \
+			or _sim.market_count() != _market_rows.size():
+		_refresh_markets()
 
+	for view in _sim.prestige_upgrades():
+		_prestige_upgrade_rows[view.id].show_state(view)
+
+
+## The market section: the forecast, and the price, demand, and forecast of
+## each color in each market.
+func _refresh_markets() -> void:
+	_markets_shown_at_ms = _sim.time_ms()
 	var forecast := _sim.forecast(_sim.forecast_horizon_ms())
 	_forecast_label.text = MarketRow.forecast_text(forecast)
 	for view in _sim.markets():
@@ -508,9 +539,6 @@ func _refresh() -> void:
 			_market_rows[view.id] = market_row
 			_market_list.add_child(market_row)
 		market_row.show_state(view, _needed_tier_plural(view), forecast)
-
-	for view in _sim.prestige_upgrades():
-		_prestige_upgrade_rows[view.id].show_state(view)
 
 
 ## The plural name of the transport tier that [param view] needs, such as
@@ -769,9 +797,16 @@ func _symbol_icon(color: ColorDef) -> Texture2D:
 	var path := PackedStringArray()
 	for point in points:
 		path.append("%.2f,%.2f" % [point.x, point.y])
-	var svg := "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'><path d='M%sZ' fill='#%s' stroke='#%s' stroke-width='%.1f' stroke-linejoin='round'/></svg>" % [
+	var mark := ""
+	if color.symbol_mark != ColorDef.SymbolMark.NONE:
+		var dot := ColorSymbol.mark_dot(color.symbol_mark, Rect2(1.5, 1.5, SIZE - 3.0, SIZE - 3.0))
+		var dot_fill := ColorSymbol.mark_fill(color.symbol_mark)
+		mark = "<circle cx='%.2f' cy='%.2f' r='%.2f' fill='#%s' stroke='#%s' stroke-width='%.1f'/>" % [
+			dot.get_center().x, dot.get_center().y, dot.size.x / 2.0, dot_fill.to_html(false),
+			ColorSymbol.outline_color(dot_fill).to_html(false), ColorSymbol.MARK_OUTLINE_WIDTH]
+	var svg := "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'><path d='M%sZ' fill='#%s' stroke='#%s' stroke-width='%.1f' stroke-linejoin='round'/>%s</svg>" % [
 		SIZE, SIZE, " L".join(path), color.display_color.to_html(false),
-		ColorSymbol.OUTLINE_COLOR.to_html(false), ColorSymbol.OUTLINE_WIDTH]
+		ColorSymbol.outline_color(color.display_color).to_html(false), ColorSymbol.OUTLINE_WIDTH, mark]
 	var image := Image.new()
 	if points.is_empty() or image.load_svg_from_string(svg) != OK:
 		return null

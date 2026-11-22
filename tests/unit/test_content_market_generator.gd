@@ -44,7 +44,7 @@ func test_reports_bad_generator_values() -> void:
 	for part in ["generator.closed_markets_shown must be a positive integer",
 			"generator.remoteness_step must be a positive integer",
 			"generator.spread must be less than 1",
-			"generator.favored_colors (4) cannot be more than the colors (3)",
+			"generator.favored_colors (4) cannot be more than the colors available at the start of a run (3)",
 			"generator.favored_price_factor must be more than 0",
 			"generator.population_base must be a whole number"]:
 		assert_true(_has_error(errors, part), "%s in %s" % [part, errors])

@@ -18,8 +18,11 @@ extends RefCounted
 ##   remoteness, times a random factor from 1 - [member spread] to
 ##   1 + [member spread]. So more remote markets are larger and pay more.
 ## [br]- Base prices: for each color, the lowest base price of that color in
-##   the hand-made markets. [member favored_colors] colors, chosen at random,
-##   have [member favored_price_factor] times that price.
+##   the hand-made markets. [member favored_colors] colors, chosen at random
+##   from the colors that are available at the start of each run, have
+##   [member favored_price_factor] times that price. So each favored color is
+##   one the player can make, and colors that later content adds with another
+##   unlock do not change the choice for a key.
 ## [br]- Name: a start from [member name_starts] and an end from
 ##   [member name_ends], such as "Stonehaven". All pairs come once, in an order
 ##   that the key sets, before a pair comes again with a number, such as
@@ -92,6 +95,9 @@ var _name_ends: PackedStringArray
 var _first_remoteness: int
 ## Color id to the base price before favored colors, in content color order.
 var _base_prices: Dictionary[StringName, BigNumber]
+## The colors that can be favored: those with [enum ColorDef.Unlock] START,
+## in content order.
+var _favored_candidates: Array[StringName] = []
 ## A step through the name pairs that has no factor in common with their
 ## count, so that one pass gives each pair once.
 var _name_stride: int
@@ -105,7 +111,10 @@ func _init(rules: Dictionary, hand_made: Array[MarketDef], colors: Array[ColorDe
 	_income_base = rules.income_base
 	_income_per_remoteness = rules.income_per_remoteness
 	_spread = rules.spread
-	_favored_colors = mini(rules.favored_colors, colors.size())
+	for color in colors:
+		if color.unlock == ColorDef.Unlock.START:
+			_favored_candidates.append(color.id)
+	_favored_colors = mini(rules.favored_colors, _favored_candidates.size())
 	_favored_price_factor = rules.favored_price_factor
 	_name_starts = rules.name_starts
 	_name_ends = rules.name_ends
@@ -139,9 +148,7 @@ func generate(key: int, index: int) -> MarketDef:
 	var population := _vary(_population_base + _population_per_remoteness * distance, rng)
 	var income := _vary(_income_base + _income_per_remoteness * distance, rng)
 	var prices := _base_prices.duplicate()
-	var colors: Array[StringName] = []
-	for color: StringName in _base_prices:
-		colors.append(color)
+	var colors := _favored_candidates.duplicate()
 	for i in _favored_colors:
 		var color: StringName = colors.pop_at(rng.randi_range(0, colors.size() - 1))
 		prices[color] = prices[color].mul(BigNumber.from_float(_favored_price_factor))

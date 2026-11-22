@@ -15,6 +15,9 @@ var color_id: StringName
 var _recipe_parts: PackedStringArray = []
 var _build_button := Button.new()
 var _locked_label := Label.new()
+## Why the color is locked when its own unlock is not met, such as
+## "Needs research:\nEarth tones".
+var _unlock_text := ""
 
 
 ## [param content] gives the input colors of the recipe.
@@ -44,7 +47,8 @@ func _init(color: ColorDef, content: Content) -> void:
 	box.add_child(_build_button)
 	_locked_label.name = "Locked"
 	var needs := "a prestige upgrade" if color.unlock == ColorDef.Unlock.PRESTIGE_UPGRADE else "research"
-	_locked_label.text = "Needs %s:\n%s" % [needs, " or ".join(content.unlocker_names(color))]
+	_unlock_text = "Needs %s:\n%s" % [needs, " or ".join(content.unlocker_names(color))]
+	_locked_label.text = _unlock_text
 	# The name can be long, so the text is small and can wrap to two
 	# lines in the height of the button.
 	_locked_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -89,10 +93,15 @@ static func _small_label(text: String) -> Label:
 	return label
 
 
-## [param unlocked] is whether the player can build the color now.
-func show_state(unlocked: bool, build_cost: BigNumber) -> void:
+## [param unlocked] is whether the player can build the color now. When the
+## own unlock of the color is met but recipe inputs are still locked,
+## [param locked_inputs] has their names, such as ["Red-orange"].
+func show_state(unlocked: bool, build_cost: BigNumber,
+		locked_inputs: PackedStringArray = PackedStringArray()) -> void:
 	_build_button.visible = unlocked
 	_locked_label.visible = not unlocked
+	_locked_label.text = _unlock_text if locked_inputs.is_empty() \
+		else "Needs %s first" % " and ".join(locked_inputs)
 	_build_button.text = "Build factory (%s)" % build_cost.format()
 
 
@@ -105,7 +114,8 @@ func build_button() -> Button:
 	return _build_button
 
 
-## Why the color is locked, such as "Needs research:\nEarth tones".
+## Why the color is locked, such as "Needs research:\nEarth tones" or
+## "Needs Red-orange first".
 func locked_text() -> String:
 	return _locked_label.text
 

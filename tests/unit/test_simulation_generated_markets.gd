@@ -52,6 +52,7 @@ func test_after_the_last_hand_made_market_the_next_market_comes_from_the_generat
 		"with trains, all hand-made markets are open")
 	var closed := sim.markets().filter(func(v: MarketView) -> bool: return not v.is_open)
 	assert_eq(closed.size(), 2)
+	assert_eq(sim.market_count(), 5, "the count has the generated markets")
 
 
 func test_with_a_fixed_seed_the_generator_gives_the_same_markets_each_time() -> void:
@@ -109,7 +110,29 @@ func test_one_color_of_each_generated_market_has_a_higher_base_price() -> void:
 			assert_true(is_equal_approx(base, 5.0) or is_equal_approx(base, 10.0), "%s %s: %f" % [view.id, color, base])
 			if is_equal_approx(base, 10.0):
 				favored += 1
+				assert_eq(content.color(color).unlock, ColorDef.Unlock.START,
+					"%s favors %s, which is available at the start of a run" % [view.id, color])
 		assert_eq(favored, 1, "%s has one favored color" % view.id)
+
+
+func test_colors_with_another_unlock_do_not_change_the_favored_colors() -> void:
+	var colors := ContentFixture.colors_data()
+	var plain := ContentFixture.from_data(ContentFixture.data(colors, ContentFixture.balance_data(),
+		ContentFixture.generated_markets_data(colors, 5)))
+	# A research color between the start colors, and a prestige color at the end.
+	var more := ContentFixture.colors_data()
+	more.colors.insert(1, {"id": "brown", "name": "Brown", "symbol": "star", "display": "#8b5a33",
+		"recipe": {"red": 1, "yellow": 1, "blue": 1}, "unlock": "research"})
+	more.colors.append({"id": "white", "name": "White", "symbol": "octagon", "display": "#f4f4f4",
+		"recipe": {}, "unlock": "prestige_upgrade"})
+	var with_more := ContentFixture.from_data(ContentFixture.data(more, ContentFixture.balance_data(),
+		ContentFixture.generated_markets_data(more, 5)))
+
+	for index in range(1, 30):
+		var a := plain.market_generator.generate(0xC0FFEE, index)
+		var b := with_more.market_generator.generate(0xC0FFEE, index)
+		for color in [&"red", &"yellow", &"blue"]:
+			assert_true(a.price(color).equals(b.price(color)), "market %d, %s" % [index, color])
 
 
 func test_remoteness_goes_up_with_each_generated_market() -> void:

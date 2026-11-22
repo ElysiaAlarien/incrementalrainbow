@@ -6,7 +6,10 @@ An incremental game where the player builds factories that make colored widgets,
 
 **Color**:
 The single property that sets a widget apart. Colors follow the painter's model, where red, yellow, and blue mix to make the others.
-_Avoid_: Hue, paint, dye
+_Avoid_: Paint, dye
+
+**Hue**:
+One of the 12 colors that has a tint and a shade: the primary, secondary, and tertiary colors. Brown, white, black, tints, and shades are not hues.
 
 **Primary color**:
 Red, yellow, or blue.
@@ -24,17 +27,17 @@ One of six colors mixed from a primary color and an adjacent secondary color, su
 The neutral color mixed from all three primary colors.
 
 **Tint**:
-A color mixed from a hue and white.
+A color mixed from 1 hue widget and 1 white widget. Each hue has one tint. A prestige upgrade unlocks white and the tints, but each tint stays locked until its hue is unlocked.
 
 **Shade**:
-A color mixed from a hue and black.
+A color mixed from 1 hue widget and 1 black widget. Each hue has one shade. A prestige upgrade unlocks black and the shades, but each shade stays locked until its hue is unlocked.
 
 **Recipe**:
 The set of input widgets that a factory of a given color consumes to make one widget of that color.
 _Avoid_: Formula, combination
 
 **Symbol**:
-The shape shown with a color, such as a square for red, so that a colorblind player can tell colors apart. Each color has its own symbol.
+The shape shown with a color, such as a square for red, so that a colorblind player can tell colors apart. Each color has its own symbol. A tint or a shade has the shape of its hue with a mark: a white dot at the top right for a tint, and a black dot at the bottom right for a shade.
 _Avoid_: Icon, glyph
 
 ## Production
