@@ -36,6 +36,7 @@ const _PRESTIGE_KEEPS: Dictionary[String, Array] = {
 	"Prisms": [&"_prisms"],
 	"Prism price": [&"_prisms_bought"],
 	"Prestige upgrades and their unlocks": [&"_prestige_upgrades"],
+	"Guided start, when done or skipped": [&"_guided_start"],
 }
 ## What a prestige clears, as names for the player. A prestige clears all
 ## state that [constant _PRESTIGE_KEEPS] does not name, so this list only
@@ -91,6 +92,11 @@ var _research := ResearchState.new()
 ## Counts what happens during [method progress_offline]. Null at other times.
 ## It is not state: it does not change what the simulation does.
 var _offline_tally: OfflineSummary = null
+## The step of the guided start. A new game starts at its first step. It is in
+## the save, not in a setting of the device, so that an export code or a cloud
+## save carries it to another device. A prestige keeps it, and ends it first if
+## it is not over (see [method prestige]).
+var _guided_start := GuidedStartView.Step.BUILD_FACTORY
 
 
 ## [param p_content] must be valid (no [member Content.errors]).
@@ -147,6 +153,7 @@ static func from_snapshot(p_content: Content, reader: SnapshotReader) -> Simulat
 	sim._read_prestige_upgrades(reader)
 	sim._check_input_bay_space(factory_readers)
 	sim._check_warehouse_space(reader)
+	sim._read_guided_start(reader)
 	return sim
 
 
@@ -170,6 +177,18 @@ func _set_prestige_upgrades(owned: Dictionary) -> void:
 	for def in _content.prestige_upgrades():
 		if owned.has(def.id):
 			_prestige_upgrades.append(def.id)
+
+
+## Reads the guided start for [method from_snapshot].
+func _read_guided_start(reader: SnapshotReader) -> void:
+	var id := reader.text_id("guided_start")
+	if id.is_empty():
+		return
+	var step: Variant = GuidedStartView.Step.get(String(id).to_upper())
+	if step == null:
+		reader.fail("guided_start", "there is no guided start step \"%s\"" % id)
+		return
+	_guided_start = step
 
 
 ## Reads the warehouses for [method from_snapshot].
@@ -378,6 +397,7 @@ func build_factory(color: StringName) -> CommandResult:
 	state.synced_ms = _time_ms
 	_factories.append(state)
 	_factories_by_id[state.id] = state
+	_reach_guided_start(GuidedStartView.Step.MAKE_LINK)
 	return CommandResult.success(state.id)
 
 
@@ -627,6 +647,8 @@ func _add_link(state: LinkState) -> CommandResult:
 			break
 	_next_link_id += 1
 	_links.append(state)
+	if state.destination_kind == LinkView.Destination.MARKET:
+		_reach_guided_start(GuidedStartView.Step.START_SHIPMENT)
 	return CommandResult.success(state.id)
 
 
@@ -836,6 +858,8 @@ func _start_shipment(state: LinkState, automatic: bool) -> CommandResult:
 		state.record_split_shipment(count)
 	state.add_shipment(_next_shipment_id, count, _time_ms, tier.transit_time_ms)
 	_next_shipment_id += 1
+	if state.destination_kind == LinkView.Destination.MARKET:
+		_reach_guided_start(GuidedStartView.Step.SELL)
 	return CommandResult.success(count)
 
 
@@ -852,6 +876,25 @@ func buy_prism() -> CommandResult:
 	return CommandResult.success(_prisms)
 
 
+## Ends the guided start at the step that it is at. The player can skip it at
+## any step, and then it does not show again.
+func skip_guided_start() -> CommandResult:
+	if _guided_start >= GuidedStartView.Step.DONE:
+		return CommandResult.failure(CommandResult.Reason.GUIDED_START_OVER,
+			"The guided start is over already.")
+
+	_guided_start = GuidedStartView.Step.SKIPPED
+	return CommandResult.success()
+
+
+## Moves the guided start on to [param step] when it is at an earlier step. An
+## action completes its own step and each step before it, so the guide cannot
+## wait at a step that the player is past. A guide that is over stays over.
+func _reach_guided_start(step: GuidedStartView.Step) -> void:
+	if _guided_start < step and _guided_start < GuidedStartView.Step.DONE:
+		_guided_start = step
+
+
 ## Ends this run and starts a fresh one. A prestige keeps only the set in
 ## [constant _PRESTIGE_KEEPS] (see [method prestige_preview]) and clears all
 ## else to the state of a new game. The player must own at least one prism.
@@ -862,6 +905,10 @@ func prestige() -> CommandResult:
 	if blocked != null:
 		return blocked
 
+	# A player who can prestige has played, and the steps of the guide do not
+	# fit a run with no factories.
+	if _guided_start < GuidedStartView.Step.DONE:
+		_guided_start = GuidedStartView.Step.SKIPPED
 	var kept := {}
 	for members: Array in _PRESTIGE_KEEPS.values():
 		for member: StringName in members:
@@ -1158,6 +1205,13 @@ func prestige_upgrade(id: StringName) -> PrestigeUpgradeView:
 	return null if def == null else _prestige_upgrade_view(def)
 
 
+## The guided start: the step that the player is at, or how it ended.
+func guided_start() -> GuidedStartView:
+	var view := GuidedStartView.new()
+	view.step = _guided_start
+	return view
+
+
 ## The money that [method build_factory] costs now.
 func factory_build_cost() -> BigNumber:
 	return _content.factory_balance.build_cost
@@ -1427,6 +1481,7 @@ func snapshot() -> Dictionary:
 		"transport_tier": _transport_tier.id,
 		"next_lab_id": _next_lab_id,
 		"labs": _labs.map(func(id: int) -> Dictionary: return {"id": id}),
+		"guided_start": GuidedStartView.Step.find_key(_guided_start).to_lower(),
 	}.merged(_demand.to_dict()).merged(_research.to_dict(_content))
 
 
@@ -1608,6 +1663,7 @@ func _sell(state: LinkState, shipment: ShipmentState) -> void:
 		_offline_tally.widgets_sold += shipment.count
 	_demand.record_sale(market_id, state.color, shipment.count, at_ms, _content.demand_balance)
 	_markets[market_id].record_sale(shipment.count, at_ms, _content.market_balance)
+	_reach_guided_start(GuidedStartView.Step.DONE)
 
 
 ## The price of one widget of [param color] in [param def] at [param demand]:

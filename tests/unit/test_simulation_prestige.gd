@@ -34,6 +34,7 @@ const PREVIEW_NAME_OF_KEY := {
 	"research_progress": "Research, its progress, and the lab stock",
 	"completed_research": "Research, its progress, and the lab stock",
 	"lab_stock": "Research, its progress, and the lab stock",
+	"guided_start": "Guided start, when done or skipped",
 }
 ## The snapshot keys that come from the random number generator, so a fresh
 ## run has other values than a new game with another seed.
@@ -203,7 +204,8 @@ func test_after_a_prestige_all_state_but_the_kept_set_is_as_in_a_new_game() -> v
 
 	var new_game := Simulation.new(_content(), SEED)
 	var ignored := _kept_keys(sim) + RANDOM_KEYS
-	assert_eq(_kept_keys(sim), ["prisms", "prisms_bought", "prestige_upgrades"] as Array[String])
+	assert_eq(_kept_keys(sim), ["prisms", "prisms_bought", "prestige_upgrades", "guided_start"] \
+		as Array[String])
 	assert_eq(_without(sim.snapshot(), ignored), _without(new_game.snapshot(), ignored))
 
 
@@ -269,7 +271,8 @@ func test_the_preview_shows_what_a_prestige_keeps_and_clears() -> void:
 
 	assert_true(view.allowed)
 	assert_eq(view.message, "")
-	assert_eq(view.keeps, PackedStringArray(["Prisms", "Prism price", "Prestige upgrades and their unlocks"]))
+	assert_eq(view.keeps, PackedStringArray(["Prisms", "Prism price", "Prestige upgrades and their unlocks",
+		"Guided start, when done or skipped"]))
 	assert_eq(view.clears, PackedStringArray(["Money", "Factories",
 		"Links, with their vehicles and shipments", "Demand and saturation",
 		"Community investments and capacity used in each market",
