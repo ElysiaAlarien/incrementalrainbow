@@ -9,8 +9,9 @@ extends AchievementService
 ## methods by name. With no singleton, or with a method that is not there, it
 ## does nothing.
 ##
-## NOT VERIFIED: the method names and event shapes below are from the
-## GameCenter plugin of godotengine/godot-ios-plugins, not from a test. Which
+## NOT VERIFIED: the method names and event shapes below are from memory of
+## the GameCenter plugin of godotengine/godot-ios-plugins. No one checked them
+## against its documentation or ran them. Which
 ## iOS plugin the game uses is a decision for the user. Check the names
 ## against that plugin.
 
@@ -53,7 +54,9 @@ func unlock(def: AchievementDef) -> bool:
 
 
 ## Reads the events of the plugin. An authentication event with the result
-## "ok" makes the service available.
+## "ok" makes the service available. It takes each pending event of the
+## plugin, so another user of the plugin (such as a cloud save adapter, #24)
+## must get its events from here when a person finishes the adapters.
 func poll() -> void:
 	if _game_center == null or not _game_center.has_method(&"get_pending_event_count") \
 			or not _game_center.has_method(&"pop_pending_event"):

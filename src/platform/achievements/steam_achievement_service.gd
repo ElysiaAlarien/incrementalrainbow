@@ -8,9 +8,9 @@ extends AchievementService
 ## engine singleton at run time and calls its methods by name. With no
 ## singleton, or with a method that is not there, it does nothing.
 ##
-## NOT VERIFIED: the method names below are from the GodotSteam documentation
-## for Godot 4, not from a test. Check them against the GodotSteam version
-## that the build uses.
+## NOT VERIFIED: the method names below are from memory of GodotSteam for
+## Godot 4. No one checked them against its documentation or ran them. Check
+## them against the GodotSteam version that the build uses.
 
 const SINGLETON := &"Steam"
 
@@ -54,8 +54,9 @@ func poll() -> void:
 
 
 ## Starts the Steam API. Returns true when Steam runs and the user is signed
-## in. NOT VERIFIED: GodotSteam 4 returns a Dictionary with "status" 0 for
-## success.
+## in. NOT VERIFIED (from memory): GodotSteam 4 returns a Dictionary with
+## "status" 0 for success. A cloud save adapter (#24) can start Steam too: the
+## two must agree on who starts it.
 func _start() -> bool:
 	if not _steam.has_method(&"steamInitEx"):
 		return false

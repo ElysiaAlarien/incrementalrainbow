@@ -10,8 +10,9 @@ extends AchievementService
 ## does nothing.
 ##
 ## NOT VERIFIED: the singleton name, the method names, and the signal below
-## are from the documentation of the Godot Play Game Services plugin
-## (godot-sdk-integrations/godot-play-game-services), not from a test. Which
+## are from memory of the Godot Play Game Services plugin
+## (godot-sdk-integrations/godot-play-game-services). No one checked them
+## against its documentation or ran them. Which
 ## Android plugin the game uses is a decision for the user. Check the names
 ## against that plugin.
 
