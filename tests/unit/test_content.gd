@@ -32,6 +32,19 @@ func test_each_color_has_its_own_symbol() -> void:
 		symbols[shown] = true
 
 
+func test_a_recipe_loop_is_an_error() -> void:
+	var colors := ContentFixture.colors_data()
+	colors.colors.append_array([
+		{"id": "teal", "name": "Teal", "symbol": "star", "display": "#00aaaa", "recipe": {"blue": 1, "mint": 1}},
+		{"id": "mint", "name": "Mint", "symbol": "heart", "display": "#aaffcc", "recipe": {"teal": 1}},
+	])
+	var text := "\n".join(Content.from_data(ContentFixture.data(colors)).errors)
+
+	assert_string_contains(text, "teal: its recipe inputs make a loop")
+	assert_string_contains(text, "mint: its recipe inputs make a loop")
+	assert_false(text.contains("red: its recipe"), "a base color has no loop")
+
+
 func test_reads_a_symbol_mark() -> void:
 	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.tints_and_shades_colors_data(),
 		ContentFixture.balance_data(), null, ContentFixture.transport_data(), {"events": []}, null,

@@ -486,7 +486,11 @@ func _refresh(markets_now: bool = true) -> void:
 	_buy_prism_button.text = "Buy prism (%s)" % prisms.next_price.format()
 	var cost := _sim.factory_build_cost()
 	for card in _cards:
-		card.show_state(_sim.is_color_unlocked(card.color_id), cost)
+		var locked_inputs := PackedStringArray()
+		if _sim.has_color_unlock(card.color_id):
+			for input in _sim.locked_inputs(card.color_id):
+				locked_inputs.append(_content.color(input).name)
+		card.show_state(_sim.is_color_unlocked(card.color_id), cost, locked_inputs)
 
 	for view in _sim.factories():
 		var row: FactoryRow = _rows.get(view.id)

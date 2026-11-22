@@ -769,6 +769,21 @@ func test_a_color_that_needs_a_prestige_upgrade_names_the_upgrade() -> void:
 	assert_eq(card.locked_text(), "Needs a prestige upgrade:\nWhite light")
 
 
+func test_a_card_whose_upgrade_is_owned_names_the_locked_input() -> void:
+	var content := ContentFixture.from_data(ContentFixture.data(ContentFixture.tints_and_shades_colors_data(),
+		ContentFixture.balance_data(), null, ContentFixture.transport_data(), {"events": []}, null,
+		ContentFixture.tints_and_shades_upgrades_data()))
+	var card := ColorCard.new(content.color(&"red_tint"), content)
+	add_child_autofree(card)
+
+	card.show_state(false, BigNumber.from_int(10), PackedStringArray(["Red"]))
+	assert_true(card.is_locked())
+	assert_eq(card.locked_text(), "Needs Red first")
+
+	card.show_state(false, BigNumber.from_int(10))
+	assert_eq(card.locked_text(), "Needs a prestige upgrade:\nWhite light")
+
+
 ## Selects the item with [param text] in the option button [param name].
 func _choose(main: Control, name: String, text: String) -> void:
 	var choice: OptionButton = main.find_child(name, true, false)

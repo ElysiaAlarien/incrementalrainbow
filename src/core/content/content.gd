@@ -305,6 +305,32 @@ func _parse_colors(data: Dictionary) -> void:
 				_errors.append("%s: a recipe cannot use its own color" % def.id)
 			elif not _colors_by_id.has(input):
 				_errors.append("%s: recipe input %s is not a color" % [def.id, input])
+	_check_recipe_loops()
+
+
+## A color cannot be an input of its own recipe through other recipes, such as
+## A from B and B from A. Its factory could never make a widget, and the
+## unlock of a color, which needs the unlock of each input, would never end.
+func _check_recipe_loops() -> void:
+	# Color id to true when its inputs have no loop, or false while it is checked.
+	var done := {}
+	for def in _colors:
+		if _has_recipe_loop(def.id, done):
+			_errors.append("%s: its recipe inputs make a loop, such as A from B and B from A" % def.id)
+
+
+func _has_recipe_loop(color: StringName, done: Dictionary) -> bool:
+	if done.has(color):
+		return not done[color]
+	var def: ColorDef = _colors_by_id.get(color)
+	if def == null:
+		return false
+	done[color] = false
+	for input in def.recipe:
+		if input != color and _has_recipe_loop(input, done):
+			return true
+	done[color] = true
+	return false
 
 
 func _parse_recipe(color_id: StringName, data: Variant) -> Dictionary[StringName, int]:
@@ -493,9 +519,10 @@ func _parse_market_generator(data: Dictionary) -> void:
 		_errors.append("generator.spread must be less than 1, so that population and income stay above 0")
 	if rules.favored_price_factor <= 0.0:
 		_errors.append("generator.favored_price_factor must be more than 0")
-	if rules.favored_colors > _colors.size():
-		_errors.append("generator.favored_colors (%d) cannot be more than the colors (%d)" % [
-			rules.favored_colors, _colors.size()])
+	var start_colors := _colors.filter(func(c: ColorDef) -> bool: return c.unlock == ColorDef.Unlock.START).size()
+	if rules.favored_colors > start_colors:
+		_errors.append("generator.favored_colors (%d) cannot be more than the colors available at the start of a run (%d)" % [
+			rules.favored_colors, start_colors])
 	var generator := MarketGenerator.new(rules, _markets, _colors)
 	if _market_balance.capacity(generator.smallest_population()) < 1:
 		_errors.append("generator: a generated market can have a population of %d, which gives a capacity of 0 (market.capacity_per_population)" % generator.smallest_population())

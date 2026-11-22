@@ -27,10 +27,10 @@ One of six colors mixed from a primary color and an adjacent secondary color, su
 The neutral color mixed from all three primary colors.
 
 **Tint**:
-A color mixed from 1 hue widget and 1 white widget. Each hue has one tint. A prestige upgrade unlocks white and the tints.
+A color mixed from 1 hue widget and 1 white widget. Each hue has one tint. A prestige upgrade unlocks white and the tints, but each tint stays locked until its hue is unlocked.
 
 **Shade**:
-A color mixed from 1 hue widget and 1 black widget. Each hue has one shade. A prestige upgrade unlocks black and the shades.
+A color mixed from 1 hue widget and 1 black widget. Each hue has one shade. A prestige upgrade unlocks black and the shades, but each shade stays locked until its hue is unlocked.
 
 **Recipe**:
 The set of input widgets that a factory of a given color consumes to make one widget of that color.
