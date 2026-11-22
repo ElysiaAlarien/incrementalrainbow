@@ -22,9 +22,12 @@ enum Notice {
 	## The cloud could not be read or written. The game saves on the device.
 	UNREACHABLE,
 	## The cloud had a newer save of this game from another device, and the
-	## game on this device had no change since the last sync (or is a new
-	## game), so the game uses the cloud save.
+	## game on this device had no change since the last sync, so the game uses
+	## the cloud save.
 	LOADED_FROM_CLOUD,
+	## The game on the device started new there and never synced, so the game
+	## uses the cloud save. [member kept_code] is the new game.
+	REPLACED_NEW_GAME,
 	## The game on the device and the cloud save both changed since the last
 	## sync. The rule of ADR-0018 picked one. [member kept_code] is the other.
 	CONFLICT,

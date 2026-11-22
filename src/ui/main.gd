@@ -604,7 +604,7 @@ func _on_cloud_synced(plan: CloudSyncPlan) -> void:
 		CloudSyncPlan.Notice.LOADED_FROM_CLOUD:
 			_show_message("Your game loaded from %s: the game that saved there %s." % [
 				service, CloudSaveDialog.format_time(plan.used_saved_at_unix_ms)])
-		CloudSyncPlan.Notice.CONFLICT:
+		CloudSyncPlan.Notice.CONFLICT, CloudSyncPlan.Notice.REPLACED_NEW_GAME:
 			_pending_conflict = plan
 			_show_pending_conflict()
 		CloudSyncPlan.Notice.CLOUD_DAMAGED:

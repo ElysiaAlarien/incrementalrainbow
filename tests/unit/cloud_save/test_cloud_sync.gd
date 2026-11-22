@@ -109,9 +109,23 @@ func test_a_new_game_on_the_device_never_replaces_a_cloud_save() -> void:
 	var plan := _decide(local, LATE_MS, cloud, "", true)
 
 	assert_eq(plan.action, CloudSyncPlan.Action.USE_CLOUD)
-	assert_eq(plan.notice, CloudSyncPlan.Notice.LOADED_FROM_CLOUD)
+	assert_eq(plan.notice, CloudSyncPlan.Notice.REPLACED_NEW_GAME)
+	assert_true(plan.needs_the_player())
 	assert_eq(plan.cloud.simulation.factories().size(), 4)
 	assert_eq(plan.kept_code, local)
+	assert_eq(plan.kept_saved_at_unix_ms, LATE_MS)
+
+
+func test_a_new_game_on_a_device_that_synced_before_never_replaces_the_cloud_save() -> void:
+	# The save on the device did not load, so a new game started, but the
+	# cloud save did not change since the last sync of this device.
+	var cloud := _code(4, EARLY_MS)
+
+	var plan := _decide(_code(0, LATE_MS), LATE_MS, cloud, cloud.sha256_text(), true)
+
+	assert_eq(plan.action, CloudSyncPlan.Action.USE_CLOUD)
+	assert_eq(plan.notice, CloudSyncPlan.Notice.REPLACED_NEW_GAME)
+	assert_eq(plan.cloud.simulation.factories().size(), 4)
 
 
 func test_a_conflict_uses_the_cloud_save_when_it_saved_last() -> void:

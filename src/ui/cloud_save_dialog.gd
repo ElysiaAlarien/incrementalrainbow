@@ -2,7 +2,8 @@ class_name CloudSaveDialog
 extends AcceptDialog
 ## Tells the player that the game on this device and the cloud save were
 ## different, which one the game uses, and why (ADR-0018). The other one is
-## kept, and a button changes to it.
+## kept, and a button changes to it. It also tells the player when a cloud
+## save replaced a new game on this device.
 ##
 ## It holds no rules: [method CloudSync.decide] picks the save.
 
@@ -37,9 +38,12 @@ func _init() -> void:
 
 
 ## Shows the conflict of [param plan] with the cloud service
-## [param service_name].
+## [param service_name], or that the cloud save replaced a new game.
 func show_conflict(plan: CloudSyncPlan, service_name: String) -> void:
-	_text.text = conflict_text(plan, service_name)
+	if plan.notice == CloudSyncPlan.Notice.REPLACED_NEW_GAME:
+		_text.text = replaced_new_game_text(plan, service_name)
+	else:
+		_text.text = conflict_text(plan, service_name)
 	DialogFit.popup(self, _scroll, TEXT_WIDTH)
 
 
@@ -59,6 +63,15 @@ static func conflict_text(plan: CloudSyncPlan, service_name: String) -> String:
 			used, format_time(plan.used_saved_at_unix_ms)],
 		"The other one, %s, saved %s, is kept. You can use it instead." % [
 			kept, format_time(plan.kept_saved_at_unix_ms)],
+	])
+
+
+static func replaced_new_game_text(plan: CloudSyncPlan, service_name: String) -> String:
+	return "\n".join([
+		"Your game loaded from %s: the game that saved there %s." % [
+			service_name, format_time(plan.used_saved_at_unix_ms)],
+		"The game on this device started new here and was never saved in %s. It saved %s, and it is kept. You can use it instead." % [
+			service_name, format_time(plan.kept_saved_at_unix_ms)],
 	])
 
 

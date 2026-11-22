@@ -48,8 +48,14 @@ static func popup(dialog: AcceptDialog, scroll: ScrollContainer, width: float) -
 	_fit_height.call_deferred(dialog, scroll, room.y)
 
 
-static func _fit_height(dialog: AcceptDialog, scroll: ScrollContainer, room_height: float) -> void:
-	if not is_instance_valid(dialog) or not dialog.visible:
+## The arguments have no types, because the dialog can be freed before the
+## end of the frame, and a freed object does not convert to a typed argument.
+static func _fit_height(dialog_object: Variant, scroll_object: Variant, room_height: float) -> void:
+	if not is_instance_valid(dialog_object) or not is_instance_valid(scroll_object):
+		return
+	var dialog := dialog_object as AcceptDialog
+	var scroll := scroll_object as ScrollContainer
+	if not dialog.visible:
 		return
 	var content: Control = scroll.get_child(0)
 	var height := minf(content.get_combined_minimum_size().y, room_height)

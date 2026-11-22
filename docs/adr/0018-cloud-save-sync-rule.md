@@ -19,13 +19,18 @@ A sync compares three saves: the game on the device, the cloud save, and the clo
 | no change | changed | use the cloud save, and tell the player |
 | changed | changed | conflict: the rule below picks one |
 
-A device with no sync base (the first sync, or an update that adds the cloud save) has a conflict when the two saves are different. A game that started new on this device and never synced (a new install, or a save that could not load) loses to a cloud save, so that a new install cannot replace a long game. Without this, the new game would win, because it saved last.
+A device with no sync base (the first sync, or an update that adds the cloud save) has a conflict when the two saves are different. A game that started new on this device and never synced (a new install, or a save that could not load) loses to a cloud save, also when the cloud save did not change since the sync base. Thus a new install, or a device whose save was damaged, cannot replace a long game. Without this, the new game would win, because it saved last. This "new game" can also be a long game: a player with no cloud (Steam Cloud off, or not signed in to Play Games) can play for weeks before the first sync. So the game keeps it, and shows the same dialog as for a conflict, with its own reason and a button to change back to it.
 
 ## The conflict rule: the save that saved last wins
 
 In a conflict, the save with the later save time (ADR-0009) wins. On the same time, the device wins, because no change is the safe default. A save with no save time (version 12 or older) loses to a save with one. The game tells the player which save it uses, and why, in a dialog.
 
-We chose this rule because the player can understand it ("the game you played last"), and it needs no new value in the save. The weak point is the device clock: a device with a clock that is wrong by hours can win when it should lose. Phones and computers set their clocks from the network, so we accept this risk. The kept save (below) lets the player undo a wrong choice.
+We chose this rule because the player can understand it, and it needs no new value in the save. It has two weak points:
+
+- The device clock. A device with a clock that is wrong by hours can win when it should lose. Phones and computers set their clocks from the network.
+- An idle game stays open. A computer that runs the game all day saves at each sync, so it "saved last", also when the player played more on the phone. Then the save time is not "the game you played last".
+
+The kept save (below) lets the player undo a wrong choice, so we accept these risks for now.
 
 Other rules that we considered:
 

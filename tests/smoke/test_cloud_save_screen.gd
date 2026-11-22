@@ -53,6 +53,17 @@ func _cloud_game() -> LoadResult:
 	return ExportCode.decode(_content, _cloud.stored_text())
 
 
+## The cloud dialog of [param main], which shows after the summary of the
+## time away. Closes the summary, as the player does.
+func _cloud_dialog_after_summary(main: Control) -> CloudSaveDialog:
+	var summary: OfflineSummaryDialog = main.find_child("OfflineSummaryDialog", true, false)
+	var dialog: CloudSaveDialog = main.find_child("CloudSaveDialog", true, false)
+	await wait_until(func() -> bool: return summary.visible or dialog.visible, 5.0)
+	summary.hide()
+	assert_true(dialog.visible, "the cloud dialog shows")
+	return dialog
+
+
 ## Plays a game on this device, quits, and comes back to [param main] later.
 func _game_played_here(factories: int) -> void:
 	var main := await _open_main()
@@ -76,9 +87,40 @@ func test_a_new_install_loads_the_cloud_save_and_tells_the_player() -> void:
 	var main := await _open_main()
 
 	assert_eq(main.simulation().factories().size(), 3)
-	assert_string_contains(_message(main), "Your game loaded from test cloud save")
+	var dialog := await _cloud_dialog_after_summary(main)
+	assert_string_contains(dialog.text(), "Your game loaded from test cloud save")
+	assert_string_contains(dialog.text(), "started new here")
 	assert_true(FileAccess.file_exists(SAVE_PATH), "the cloud game is saved on the device")
 	assert_eq(_cloud.writes, 0, "the cloud save is not overwritten")
+
+
+func test_a_damaged_save_on_a_device_that_synced_before_does_not_overwrite_the_cloud() -> void:
+	await _game_played_here(2)
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	file.store_string("{damaged")
+	file.close()
+	var writes := _cloud.writes
+
+	var main := await _open_main()
+
+	assert_eq(main.simulation().factories().size(), 2, "the cloud game replaced the new game")
+	assert_eq(_cloud.writes, writes, "the new game did not go to the cloud")
+	assert_eq(_cloud_game().simulation.factories().size(), 2)
+
+
+func test_a_long_game_with_no_cloud_is_kept_when_the_cloud_comes() -> void:
+	_cloud.available = false
+	await _game_played_here(3)
+	_cloud.available = true
+	_cloud.put(_other_device_code(1, NOW_MS - 60_000))
+
+	var main := await _open_main()
+	var dialog := await _cloud_dialog_after_summary(main)
+	dialog.find_child("UseOtherSave", true, false).pressed.emit()
+	await wait_process_frames(2)
+
+	assert_eq(main.simulation().factories().size(), 3, "the player got the long game back")
+	assert_eq(_cloud_game().simulation.factories().size(), 3)
 
 
 func test_quitting_uploads_the_game() -> void:

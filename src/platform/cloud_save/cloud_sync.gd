@@ -11,7 +11,9 @@ extends RefCounted
 ## - Both changed, or there is no sync base: a conflict. The save with the
 ##   later save time wins. On a tie, the device wins. The other save is kept.
 ## A game that started new on this device and never synced loses to a cloud
-## save, so that a new install cannot replace a long game.
+## save, so that a new install cannot replace a long game. The player is told,
+## and the new game is kept, because it can be a long game on a device that had
+## no cloud for a long time.
 
 
 ## The plan for a sync. [param local_code] is the export code of the game on
@@ -49,9 +51,15 @@ static func decide(content: Content, local_code: String, local_saved_at_unix_ms:
 		damaged.message = cloud.message
 		return damaged
 
+	# Before the sync base: a device that synced before can start a new game
+	# (its save did not load), and that game must not replace the cloud save.
+	if local_is_new:
+		var replaced := _use_cloud(cloud, cloud_sha, CloudSyncPlan.Notice.REPLACED_NEW_GAME)
+		_keep(replaced, local_code, local_saved_at_unix_ms)
+		return replaced
 	if cloud_sha == base_sha256:
 		return _upload(local_sha)
-	if local_is_new or local_sha == base_sha256:
+	if local_sha == base_sha256:
 		var loaded := _use_cloud(cloud, cloud_sha, CloudSyncPlan.Notice.LOADED_FROM_CLOUD)
 		_keep(loaded, local_code, local_saved_at_unix_ms)
 		return loaded

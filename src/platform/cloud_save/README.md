@@ -12,6 +12,8 @@ ADR-0018 has the design. `CloudSave` is the one interface, and `CloudSaveSession
 
 Each skeleton loads and runs with no SDK or plugin, and CI tests this (`tests/unit/cloud_save/test_cloud_save_adapters.gd`). The SDK method names come from the plugin sources in November 2026 (links below). Check them against the plugin version that you install.
 
+When you add a plugin, also add each of its files, permissions, and capabilities to the allowlists of the build checks (#28, `tests/helpers/store_policy.gd`), in the same change.
+
 ## Test the rule on one computer
 
 Start two copies of the game, each with its own save, and one folder as the cloud:
