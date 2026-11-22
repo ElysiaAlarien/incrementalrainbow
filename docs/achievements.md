@@ -7,46 +7,63 @@ Read this to finish #25 on a platform. ADR-0019 has the design. The code is in `
 - The core records milestones and sends `Simulation.milestone_reached` (`src/core/milestones.gd`).
 - `data/achievements.json` maps 12 sample achievements to milestones. The names, the descriptions, and the ids are placeholders.
 - `AchievementTracker` unlocks achievements through one `AchievementService`. It unlocks all that the milestones grant at each start, after each import and cloud load, and when the service becomes available. It does not unlock what only an imported export code gave (ADR-0019, "An imported code grants nothing that only the import gave").
-- `TestAchievementService` lets the game run with no platform service. `AchievementServices.for_this_device()` picks it when the device has no SDK or plugin.
-- The Steam, Game Center, and Google Play Games adapters are skeletons. They find the SDK or plugin at run time and do nothing when it is not there. The method names in them are from memory: **no one checked them** against the documentation of the SDK or plugin, or ran them.
+- `TestAchievementService` lets the game run with no platform service. `AchievementServices.for_this_device()` picks it when the device has no SDK or plugin, or when Steam does not start.
+- The Steam, Game Center, and Google Play Games adapters are written. Each one gets its SDK or plugin as an object, so the unit tests (`tests/unit/test_achievement_adapters.gd`) give it a fake. Each method name, signal name, and property name was checked against the plugin source (versions below). **No one ran them with a real SDK or on a device yet.**
+- `src/platform/platform_sdks.gd` (`PlatformSdks`) starts GodotSteam and initializes the Play Games plugin once in the process. The achievements use it. The cloud save adapters (#24) do not use it yet: `GooglePlayCloudSave` calls `initialize()` itself, so Play Games is initialized twice until #24 changes it.
 
-## Plugin names
+## Plugins and versions
 
-The user decided: check the method names of each adapter against its plugin when a person adds that SDK or plugin to the build (step 4). Nothing needs a change before then.
+| Platform | Plugin | Checked against | How the game finds it |
+| --- | --- | --- | --- |
+| Steam | GodotSteam GDExtension (https://codeberg.org/godotsteam/godotsteam) | 4.24 (tag `v4.24-gde`, Steamworks SDK 1.65) | Engine singleton `Steam`, started by `PlatformSdks.steam()` |
+| Game Center | GodotApplePlugins, its Game Center addon (https://github.com/migueldeicaza/GodotApplePlugins) | commit `a66f619` (2026-10-21, Asset Library 4552 version 1.11) | ClassDB classes `GameCenterManager` and `GKAchievement`, through `GameKit.for_this_build()` |
+| Google Play Games | godot-play-game-services (https://github.com/godot-sdk-integrations/godot-play-game-services) | 3.4.0 (2026-07-20) | Android singleton `GodotPlayGameServices`, initialized by `PlatformSdks.play_games()` |
+
+The cloud save (#24) uses the same three plugins. For Game Center, the earlier skeleton followed the `GameCenter` plugin of `godotengine/godot-ios-plugins`. That plugin has no Godot 4 release, so this branch uses GodotApplePlugins, the plugin of the iCloud save. This is a recommendation: the user can choose another plugin. GodotApplePlugins needs iOS 17 or later.
+
+Not confirmed from the sources:
+
+- The value 0 for a good `steamInitEx()` status. It is `k_ESteamAPIInitResult_OK` of the Steamworks SDK, which is not in the GodotSteam repository.
+- What a second `PlayGamesSdk.initialize()` does. `PlatformSdks` calls it once, but `GooglePlayCloudSave` (#24) still calls `initialize()` itself until it uses `PlatformSdks.play_games()`.
+- What Google Play does with an unlock that fails with no network. The plugin uses `unlockImmediate`, which does not queue. The adapter logs the failure, and the tracker sends it again at the next start.
+- The thread of the answers of the Play Games plugin and of Game Center. The adapters take them deferred, so either thread works.
+- GodotApplePlugins on Godot 4.7. It says Godot 4.2 or later.
 
 ## Steps for each platform
 
 Each platform needs the same five steps:
 
 1. Get the developer account and a test device or test account.
-2. Add the SDK or plugin to the build. Do not add SDK binaries to this repository until the user decides how the build gets them (see #28).
+2. Add the SDK or plugin to the build. Do not add SDK binaries to this repository until the user decides how the build gets them (see #28). Add each of its files, permissions, and capabilities to the allowlists of the build checks (`tests/helpers/store_policy.gd`) in the same change.
 3. Make each achievement in the platform's dashboard, and put its id in `platform_ids` in `data/achievements.json`.
-4. Check each method name, signal name, and result shape in the adapter against the version of the SDK or plugin. Fix the adapter where they differ, and remove its "NOT VERIFIED" notes.
+4. If the plugin version is not the one in the table above, check the names in the adapter again, and update the table.
 5. Do the smoke test: start a new game, make the first sale, and see "First sale" unlock on the platform. Then close the game, reset the achievement in the dashboard, and start the game again: the tracker must unlock it again from the save. Then import an export code of another game that has the first sale, reset the achievement again, and start the game again: it must not unlock.
 
 ### Steam (`steam_achievement_service.gd`)
 
-- SDK: a GodotSteam build for Godot 4.7 (check that one exists), with `steam_appid.txt` (or the app id in the GodotSteam settings) for runs outside Steam.
+- Add GodotSteam 4.24 or later as a GDExtension. Set the app id in its project setting `steam/initialization/app_data/app_id`, or put `steam_appid.txt` beside the game for runs outside Steam.
+- `PlatformSdks.steam()` starts Steam with `steamInitEx(0, true)`, which also turns on embedded callbacks. If GodotSteam started itself (its setting `steam/initialization/processes/initialize_on_startup`), `get_steam_init_result()` tells this, and it does not start Steam again. Then also turn on `steam/initialization/processes/embed_callbacks`, or the Steam adapter runs the callbacks in `poll()`.
 - Dashboard: Steamworks, App Admin, Stats and Achievements. The "API Name" is the `steam` id. The sample data uses the achievement id in capitals, such as `FIRST_SALE`. Publish the changes in Steamworks.
-- Check: `steamInitEx()` and its result, `setAchievement(name)`, `storeStats()`, and `run_callbacks()`. If the build has GodotSteam embed its callbacks, `poll()` can do nothing.
-- The adapter calls `steamInitEx()` itself. If a cloud save adapter (#24) also starts Steam, make one of them do it.
+- The adapter calls `setAchievement(name)` (false when Steamworks has no such achievement) and then `storeStats()`. Since Steamworks SDK 1.61, Steam loads the stats at start, so no request is needed first.
 - Steam keeps an unlock on the device while it is offline, and sends it later.
+- If Steam does not start (no Steam client), the game uses the test adapter.
 
-### Game Center (`game_center_achievement_service.gd`)
+### Game Center (`game_center_achievement_service.gd` and `game_kit.gd`)
 
-- Plugin: an iOS plugin with a `GameCenter` singleton. The adapter follows the GameCenter plugin of `godotengine/godot-ios-plugins`. Other plugins have other names. Which plugin to use is a decision for the user.
-- Turn on the Game Center capability for the app in Xcode and in App Store Connect.
+- Add the Game Center addon of GodotApplePlugins (`addons/GodotApplePluginsGameCenter`), or the addon with all its modules. The Foundation addon alone, which the iCloud save needs, has no Game Center.
+- Turn on Game Center for the App ID at developer.apple.com, and add the entitlement `com.apple.developer.game-center` to the iOS export (#28 owns the export presets). Without it, the calls do nothing.
 - Dashboard: App Store Connect, the app, Game Center, Achievements. The "Achievement ID" is the `game_center` id. The sample data uses `incrementalrainbow.<id>`.
-- Check: `authenticate()`, the pending events (`get_pending_event_count()` and `pop_pending_event()`, an authentication event with `"result": "ok"`), and `award_achievement({"name", "progress", "show_completion_banner"})`.
-- `poll()` takes every pending event of the plugin. If a cloud save adapter (#24) uses the same plugin, give it its events from one place.
-- An award can fail with no network. The tracker sends it again at the next start of the game.
+- `GameKit` calls `GameCenterManager.authenticate()` and listens to `authentication_result(status)` and `authentication_error(message)`. iOS can show its sign-in view. To unlock, it makes `GKAchievement.make(id)`, sets `percent_complete` to 100 and `shows_completion_banner` to true, and calls `GKAchievement.report_achievement([achievement], callback)`. (The plugin guide writes `show_completion_banner`, which is wrong.)
+- A report can fail with no network. The adapter logs it, and the tracker sends it again at the next start of the game.
 
 ### Google Play Games (`google_play_achievement_service.gd`)
 
-- Plugin: an Android plugin for Play Games Services v2. The adapter follows the Godot Play Game Services plugin (`godot-sdk-integrations/godot-play-game-services`), with the singleton `GodotAndroidPlayGameServices`. Which plugin to use is a decision for the user.
+- Add godot-play-game-services 3.4.0 or later. It needs the Gradle build for Android.
+- Put the game's Play Games project id in the Android export option `godot_play_game_services/game_id` (#28 owns the export presets).
 - Dashboard: Play Console, Play Games Services, Achievements. The Play Console gives each achievement its id (such as `CgkI...`). Put each one in `google_play`. The sample data has none yet, so this platform unlocks nothing until then.
-- Put the game's Play Games project id in the plugin's settings, and add the test accounts in the Play Console.
-- Check: the singleton name, `initialize()`, `isAuthenticated()`, the signal `userAuthenticated(bool)`, and `unlockAchievement(id)`.
+- Add the test accounts in the Play Console.
+- The adapter calls `isAuthenticated()` at start, listens to `userAuthenticated(bool)`, calls `unlockAchievement(id)`, and logs a failed `achievementUnlocked(false, id)`.
+- The plugin does not sign in by itself. If Play Games does not sign the player in at start, the game must give the player a way to sign in with `signIn()`. No such button exists yet.
 
 ## Acceptance criteria that are still open
 

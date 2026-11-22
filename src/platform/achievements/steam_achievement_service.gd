@@ -1,27 +1,22 @@
 class_name SteamAchievementService
 extends AchievementService
-## The Steam adapter, for the GodotSteam extension. SKELETON: no one has run it
-## with Steam yet. docs/achievements.md says what a person must do to finish it.
+## The Steam adapter, for the GodotSteam GDExtension. The names are checked
+## against the source of GodotSteam 4.24, but no one ran it with Steam yet.
+## docs/achievements.md says what a person must do to finish it.
 ##
-## It names no GodotSteam class or method in the code, so that the script
-## parses in a build with no GodotSteam. It finds the [code]Steam[/code]
-## engine singleton at run time and calls its methods by name. With no
-## singleton, or with a method that is not there, it does nothing.
-##
-## NOT VERIFIED: the method names below are from memory of GodotSteam for
-## Godot 4. No one checked them against its documentation or ran them. Check
-## them against the GodotSteam version that the build uses.
+## It names no GodotSteam class, so the script parses in a build with no
+## GodotSteam. It calls the methods of the singleton by name.
+## [method AchievementServices.for_this_device] gives it the singleton from
+## [method PlatformSdks.steam], which starts Steam once for the achievements
+## and the cloud save.
 
-const SINGLETON := &"Steam"
-
-var _steam: Object = null
-var _started := false
+var _steam: Object
 
 
-func _init() -> void:
-	if Engine.has_singleton(SINGLETON):
-		_steam = Engine.get_singleton(SINGLETON)
-		_started = _start()
+## [param steam] is the GodotSteam singleton after a good start, or null for
+## a build with no Steam.
+func _init(steam: Object = null) -> void:
+	_steam = steam
 
 
 func platform() -> StringName:
@@ -32,33 +27,28 @@ func has_sdk() -> bool:
 	return _steam != null
 
 
+## Steam started, so achievements work, also when the Steam client is offline.
 func is_available() -> bool:
-	return _started
+	return _steam != null
 
 
+## Steam keeps the unlock on the device after [code]storeStats()[/code], and
+## sends it when it is online again. [code]setAchievement[/code] is false when
+## the app has no achievement with this API name in Steamworks.
 func unlock(def: AchievementDef) -> bool:
 	var api_name := def.platform_id(platform())
-	if not _started or api_name.is_empty() or not _steam.has_method(&"setAchievement"):
+	if _steam == null or api_name.is_empty():
 		return false
-	_steam.call(&"setAchievement", api_name)
-	# Steam keeps the change on the device until a store, and sends it when it
-	# is online again.
-	if _steam.has_method(&"storeStats"):
-		_steam.call(&"storeStats")
+	if not _steam.call(&"setAchievement", api_name):
+		push_warning("Steam has no achievement %s." % api_name)
+		return false
+	_steam.call(&"storeStats")
 	return true
 
 
+## Runs the Steam callbacks. It is necessary only when GodotSteam started
+## itself with no embedded callbacks. Else it does nothing (see
+## [method PlatformSdks.start_steam]).
 func poll() -> void:
-	if _started and _steam.has_method(&"run_callbacks"):
+	if _steam != null:
 		_steam.call(&"run_callbacks")
-
-
-## Starts the Steam API. Returns true when Steam runs and the user is signed
-## in. NOT VERIFIED (from memory): GodotSteam 4 returns a Dictionary with
-## "status" 0 for success. A cloud save adapter (#24) can start Steam too: the
-## two must agree on who starts it.
-func _start() -> bool:
-	if not _steam.has_method(&"steamInitEx"):
-		return false
-	var result: Variant = _steam.call(&"steamInitEx")
-	return result is Dictionary and result.get("status", -1) == 0

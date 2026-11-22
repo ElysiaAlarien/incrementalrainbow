@@ -1,40 +1,44 @@
 class_name GooglePlayAchievementService
 extends AchievementService
-## The Google Play Games adapter, for an Android plugin with an engine
-## singleton. SKELETON: no one has run it on an Android device yet.
+## The Google Play Games adapter, for the Android plugin
+## godot-play-game-services. The names are checked against the source of the
+## plugin, version 3.4.0, but no one ran it on a device yet.
 ## docs/achievements.md says what a person must do to finish it.
 ##
-## It names no plugin class or method in the code, so that the script parses
-## in a build with no plugin. It finds the singleton at run time and calls its
-## methods by name. With no singleton, or with a method that is not there, it
-## does nothing.
+## It names no plugin class, so the script parses in a build with no plugin.
+## It calls the methods of the plugin singleton by name, not the GDScript nodes
+## of the plugin's addon. [method AchievementServices.for_this_device] gives it
+## the singleton from [method PlatformSdks.play_games], which initializes the
+## plugin once for the achievements and the cloud save.
 ##
-## NOT VERIFIED: the singleton name, the method names, and the signal below
-## are from memory of the Godot Play Game Services plugin
-## (godot-sdk-integrations/godot-play-game-services). No one checked them
-## against its documentation or ran them. Which
-## Android plugin the game uses is a decision for the user. Check the names
-## against that plugin.
+## The plugin answers with signals, which can come from another thread, so the
+## adapter takes them deferred.
 
-const SINGLETON := &"GodotAndroidPlayGameServices"
-## The signal of the plugin with the sign-in result, a bool.
+## The plugin's signal with the sign-in result, a bool.
 const AUTHENTICATED_SIGNAL := &"userAuthenticated"
+## The plugin's signal with the result of an unlock: (is_unlocked, id).
+const UNLOCKED_SIGNAL := &"achievementUnlocked"
 
-var _play_games: Object = null
+## The Play Console ids of the unlocks that Google Play answered as failed in
+## this session, for the tests. The tracker does not read it: it sends each
+## earned achievement again at the next start.
+var failed_unlocks: Array[String] = []
+
+var _play_games: Object
 var _authenticated := false
 
 
-func _init() -> void:
-	if not Engine.has_singleton(SINGLETON):
+## [param play_games] is the plugin singleton after
+## [code]initialize()[/code], or null for a build with no plugin.
+func _init(play_games: Object = null) -> void:
+	_play_games = play_games
+	if _play_games == null:
 		return
-	_play_games = Engine.get_singleton(SINGLETON)
-	if _play_games.has_signal(AUTHENTICATED_SIGNAL):
-		_play_games.connect(AUTHENTICATED_SIGNAL, _on_authenticated)
-	if _play_games.has_method(&"initialize"):
-		_play_games.call(&"initialize")
-	if _play_games.has_method(&"isAuthenticated"):
-		# The result comes later through the signal.
-		_play_games.call(&"isAuthenticated")
+	_play_games.connect(AUTHENTICATED_SIGNAL, _on_authenticated, CONNECT_DEFERRED)
+	_play_games.connect(UNLOCKED_SIGNAL, _on_unlocked, CONNECT_DEFERRED)
+	# The plugin does not check the sign-in itself. The result comes through
+	# the signal.
+	_play_games.call(&"isAuthenticated")
 
 
 func platform() -> StringName:
@@ -49,15 +53,25 @@ func is_available() -> bool:
 	return _authenticated
 
 
+## Returns true when the unlock went to the plugin. The plugin sends it at
+## once and does not keep it with no network: [signal achievementUnlocked]
+## says when it failed.
 func unlock(def: AchievementDef) -> bool:
 	var achievement_id := def.platform_id(platform())
-	if not _authenticated or achievement_id.is_empty() or not _play_games.has_method(&"unlockAchievement"):
+	if not _authenticated or achievement_id.is_empty():
 		return false
 	_play_games.call(&"unlockAchievement", achievement_id)
 	return true
 
 
 func _on_authenticated(is_authenticated: bool) -> void:
-	if is_authenticated and not _authenticated:
-		_authenticated = true
+	var signed_in_now := is_authenticated and not _authenticated
+	_authenticated = is_authenticated
+	if signed_in_now:
 		became_available.emit()
+
+
+func _on_unlocked(is_unlocked: bool, achievement_id: String) -> void:
+	if not is_unlocked:
+		failed_unlocks.append(achievement_id)
+		push_warning("Google Play Games did not unlock %s. The game tries again at the next start." % achievement_id)
