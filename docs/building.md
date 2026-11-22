@@ -89,6 +89,13 @@ Give the secrets to Godot in one of these ways:
 
 Do these steps before the first release. CI cannot do them, because they need your accounts.
 
+### Which preset changes to commit
+
+The **Builds** workflow exports each preset with no keys and no signing tools. Thus commit only the preset changes that CI can export:
+
+- Commit the application ids, the version, and the iOS team id. CI uses your team id for its iOS Xcode project.
+- Do not commit the signing changes or the Android AAB changes: Windows `codesign/enable`, macOS `codesign/codesign` and `notarization/notarization`, and Android `gradle_build/*` and the `.aab` export path. CI has no certificate, no keys, and no `android/` build template, so its export fails with them. Make these changes only in the checkout where you make the release build, and do not commit them (`git checkout -- export_presets.cfg` after the build).
+
 ### Application ids
 
 The presets use the placeholder `com.example.incrementalrainbow` as the macOS bundle id, the iOS bundle id, and the Android package name. Change it to an id of yours before the first upload. After the first upload to a store, do not change it, because the store then sees a different app.
@@ -113,7 +120,7 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
    7. Set `notarization/notarization` to `1` (rcodesign) or to `2` (notarytool).
    8. Make the build again. For rcodesign, install [rcodesign](https://github.com/indygreg/apple-platform-rs) and set its path in **Editor Settings > Export > macOS > rcodesign**.
 6. Upload the builds with SteamPipe. Each start check must pass first.
-   1. Download the Steamworks SDK from the Steamworks partner site. Use `sdk/tools/ContentBuilder/builder_linux/steamcmd.sh` (or `builder/steamcmd.exe` on Windows, `builder_osx/steamcmd.sh` on macOS).
+   1. Download the Steamworks SDK from the Steamworks partner site. Its steamcmd is in `tools/ContentBuilder/`: `builder_linux/steamcmd.sh` on Linux, `builder/steamcmd.exe` on Windows, and `builder_osx/steamcmd.sh` on macOS (run `chmod +x steamcmd` there first). Run it one time in its folder, so that it updates itself.
    2. In the Steamworks app admin, make one depot for each operating system, and set the operating system of each depot. Set a launch option for each: `IncrementalRainbow.x86_64` for Linux, `IncrementalRainbow.exe` for Windows, and `Incremental Rainbow.app` for macOS.
    3. Put the builds in a content folder, one folder for each depot. Unzip the macOS build there, so that the folder has `Incremental Rainbow.app`.
    4. Write an app build script, `app_build.vdf`, next to the content folder. Change `<APP_ID>` and the depot ids to yours, and `<VERSION>` to `application/config/version`.
@@ -134,8 +141,8 @@ Set `application/config/version` in **Project Settings** (for example `1.0.0`). 
       }
       ```
 
-   5. Upload: `steamcmd.sh +login <your Steam build account> +run_app_build "$PWD/app_build.vdf" +quit`. Use a Steam account that has only the rights to upload builds. Steam Guard asks for a code at the first login.
-   6. In the Steamworks app admin, go to **SteamPipe > Builds**, and set the new build live on a beta branch first. Install it from that branch with the Steam client on each operating system, and do the checks in [Before each release](#before-each-release). Then set it live on the default branch.
+   5. Upload: `steamcmd.sh +login <your Steam build account> +run_app_build "$PWD/app_build.vdf" +quit`. Use a Steam account that has only the rights "Edit App Metadata" and "Publish App Changes To Steam". At the first login, steamcmd asks for the password and the Steam Guard code.
+   6. Open the builds page of the app (`https://partner.steamgames.com/apps/builds/<APP_ID>`), and set the new build live on a beta branch first. To set a build live, the account needs a phone number or the Steam Mobile App. Install it from that branch with the Steam client on each operating system, and do the checks in [Before each release](#before-each-release). Then set it live on the default branch.
    7. In the store page setup, add no DLC and no in-game purchases.
 
 ### Android on Google Play
